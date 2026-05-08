@@ -10955,14 +10955,17 @@ async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 👇 VIP Payment UTR Check 👇
-    if context.user_data.get('payment_step') == 'utr':
+    # 👇 SABSE PEHLE SAFEGUARD LAGAYEIN: Ignore channel posts or anonymous updates
+    if not update.effective_user:
+        return
+        
+    user_id = update.effective_user.id
+
+    # 👇 VIP Payment UTR Check 👇 (Ab yeh safe hai kyunki channel filter ho chuka hai)
+    if context.user_data and context.user_data.get('payment_step') == 'utr':
         await payment_utr_handler(update, context)
         return
-
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    
+        
     # === 1. FSub Check (Only in Private Chat) ===
     if update.effective_chat.type == "private":
         check = await is_user_member(context, user_id)
