@@ -18,7 +18,7 @@ from trending_manager import trending_worker_loop
 from telegram import KeyboardButton, WebAppInfo
 from telegram import MenuButtonWebApp, WebAppInfo
 import aiohttp
-# import anthropic  # Agar zaroorat ho toh uncomment karein
+import anthropic  # Agar zaroorat ho toh uncomment karein
 from flask import jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -28,6 +28,7 @@ from telegram.error import RetryAfter, TelegramError
 from typing import Optional
 from psycopg2 import pool
 from io import BytesIO
+import auto_scraper  # NAYA: Auto-Scraper integration
 
 # Naya Lock banaya Auto-Batch ke liye
 auto_batch_lock = asyncio.Lock()
@@ -116,15 +117,6 @@ def get_safe_font(text, style=None):
             else: result += char
         return result
 
-    # 2. Double Struck (𝕂𝕒𝕝𝕜𝕚 𝟚𝟠𝟡𝟠 𝔸𝔻)
-    def to_double_struck(s):
-        result = ""
-        for char in s:
-            if 'a' <= char <= 'z': result += chr(0x1D552 + ord(char) - ord('a'))
-            elif 'A' <= char <= 'Z': result += chr(0x1D538 + ord(char) - ord('A'))
-            elif '0' <= char <= '9': result += chr(0x1D7D8 + ord(char) - ord('0'))
-            else: result += char
-        return result
 
     # Randomly inme se ek uthayega taaki wo chutiya squared font na aaye
     return random.choice([to_bold_italic, to_double_struck])(text)
@@ -692,8 +684,43 @@ JSON:"""
                     logger.error(f"❌ Gemini Error on key {key[:5]}...: {e}")
                     break
 
-    # FALLBACK: Improved version
-    logger.info("⚠️ Keys exhausted or failed. Using fallback extraction...")
+    # 🚀 CLAUDE FALLBACK (If Gemini fails and Claude Key exists)
+    if CLAUDE_API_KEY:
+        try:
+            logger.info("🤖 Shifting to Claude for extraction...")
+            client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+            # Claude 3.5 Sonnet ya Haiku use kar sakte hain
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=1000,
+                temperature=0,
+                system="Extract movie/series info from filename. Return ONLY JSON.",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Filename: \"{first_line}\"\nReturn JSON with: title, year, language, extra_info, category."
+                            }
+                        ]
+                    }
+                ]
+            )
+            
+            if message.content:
+                text = message.content[0].text.strip()
+                json_match = re.search(r'\{.*\}', text, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    if data.get("title") and len(data["title"]) > 2:
+                        logger.info(f"✅ Claude Success: {data['title']}")
+                        return data
+        except Exception as e:
+            logger.error(f"❌ Claude Error: {e}")
+
+    # FINAL FALLBACK: Improved version
+    logger.info("⚠️ All AI failed. Using fallback extraction...")
     return await fallback_extraction(first_line)
 
 
@@ -1669,6 +1696,25 @@ def migrate_channel_posts_v2():
         logger.error(f"❌ Migration V2 Error: {e}")
     finally:
         close_db_connection(conn)
+
+def migrate_add_file_unique_id():
+    """movie_files mein file_unique_id column add karta hai — duplicate detection ke liye."""
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS file_unique_id TEXT;")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS languages TEXT DEFAULT '';")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS extra_info TEXT DEFAULT '';")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_movie_files_unique_id ON movie_files (file_unique_id);")
+        conn.commit()
+        cur.close()
+        logger.info("✅ movie_files: file_unique_id column ready!")
+    except Exception as e:
+        logger.error(f"❌ migrate_add_file_unique_id: {e}")
+    finally:
+        close_db_connection(conn)
+
 
 def save_post_to_db(
     movie_id,
@@ -3716,7 +3762,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await context.bot.copy_message(
             chat_id=chat_id,
             from_chat_id=int(DUMP_CHANNEL_ID),
-            message_id=6057, # Tumhari GIF ki Message ID
+            message_id=62, # Tumhari GIF ki Message ID
             caption=caption_text,
             parse_mode='HTML',
             reply_markup=inline_buttons
@@ -4198,7 +4244,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.copy_message(
             chat_id=chat_id,
             from_chat_id=int(os.environ.get('DUMP_CHANNEL_ID', '-1003893346701')),
-            message_id=6057, 
+            message_id=62, 
             caption=caption_text,
             parse_mode='HTML',
             reply_markup=inline_buttons
@@ -5986,6 +6032,45 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
     # ==========================================
+    # 📡 SOURCE CHECK: PM hai ya Dump Channel?
+    # ==========================================
+    is_dump_channel = (str(message.chat_id) == str(DUMP_CHANNEL_ID))
+
+    # ==========================================
+    # 🔍 DUPLICATE CHECK (Photo/Video/Document)
+    # ==========================================
+    if message.document:
+        _file_unique_id = message.document.file_unique_id
+    elif message.video:
+        _file_unique_id = message.video.file_unique_id
+    elif message.photo:
+        _file_unique_id = message.photo[-1].file_unique_id
+    else:
+        _file_unique_id = None
+
+    if _file_unique_id:
+        _dup_conn = get_db_connection()
+        if _dup_conn:
+            try:
+                _dup_cur = _dup_conn.cursor()
+                _dup_cur.execute(
+                    "SELECT id FROM movie_files WHERE file_unique_id = %s LIMIT 1",
+                    (_file_unique_id,)
+                )
+                _dup_row = _dup_cur.fetchone()
+                _dup_cur.close()
+            except Exception as _e:
+                logger.error(f"Duplicate check error: {_e}")
+                _dup_row = None
+            finally:
+                close_db_connection(_dup_conn)
+
+            if _dup_row:
+                logger.info(f"File already in DB: {_file_unique_id}")
+                await message.reply_text("🔁 File already in DB — skipping.", quote=True)
+                return
+
+    # ==========================================
     # 🖼️ CUSTOM POSTER UPLOAD LOGIC (Photo & URL Both Supported)
     # ==========================================
     if BATCH_SESSION.get('active'):
@@ -6170,10 +6255,9 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # ==========================================
-        # 📤 PHASE 2: SAVE FILES (Jab Batch ON ho) - NO CHANGES HERE
+        # 📤 PHASE 2: SAVE FILES (Jab Batch ON ho)
         # ==========================================
-        upload_status = await message.reply_text("⏳ Uploading file...", quote=True)
-        # ... (Baaki ka Phase 2 ka code aapka same rahega)
+        upload_status = await message.reply_text("⏳ Processing file...", quote=True)
 
         channels = get_storage_channels()
         if not channels:
@@ -6181,19 +6265,30 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         backup_map = {}
-        success_uploads = 0
 
-        for chat_id in channels:
-            try:
-                sent = await message.copy(chat_id=chat_id)
-                backup_map[str(chat_id)] = sent.message_id
-                success_uploads += 1
-            except Exception as e:
-                logger.error(f"Upload failed: {e}")
+        if is_dump_channel:
+            # Dump channel mein file already hai — re-upload nahi karna (infinite loop bachao)
+            # Sirf usi message ka reference save karo
+            dump_clean = str(message.chat_id).replace('-100', '')
+            main_url   = f"https://t.me/c/{dump_clean}/{message.message_id}"
+            backup_map[str(message.chat_id)] = message.message_id
+        else:
+            # PM se aayi file — storage channels mein upload karo (purana behaviour)
+            success_uploads = 0
+            for chat_id in channels:
+                try:
+                    sent = await message.copy(chat_id=chat_id)
+                    backup_map[str(chat_id)] = sent.message_id
+                    success_uploads += 1
+                except Exception as e:
+                    logger.error(f"Upload failed: {e}")
 
-        if success_uploads == 0:
-            await upload_status.edit_text("❌ Upload fail ho gaya.")
-            return
+            if success_uploads == 0:
+                await upload_status.edit_text("❌ Upload fail ho gaya.")
+                return
+
+            main_channel_id = channels[0]
+            main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
 
         file_name = message.document.file_name if message.document else (message.video.file_name if message.video else "File")
         file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
@@ -6227,13 +6322,14 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, file_unique_id, languages, extra_info) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (movie_id, quality) DO UPDATE SET 
                     url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
+                    file_unique_id = EXCLUDED.file_unique_id,
                     languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
                     """,
-                    (BATCH_SESSION['movie_id'], label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra)
+                    (BATCH_SESSION['movie_id'], label, file_size_str, main_url, json.dumps(backup_map), _file_unique_id, f_lang, f_extra)
                 )
                 conn.commit()
                 cur.close()
@@ -6410,23 +6506,36 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     file_id = update.message.photo[-1].file_id
     status_msg = await update.message.reply_text("⏳ Publishing to channels...")
 
-    # 1. Database se sirf Title nikalo
+    # 2. डेटा निकालें
     conn = get_db_connection()
     if not conn: return
-    cur = conn.cursor()
-    cur.execute("SELECT title FROM movies WHERE id = %s", (movie_id,))
-    res = cur.fetchone()
-    cur.close()
-    close_db_connection(conn)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT title, genre, language FROM movies WHERE id = %s", (movie_id,))
+        minfo = cur.fetchone()
+        cur.execute("SELECT quality FROM movie_files WHERE movie_id = %s", (movie_id,))
+        qrows = cur.fetchall()
+        cur.close()
+        close_db_connection(conn)
+        
+        if not minfo:
+            await status_msg.edit_text("❌ Movie not found in DB.")
+            context.user_data.pop('waiting_for_poster', None)
+            return
 
-    if not res:
-        await status_msg.edit_text("❌ Movie not found in DB.")
-        context.user_data.pop('waiting_for_poster', None)
+        m_title = minfo[0]
+        m_genre = minfo[1] or "Action, Drama"
+        m_lang = minfo[2] or "Hindi + English"
+        
+        # क्वालिटी अलाइनमेंट
+        res_list = sorted(list(set(re.search(r'(\d{3,4}p)', r[0]).group(1) for r in qrows if re.search(r'(\d{3,4}p)', r[0]))), key=lambda x: int(x.replace('p','')), reverse=True)
+        dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
+
+    except Exception as e:
+        logger.error(f"Metadata fetch error: {e}")
+        await status_msg.edit_text("❌ Metadata fetch error.")
         return
-    
-    m_title = res[0]
 
-    # 🎯 FIX: This block must be indented to match the rest of the function
     channel_caption = (
         f"🎬 <b>{m_title}</b>\n"
         f"✨ Genre: {m_genre}\n"
@@ -6439,7 +6548,8 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     # 3. Download Buttons Banao
-    secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
+    bot_username = context.bot.username
+    secure_url = f"https://t.me/{bot_username}?start=movie_{movie_id}"
 
     keyboard = InlineKeyboardMarkup([
         [
@@ -9914,6 +10024,7 @@ def serve_mini_app():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="referrer" content="no-referrer">
     <title>FlimfyBox · PREMIUM</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -10475,10 +10586,16 @@ def serve_mini_app():
             // Trending (first 15)
             document.getElementById('trendingScroll').innerHTML = renderCards(movies.slice(0, 15), 'card', false);
             // Bollywood
-            const bolly = movies.filter(m => m.category?.toLowerCase().includes('bollywood')).slice(0, 15);
+            const bolly = movies.filter(m => 
+                m.category?.toLowerCase().includes('bollywood') || 
+                (m.category === 'Movies' && m.language?.toLowerCase().includes('hindi'))
+            ).slice(0, 15);
             document.getElementById('bollywoodScroll').innerHTML = renderCards(bolly, 'card', false);
             // Hollywood
-            const holy = movies.filter(m => m.category?.toLowerCase().includes('hollywood')).slice(0, 15);
+            const holy = movies.filter(m => 
+                m.category?.toLowerCase().includes('hollywood') || 
+                (m.category === 'Movies' && m.language?.toLowerCase().includes('english'))
+            ).slice(0, 15);
             document.getElementById('hollywoodScroll').innerHTML = renderCards(holy, 'card', false);
             // Show remaining movies from the first batch
             document.getElementById('moreGrid').innerHTML = renderCards(movies.slice(15), 'grid-card', false);
@@ -10492,9 +10609,15 @@ def serve_mini_app():
                 const rating = m.rating && m.rating !== 'N/A' ? `⭐ ${m.rating}` : '';
                 const badge = isTMDB ? '<div class="card-rating" style="color:white; background:var(--primary);">Request</div>' : (rating ? `<div class="card-rating">${rating}</div>` : '');
                 
+                // 🛡️ NAYA: Image Proxy to bypass 403 Forbidden on scraped posters
+                let proxyImg = m.image;
+                if (proxyImg && !proxyImg.includes('tmdb.org') && !proxyImg.includes('placeholder')) {
+                    proxyImg = 'https://wsrv.nl/?url=' + encodeURIComponent(proxyImg);
+                }
+                
                 return `
                     <div class="${cardClass}" onclick="openDetails('${m.id}', ${isTMDB})">
-                        <img src="${m.image}" class="card-img" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Poster'">
+                        <img src="${proxyImg}" class="card-img" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450?text=No+Poster'">
                         ${badge}
                         <div class="card-title">${m.title}</div>
                         <div class="card-meta">${m.year || ''}</div>
@@ -11132,6 +11255,45 @@ async def auto_delete_worker(app: Application):
         # Har 5 second me database check karega
         await asyncio.sleep(5)
 
+# ==================== MAINTENANCE: PURGE TEMP LINKS ====================
+async def purge_temp_links_worker():
+    """Background task to delete old temp links every hour"""
+    while True:
+        try:
+            conn = get_db_connection()
+            if conn:
+                cur = conn.cursor()
+                # Delete links older than 24 hours
+                cur.execute("DELETE FROM temp_links WHERE created_at < NOW() - INTERVAL '24 hours'")
+                deleted = cur.rowcount
+                conn.commit()
+                cur.close()
+                close_db_connection(conn)
+                if deleted > 0:
+                    logger.info(f"🧹 Purged {deleted} expired temp links.")
+        except Exception as e:
+            logger.error(f"Error in purge_temp_links_worker: {e}")
+        
+        await asyncio.sleep(3600) # Run every hour
+
+# ==================== AUTO-SCRAPER WORKER ====================
+async def run_auto_scraper_worker():
+    """Background task to run the scraper every 1 hour for max 2 minutes"""
+    logger.info("🕵️ Auto-Scraper Worker Initialized.")
+    # Wait for bots to start properly first
+    await asyncio.sleep(30)
+    
+    while True:
+        try:
+            logger.info("🚀 Starting scheduled scraper run (1 hour interval, 2 min max)...")
+            # Blocking scraper logic ko thread me bhej rahe hain taaki bot na ruke
+            await asyncio.to_thread(auto_scraper.run_once, pages=1, delay=1.5, max_time_seconds=120)
+            logger.info("✅ Scraper run finished. Sleeping for 1 hour.")
+        except Exception as e:
+            logger.error(f"⚠️ Scraper worker encountered error: {e}")
+        
+        await asyncio.sleep(3600) # 1 Hour interval
+
 # 👇 YAHAN SE COPY KARO AUR EXACTLY 'def register_handlers' KE THEEK UPAR PASTE KARO 👇
 
 async def payment_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -11272,7 +11434,15 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("post", post_to_topic_command))
     
     # ✅ FIX: group=2 जोड़ा गया ताकि नॉर्मल बैच अपना काम कर सके
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (filters.Document.ALL | filters.VIDEO | filters.PHOTO | (filters.TEXT & ~filters.COMMAND)), pm_file_listener), group=2)
+    # ✅ UPDATED: PM (owner) + DUMP_CHANNEL_ID dono listen karta hai
+    _dump_chat_id = int(DUMP_CHANNEL_ID)
+    application.add_handler(MessageHandler(
+        (
+            (filters.ChatType.PRIVATE) |
+            (filters.Chat(chat_id=_dump_chat_id))
+        ) & (filters.Document.ALL | filters.VIDEO | filters.PHOTO | (filters.TEXT & ~filters.COMMAND)),
+        pm_file_listener
+    ), group=2)
 
     # -----------------------------------------------------------
     # 4. GENRE & GROUP HANDLERS
@@ -11322,6 +11492,7 @@ async def main():
         migrate_add_imdb_columns()
         migrate_content_type_for_restore()
         migrate_channel_posts_v2()
+        migrate_add_file_unique_id()
         fix_channel_posts_constraint()
         fix_movies_unique_constraint()
         fix_movies_title_constraint()
@@ -11369,8 +11540,11 @@ async def main():
             await app.updater.start_polling(drop_pending_updates=True)
             asyncio.create_task(auto_delete_worker(app))
             if i == 0:
-                logger.info("🚀 Starting Trending Worker for Main Bot...")
+                logger.info("🚀 Starting Trending & Maintenance Workers...")
                 asyncio.create_task(trending_worker_loop(app, ADMIN_USER_ID))
+                asyncio.create_task(purge_temp_links_worker())
+                # 🚀 NAYA: Auto-Scraper Background Task start karo
+                asyncio.create_task(run_auto_scraper_worker())
             
 
 
