@@ -6154,7 +6154,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                     BATCH_SESSION.update({
                         'active': True, 'movie_id': movie_id, 'movie_title': title, 
-                        'file_count': file_count, 'admin_id': user_id,
+                        'file_count': file_count, 'admin_id': ADMIN_USER_ID,
                         'year': str(year) if year else movie_year, 'category': category, 'language': movie_lang
                     })
                     
