@@ -5970,23 +5970,25 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
 
 async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🛡️ Ye line add karo (Line 2145 ke aas-paas)
     if BATCH_18_SESSION.get('active') or SUPER_BATCH_SESSION.get('active'):
         return
-    # 👇 NAYA CODE: VIP Payment Screenshot Check 👇
+
+    # 1. VIP Payment Check (Safe for channels)
     if context.user_data and context.user_data.get('payment_step') == 'screenshot' and update.message and update.message.photo:
         await payment_photo_handler(update, context)
         return
 
-    user_id = update.effective_user.id
-    if user_id != ADMIN_USER_ID: return
-    if SUPER_BATCH_SESSION.get('active'): return
-    if BATCH_18_SESSION.get('active'): return
-
     message = update.effective_message
+    if not message:
+        return
 
-    # Dump channel se aayi hai ya PM se?
+    # 2. Check karo ki file kahan se aayi hai (Dump Channel ya PM)
     is_from_dump = (str(message.chat_id) == str(DUMP_CHANNEL_ID))
+
+    # 3. Security: Agar file Dump Channel se nahi aayi hai, toh bhejne wala sirf ADMIN hona chahiye
+    if not is_from_dump:
+        if not update.effective_user or update.effective_user.id != ADMIN_USER_ID:
+            return
 
     # ==========================================
     # 🖼️ CUSTOM POSTER UPLOAD LOGIC (Photo & URL Both Supported)
