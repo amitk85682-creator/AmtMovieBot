@@ -11366,8 +11366,8 @@ async def main():
         os.environ.get("BOT_TOKEN_3")           # Bot 3
     ]
 
-    # Khali tokens filter karo
-    tokens = [t for t in tokens if t]
+    # Khali tokens filter karo aur duplicate hatao
+    tokens = list(set([t for t in tokens if t]))
 
     if not tokens:
         logger.error("❌ No tokens found! Check Environment Variables.")
