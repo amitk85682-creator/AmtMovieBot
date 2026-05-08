@@ -366,6 +366,10 @@ BLOG_ID = os.environ.get('BLOG_ID')
 UPDATE_SECRET_CODE = os.environ.get('UPDATE_SECRET_CODE', 'default_secret_123')
 _admin_id = os.environ.get('ADMIN_USER_ID', '0')
 ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 0
+
+# 👇 NAYA: Yahan apne dono accounts ki Telegram IDs daal do
+ADMIN_IDS = [ADMIN_USER_ID, 8675088364, 8438574164]  # 123456789... ko apne dusre IDs se replace karna
+
 GROUP_CHAT_ID = os.environ.get('GROUP_CHAT_ID')
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID')
 
@@ -3094,7 +3098,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             finally:
                 close_db_connection(conn)
 
-    # 👇 NAYA CODE: Yahan hum us ek specific file ka episode 'movie_files' table se nikalenge! 👇
+    # 👇 NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! 👇
     if url or file_id:
         conn = get_db_connection()
         if conn:
@@ -3104,9 +3108,19 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     cur.execute("SELECT extra_info FROM movie_files WHERE file_id = %s LIMIT 1", (file_id,))
                 else:
                     cur.execute("SELECT extra_info FROM movie_files WHERE url = %s LIMIT 1", (url,))
+                
                 res = cur.fetchone()
                 if res and res[0] and res[0].strip():
-                    extra_display = f"📌 <b>Episode:</b> {res[0]}\n"
+                    extra_val = res[0].strip()
+                    
+                    # 👇 SMART FIX: Check karega ki UNCUT/EXTENDED (Movie) hai ya Episode (Web Series)
+                    edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
+                    
+                    if any(word in extra_val.upper() for word in edition_keywords):
+                        extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
+                    else:
+                        extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
+                        
                 cur.close()
             except Exception:
                 pass
@@ -4261,7 +4275,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🖼️ NEW: ASK POSTER LOGIC (Semi-Auto Post)
     # =======================================================
     if data.startswith("askposter_"):
-        if update.effective_user.id != ADMIN_USER_ID:
+        if update.effective_user.id not in ADMIN_IDS:
             await query.answer("❌ Admin only!", show_alert=True)
             return
 
@@ -4564,7 +4578,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 👇👇👇 YE NAYA CODE ADD KARO 👇👇👇
     if query.data.startswith("clearfiles_"):
-        if update.effective_user.id != ADMIN_USER_ID:
+        if update.effective_user.id not in ADMIN_IDS:
             await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
@@ -4598,7 +4612,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # === CANCEL BATCH LOGIC ===
     if query.data == "cancel_batch":
-        if update.effective_user.id != ADMIN_USER_ID:
+        if update.effective_user.id not in ADMIN_IDS:
             await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
@@ -4640,7 +4654,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     # === CANCEL 18+ BATCH LOGIC ===
     if query.data == "cancel_batch18":
-        if update.effective_user.id != ADMIN_USER_ID:
+        if update.effective_user.id not in ADMIN_IDS:
             await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
@@ -5401,7 +5415,7 @@ def get_readable_file_size(size_in_bytes):
 # 🎬 BATCH ID COMMAND (Fully Automatic via TMDB/IMDb)
 # ============================================================================
 async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_USER_ID: return
+    if update.effective_user.id not in ADMIN_IDS: return
     if not context.args:
         await update.message.reply_text("❌ Usage: `/batchid tt1234567`")
         return
@@ -5600,7 +5614,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def superbatch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Super Batch shuru karega"""
-    if update.effective_user.id != ADMIN_USER_ID: return
+    if update.effective_user.id not in ADMIN_IDS: return
     
     SUPER_BATCH_SESSION['active'] = True
     SUPER_BATCH_SESSION['admin_id'] = update.effective_user.id
@@ -6750,7 +6764,7 @@ BATCH_18_SESSION = {'active': False, 'movie_id': None, 'movie_title': None, 'fil
 
 async def batch18_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """18+ बैच शुरू करें - बिल्कुल /batch की तरह काम करेगा"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         return
 
     if BATCH_SESSION.get('active'):  # अगर नॉर्मल बैच चल रहा है तो 18+ नहीं चलेगा
@@ -7722,7 +7736,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== ADMIN COMMANDS ====================
 async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command to add a movie manually (Supports Unreleased)"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Sorry Darling, sirf 𝑶𝒘𝒏𝒆𝒓 hi is command ka istemal kar sakte hain.")
         return
 
@@ -7828,7 +7842,7 @@ ASK_MOVIE, ASK_USER = range(20, 22) # Naye states
 
 async def notify_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 1: Admin types /notify"""
-    if update.effective_user.id != ADMIN_USER_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     
     await update.message.reply_text("🎬 <b>Smart Notify Started!</b>\n\n👉 सबसे पहले मुझे <b>Movie / Series</b> का नाम बताइए:", parse_mode='HTML')
     return ASK_MOVIE
@@ -7897,7 +7911,7 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         return
 
     if len(context.args) < 2:
@@ -7963,7 +7977,7 @@ async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_T
 
 async def bulk_add_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add multiple movies at once"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
@@ -8050,7 +8064,7 @@ Details:
 
 async def add_alias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add an alias for an existing movie"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
@@ -8139,7 +8153,7 @@ async def list_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
             close_db_connection(conn)
 async def bulk_add_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add multiple aliases at once"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
@@ -8217,7 +8231,7 @@ Failed: {failed_count}
 
 async def notify_manually(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manually notify users about a movie"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
@@ -8253,7 +8267,7 @@ async def notify_manually(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send text notification to specific user"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8303,7 +8317,7 @@ async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_
 
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast HTML message to all users with formatting support"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8369,7 +8383,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Schedule a notification for later"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8437,7 +8451,7 @@ async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Notify user with media by replying to a message"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8585,7 +8599,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
 
 async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast media to all users"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8679,7 +8693,7 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Quick notify - sends media to specific requesters"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8776,7 +8790,7 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Forward message from channel to user"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8825,7 +8839,7 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get user information"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8913,7 +8927,7 @@ async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all bot users with Accurate Count from Activity Log"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -8989,7 +9003,7 @@ async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get comprehensive bot statistics"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
@@ -9164,7 +9178,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
     /restore -100444444444 anime 3      -> Anime, 3 sec delay
     /restore -100111111111 all 3        -> Sab kuch (careful!)
     """
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         return
 
     # --- Argument Check ---
@@ -9439,7 +9453,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show admin commands help"""
-    if update.effective_user.id != ADMIN_USER_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Admin only command.")
         return
 
