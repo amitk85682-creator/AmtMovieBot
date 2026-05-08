@@ -5974,7 +5974,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if BATCH_18_SESSION.get('active') or SUPER_BATCH_SESSION.get('active'):
         return
     # 👇 NAYA CODE: VIP Payment Screenshot Check 👇
-    if context.user_data.get('payment_step') == 'screenshot' and update.message.photo:
+    if context.user_data and context.user_data.get('payment_step') == 'screenshot' and update.message and update.message.photo:
         await payment_photo_handler(update, context)
         return
 
@@ -9481,22 +9481,25 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
     if isinstance(update, Update) and update.effective_message:
         try:
-            # ✅ IMPROVED: Show more helpful error message
+            # ✅ IMPROVED: Only send ReplyKeyboardMarkup in Private Chats to prevent Channel crashes
+            is_private = update.effective_chat and update.effective_chat.type == "private"
+            keyboard_markup = get_main_keyboard() if is_private else None
+
             error_msg = str(context.error)
             if "too many values to unpack" in error_msg:
                 await update.effective_message.reply_text(
-                    "❌ Error:  Data format issue. Please try again.",
-                    reply_markup=get_main_keyboard()
+                    "❌ Error: Data format issue. Please try again.",
+                    reply_markup=keyboard_markup
                 )
             elif "unpacking" in error_msg:
                 await update.effective_message.reply_text(
                     "❌ Error: Could not process your request. Please try again.",
-                    reply_markup=get_main_keyboard()
+                    reply_markup=keyboard_markup
                 )
             else:
                 await update.effective_message.reply_text(
                     "Sorry, something went wrong. Please try again later.",
-                    reply_markup=get_main_keyboard()
+                    reply_markup=keyboard_markup
                 )
         except Exception as e:
             logger.error(f"Failed to send error message to user: {e}")
