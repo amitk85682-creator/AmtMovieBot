@@ -178,7 +178,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
     Forum topic par post karo + DB mein save karo (Restore ke liye)
     """
     user_id = update.effective_user.id
-    if user_id != ADMIN_USER_ID:
+    if not is_admin(user_id):
         return
 
     # --- 1. MOVIE SEARCH ---
@@ -367,8 +367,12 @@ UPDATE_SECRET_CODE = os.environ.get('UPDATE_SECRET_CODE', 'default_secret_123')
 _admin_id = os.environ.get('ADMIN_USER_ID', '0')
 ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 0
 
-# 👇 NAYA: Yahan apne dono accounts ki Telegram IDs daal do
-ADMIN_IDS = [ADMIN_USER_ID, 8675088364, 8438574164]  # 123456789... ko apne dusre IDs se replace karna
+# Dono accounts — main bot owner + userbot — dono ko full admin access
+ADMIN_IDS = [ADMIN_USER_ID, 8438574164]
+
+def is_admin(user_id: int) -> bool:
+    """Check karo ki user owner/admin hai ya nahi (dono accounts)"""
+    return user_id in ADMIN_IDS
 
 GROUP_CHAT_ID = os.environ.get('GROUP_CHAT_ID')
 ADMIN_CHANNEL_ID = os.environ.get('ADMIN_CHANNEL_ID')
@@ -5510,7 +5514,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id != ADMIN_USER_ID: return
+    if not is_admin(user_id): return
 
     if not context.args: 
         await update.message.reply_text(
@@ -5996,19 +6000,16 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
 
-    # 2. Check karo ki file kahan se aayi hai (Dump Channel ya PM)
-    is_from_dump = (str(message.chat_id) == str(DUMP_CHANNEL_ID))
-
-    # 3. Security: Agar file Dump Channel se nahi aayi hai, toh bhejne wala sirf ADMIN hona chahiye
-    if not is_from_dump:
-        if not update.effective_user or update.effective_user.id != ADMIN_USER_ID:
-            return
+    # 2. Security: Yeh function sirf PM mein chalega, aur sirf ADMIN ke liye
+    # (Handler filter already ChatType.PRIVATE hai, yeh double-check hai)
+    if not update.effective_user or not is_admin(update.effective_user.id):
+        return
 
     # ==========================================
     # 🖼️ CUSTOM POSTER UPLOAD LOGIC (Photo & URL Both Supported)
-    # Dump channel se poster update nahi hoga — sirf PM se
+    # Sirf PM se poster update hoga
     # ==========================================
-    if BATCH_SESSION.get('active') and not is_from_dump:
+    if BATCH_SESSION.get('active'):
         is_poster_update = False
         public_url = None
         
@@ -6202,29 +6203,22 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         backup_map = {}
 
-        if is_from_dump:
-            # File dump channel mein already hai — dobara upload nahi karna
-            # Seedha usi message ka URL save kar lo
-            dump_clean = str(message.chat_id).replace('-100', '')
-            main_url = f"https://t.me/c/{dump_clean}/{message.message_id}"
-            backup_map[str(message.chat_id)] = message.message_id
-        else:
-            # PM se aayi file — storage channels mein copy karo (normal flow)
-            success_uploads = 0
-            for chat_id in channels:
-                try:
-                    sent = await message.copy(chat_id=chat_id)
-                    backup_map[str(chat_id)] = sent.message_id
-                    success_uploads += 1
-                except Exception as e:
-                    logger.error(f"Upload failed: {e}")
+        # PM se aayi file — storage channels mein copy karo (normal flow)
+        success_uploads = 0
+        for chat_id in channels:
+            try:
+                sent = await message.copy(chat_id=chat_id)
+                backup_map[str(chat_id)] = sent.message_id
+                success_uploads += 1
+            except Exception as e:
+                logger.error(f"Upload failed: {e}")
 
-            if success_uploads == 0:
-                await upload_status.edit_text("❌ Upload fail ho gaya.")
-                return
+        if success_uploads == 0:
+            await upload_status.edit_text("❌ Upload fail ho gaya.")
+            return
 
-            main_channel_id = channels[0]
-            main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
+        main_channel_id = channels[0]
+        main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
 
         file_name = message.document.file_name if message.document else (message.video.file_name if message.video else "File")
         file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
@@ -6425,7 +6419,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin se photo lekar clean caption ke sath channel me post karega"""
     user_id = update.effective_user.id
-    if user_id != ADMIN_USER_ID: 
+    if not is_admin(user_id): 
         return
 
     # Check karo ki bot photo ka wait kar raha tha ya nahi
@@ -6522,7 +6516,7 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     try:
         user_id = update.effective_user.id
-        if user_id != ADMIN_USER_ID:
+        if not is_admin(user_id):
             return
 
         message = update.message
@@ -7627,7 +7621,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Premium 18+ Post - Single Item (Fixed Crash)"""
     try:
         user_id = update.effective_user.id
-        if user_id != ADMIN_USER_ID:
+        if not is_admin(user_id):
             return
 
         message = update.message
@@ -9082,7 +9076,7 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
     Magic Command: Finds movies with missing info and fixes them - UPDATED
     """
     user_id = update.effective_user.id
-    if user_id != ADMIN_USER_ID:
+    if not is_admin(user_id):
         await update.message.reply_text("⛔ सिर्फ एडमिन के लिए!")
         return
 
@@ -11308,11 +11302,10 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("fixdata", fix_missing_metadata))
     application.add_handler(CommandHandler("post", post_to_topic_command))
     
-    # ✅ FIX: group=2 जोड़ा गया ताकि नॉर्मल बैच अपना काम कर सके
-    # group=2: PM (owner) + DUMP_CHANNEL dono listen karta hai
-    _dump_id = int(DUMP_CHANNEL_ID)
+    # ✅ FIX: group=2 — Sirf PM (Private Chat) mein hi pm_file_listener chalega
+    # Channel ya group se koi bhi message yahan nahi aayega
     application.add_handler(MessageHandler(
-        (filters.ChatType.PRIVATE | filters.Chat(chat_id=_dump_id)) &
+        filters.ChatType.PRIVATE &
         (filters.Document.ALL | filters.VIDEO | filters.PHOTO | (filters.TEXT & ~filters.COMMAND)),
         pm_file_listener
     ), group=2)
