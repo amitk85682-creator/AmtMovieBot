@@ -354,7 +354,7 @@ try:
     pool_url = FIXED_DATABASE_URL or DATABASE_URL
     if pool_url:
         db_pool = psycopg2.pool.ThreadedConnectionPool(
-            1, 10, # Supabase ki 10 connections limit ke hisaab se aur Thread-Safe
+            1, 5, # Supabase ki 10 connections limit ke hisaab se aur Thread-Safe
             dsn=pool_url
         )
         logger.info("✅ Database Connection Pool Created (Thread-Safe)!")
