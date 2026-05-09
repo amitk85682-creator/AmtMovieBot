@@ -1653,6 +1653,54 @@ def fix_movies_unique_constraint():
     finally:
         close_db_connection(conn)
 
+def fix_movie_files_table():
+    """
+    movie_files table mein:
+    1. UNIQUE(movie_id, quality) constraint add karta hai — ON CONFLICT ke liye zaroori
+    2. languages aur extra_info columns add karta hai — agar missing hoon
+    """
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cur = conn.cursor()
+
+        # Step 1: Missing columns add karo (safe hai)
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS languages TEXT DEFAULT '';")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS extra_info TEXT DEFAULT '';")
+
+        # Step 2: Duplicate rows hata do PEHLE (constraint add karne se pehle zaroori)
+        cur.execute("""
+            DELETE FROM movie_files
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM movie_files
+                GROUP BY movie_id, quality
+            );
+        """)
+
+        # Step 3: Unique constraint add karo (agar pehle se nahi hai)
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'movie_files_movie_id_quality_key'
+                ) THEN
+                    ALTER TABLE movie_files
+                    ADD CONSTRAINT movie_files_movie_id_quality_key UNIQUE (movie_id, quality);
+                END IF;
+            END $$;
+        """)
+
+        conn.commit()
+        cur.close()
+        logger.info("✅ movie_files table fixed: UNIQUE constraint + columns OK!")
+    except Exception as e:
+        logger.error(f"❌ fix_movie_files_table Error: {e}")
+        if conn: conn.rollback()
+    finally:
+        close_db_connection(conn)
+
 # 👇 Line 1225 ke baad yahan paste karein
 def migrate_channel_posts_v2():
     """Ye function channel_posts table mein missing columns add karega"""
@@ -11361,6 +11409,7 @@ async def main():
         fix_channel_posts_constraint()
         fix_movies_unique_constraint()
         fix_movies_title_constraint()
+        fix_movie_files_table()  # movie_files UNIQUE constraint + missing columns
     except Exception as e:
         logger.error(f"❌ DB Setup Error: {e}")  # ← YE LINE ZAROORI HAI
 
