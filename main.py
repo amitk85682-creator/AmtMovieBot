@@ -5764,123 +5764,91 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     image_bytes = None
                 except Exception: pass
             
-            # 🎯 1. SMART EXTRACTION (Gemini Vision)
-            ai_data = await get_movie_name_from_caption(first_file['caption'] or first_file['file_name'], image_bytes)
-            movie_name = ai_data.get("title", temp_title)
-            movie_year = ai_data.get("year", "")
-            movie_lang = ai_data.get("language", "")
-            gemini_category = ai_data.get("category", "Movies")
-            movie_extra = "" # Naya: Extra Info
+            # 🎯 CORE ENGINE — pm_file_listener ka WAHI powerful pipeline!
+            # Duplicate code nahi, ek hi engine — same accuracy, same DB logic
+            result = await _core_movie_processor(
+                first_file['caption'] or first_file['file_name'],
+                image_bytes
+            )
 
-            # 🎯 2. TMDB & IMDB METADATA
-            metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang)
-            
-            if metadata:
-                title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
-            else:
-                title, year, poster_url, imdb_id = movie_name, (int(movie_year) if str(movie_year).isdigit() else 0), None, None
-                genre, rating, plot, category = "Unknown", "N/A", "Auto Added", gemini_category
+            if not result:
+                logger.warning(f"Superbatch: '{temp_title}' process nahi ho paya, skip kar raha hoon.")
+                continue
 
-            # 🎯 3. CAST FETCHING
-            cast_str = ""
-            if imdb_id:
-                cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
+            movie_id   = result['movie_id']
+            title      = result['title']
+            year       = result['year']
+            genre      = result['genre']
+            rating     = result['rating']
+            plot       = result['plot']
+            category   = result['category']
+            movie_lang = result['movie_lang']
+            poster_url = result['poster_url']
+            imdb_id    = result['imdb_id']
 
+            # 📂 FILES INSERT — storage channels mein copy karo, phir DB mein save karo
             conn = get_db_connection()
-            if not conn: continue
-            
-            try:  
-                cur = conn.cursor()
-                
-                # 🎯 4. SMART DB INSERTION (Same as pm_file_listener)
-                cur.execute(
-                    """
-                    INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast") 
-                    VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                    ON CONFLICT (title) DO UPDATE 
-                    SET poster_url = COALESCE(EXCLUDED.poster_url, movies.poster_url),
-                        year = CASE WHEN movies.year = 0 THEN EXCLUDED.year ELSE movies.year END,
-                        genre = COALESCE(EXCLUDED.genre, movies.genre),
-                        rating = COALESCE(EXCLUDED.rating, movies.rating),
-                        description = COALESCE(EXCLUDED.description, movies.description),
-                        category = COALESCE(EXCLUDED.category, movies.category),
-                        language = CASE WHEN EXCLUDED.language != '' THEN EXCLUDED.language ELSE movies.language END,
-                        extra_info = CASE WHEN EXCLUDED.extra_info != '' THEN EXCLUDED.extra_info ELSE movies.extra_info END,
-                        "cast" = COALESCE(EXCLUDED."cast", movies."cast")
-                    RETURNING id
-                    """,
-                    (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, movie_extra, cast_str)
-                )
-                movie_id = cur.fetchone()[0]
+            if not conn:
+                continue
 
-                # 📂 Insert Files
+            try:
+                cur = conn.cursor()
+
                 for f in movie_files:
                     backup_map = {}
                     main_url = ""
-                    
+
                     if channels:
                         for chat_id in channels:
                             try:
                                 sent = await f['message_obj'].copy(chat_id=chat_id)
                                 backup_map[str(chat_id)] = sent.message_id
-                                
-                                # Main URL hamesha pehle (Main Dump) channel ka banega
                                 if chat_id == channels[0]:
                                     main_url = f"https://t.me/c/{str(chat_id).replace('-100', '')}/{sent.message_id}"
-                                    
-                                await asyncio.sleep(0.5) # Telegram flood se bachne ke liye
+                                await asyncio.sleep(0.5)
                             except Exception as e:
                                 logger.error(f"Backup failed for channel {chat_id}: {e}")
 
                     file_size_str = get_readable_file_size(f['file_size'])
-                    
-                    # 👇 NAYA FIX: Yahan bhi Caption use karenge 👇
                     text_for_detection = f['caption'] if f['caption'] else f['file_name']
                     label = generate_quality_label(text_for_detection, file_size_str, movie_lang)
 
-                    # 🚀 FIX: Gemini AI se language/extra_info nikalo (pm_file_listener ki tarah)
                     f_ai_data = await get_movie_name_from_caption(text_for_detection)
-                    f_lang = f_ai_data.get('language', '')
+                    f_lang  = f_ai_data.get('language', '')
                     f_extra = f_ai_data.get('extra_info', '')
 
                     cur.execute(
                         """
-                        INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info) 
+                        INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (movie_id, quality) DO UPDATE SET 
+                        ON CONFLICT (movie_id, quality) DO UPDATE SET
                         url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
                         languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
                         """,
                         (movie_id, label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra)
                     )
-                
-                # 🛑 CRITICAL FIX 1: Pehle Movie aur Files ko save karlo taaki Aliases ke error se ye delete na ho!
+
+                # Movies + Files pehle commit karo
                 conn.commit()
 
-                # 🤖 CRITICAL FIX 2: Generate and Save AI Aliases in Superbatch SAFELY (Non-blocking)
+                # Aliases
                 try:
-                    # Async function use karna zaroori hai taaki bot hang na ho
                     aliases = await run_async(generate_aliases_gemini, title, str(year), category)
-                    
-                    # Fallback agar Gemini API fail ho
                     if not aliases:
                         aliases = [title.lower().strip(), title.replace(" ", "").lower()]
-                    
-                    for alias in set(aliases): # Duplicates hata do
+                    for alias in set(aliases):
                         if not alias or len(alias) > 255: continue
                         try:
                             cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
-                        except Exception as alias_insert_err:
-                            # Agar ek alias galat ho to use ignore karke baaki save karo (Current transaction rollback)
-                            conn.rollback() 
-                            
-                    conn.commit() # Aliases DB me save ho gaye!
+                        except Exception:
+                            conn.rollback()
+                    conn.commit()
                 except Exception as alias_err:
-                    logger.error(f"SuperBatch Alias Generation Error: {alias_err}")
+                    logger.error(f"SuperBatch Alias Error: {alias_err}")
                     conn.rollback()
 
                 cur.close()
-                
+
             except Exception as db_err:
                 logger.error(f"SuperBatch DB Error: {db_err}")
                 if conn: conn.rollback()
@@ -6035,9 +6003,161 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
 
+
+# ==============================================================================
+# 🎯 CORE MOVIE PROCESSOR — PM FILE LISTENER KA DIL
+# ==============================================================================
+# Yeh function ek "engine" hai.
+# pm_file_listener aur superbatch_done DONO isko call karte hain.
+# Iska matlab: superbatch ko wahi accuracy milegi jo pm_file_listener ko milti hai.
+#
+# Flow: raw_text + image_bytes
+#         → Gemini AI  (title, year, language, category extract)
+#         → TMDB       (HD poster, genre, rating, plot)
+#         → IMDb       (cast)
+#         → DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
+#         → Returns dict with movie_id aur saari details
+# ==============================================================================
+async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dict:
+    """
+    Ek jagah se sab kuch. Returns movie dict ya None agar fail ho.
+    """
+    # --- STEP 1: GEMINI AI ---
+    ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
+    movie_name = ai_data.get("title", "UNKNOWN")
+    movie_year = ai_data.get("year", "")
+    movie_lang = ai_data.get("language", "")
+    gemini_category = ai_data.get("category", "")
+
+    if movie_name == "UNKNOWN" or len(movie_name) < 2:
+        return None
+
+    # --- STEP 2: TMDB + IMDb METADATA ---
+    metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang)
+    if metadata:
+        title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
+    else:
+        title      = movie_name
+        year       = int(movie_year) if movie_year and str(movie_year).isdigit() else 0
+        poster_url = None
+        imdb_id    = None
+        genre      = "Unknown"
+        rating     = "N/A"
+        plot       = "Auto Added"
+        category   = gemini_category if gemini_category else "Movies"
+
+    # --- STEP 3: IMDb CAST ---
+    cast_str = ""
+    if imdb_id:
+        cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
+
+    # --- STEP 4: DB INSERT (pm_file_listener ka EXACT ON CONFLICT logic) ---
+    # imdb_id bhi update hota hai — superbatch mein pehle yeh missing tha!
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast")
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (title) DO UPDATE
+            SET imdb_id      = COALESCE(EXCLUDED.imdb_id,      movies.imdb_id),
+                poster_url   = COALESCE(EXCLUDED.poster_url,   movies.poster_url),
+                year         = CASE WHEN movies.year = 0 THEN EXCLUDED.year ELSE movies.year END,
+                category     = COALESCE(EXCLUDED.category,     movies.category),
+                genre        = COALESCE(EXCLUDED.genre,        movies.genre),
+                rating       = COALESCE(EXCLUDED.rating,       movies.rating),
+                description  = COALESCE(EXCLUDED.description,  movies.description),
+                language     = CASE WHEN EXCLUDED.language   != '' THEN EXCLUDED.language   ELSE movies.language   END,
+                extra_info   = CASE WHEN EXCLUDED.extra_info  != '' THEN EXCLUDED.extra_info  ELSE movies.extra_info  END,
+                "cast"       = COALESCE(EXCLUDED."cast",       movies."cast")
+            RETURNING id
+            """,
+            (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, "", cast_str)
+        )
+        movie_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+
+        return {
+            'movie_id':   movie_id,
+            'title':      title,
+            'year':       year,
+            'genre':      genre,
+            'rating':     rating,
+            'plot':       plot,
+            'category':   category,
+            'movie_lang': movie_lang,
+            'poster_url': poster_url,
+            'imdb_id':    imdb_id,
+            'cast_str':   cast_str,
+        }
+    except Exception as e:
+        logger.error(f"_core_movie_processor DB Error: {e}")
+        if conn: conn.rollback()
+        return None
+    finally:
+        close_db_connection(conn)
+
+
 async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if BATCH_18_SESSION.get('active') or SUPER_BATCH_SESSION.get('active'):
+    # 🛑 18+ Batch active hai toh yahan kuch nahi karna
+    if BATCH_18_SESSION.get('active'):
         return
+
+    # ==========================================
+    # 🚀 SUPERBATCH: PM FILE LISTENER HI MUH HAI
+    # Jab Superbatch active ho, files yahan se hi andar jayengi
+    # Alag superbatch_listener ki zaroorat nahi — ek hi entry point
+    # ==========================================
+    if SUPER_BATCH_SESSION.get('active'):
+        if not (update.effective_user and update.effective_user.id == SUPER_BATCH_SESSION.get('admin_id')):
+            return  # Sirf admin ki files
+
+        message = update.effective_message
+        if message and (message.document or message.video or message.audio):
+            caption = message.caption or message.text or ""
+            file_id = None
+            file_name = "File"
+            file_size = 0
+            thumb_id = None
+
+            if message.document:
+                file_id = message.document.file_id
+                file_name = message.document.file_name or "document"
+                file_size = message.document.file_size or 0
+                if message.document.thumbnail:
+                    thumb_id = message.document.thumbnail.file_id
+            elif message.video:
+                file_id = message.video.file_id
+                file_name = message.video.file_name or "video"
+                file_size = message.video.file_size or 0
+                if message.video.thumbnail:
+                    thumb_id = message.video.thumbnail.file_id
+            elif message.audio:
+                file_id = message.audio.file_id
+                file_name = message.audio.file_name or "audio"
+                file_size = message.audio.file_size or 0
+
+            SUPER_BATCH_SESSION['files'].append({
+                'file_id': file_id,
+                'file_name': file_name,
+                'file_size': file_size,
+                'caption': caption,
+                'thumb_id': thumb_id,
+                'message_obj': message
+            })
+
+            count = len(SUPER_BATCH_SESSION['files'])
+            if count % 10 == 0:
+                await message.reply_text(
+                    f"📥 **{count} files mil gayi hain!**\nJab sab bhej do, `/superdone` karo.",
+                    parse_mode='Markdown'
+                )
+        return  # Superbatch mode mein normal processing nahi karni
 
     # 1. VIP Payment Check (Safe for channels)
     if context.user_data and context.user_data.get('payment_step') == 'screenshot' and update.message and update.message.photo:
@@ -6115,127 +6235,76 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with auto_batch_lock:
         
         # ==========================================
-        # 🤖 PHASE 1: START BATCH (2-Step Verification)
+        # 🤖 PHASE 1: START BATCH — _core_movie_processor se power lelo
         # ==========================================
         if not BATCH_SESSION.get('active'):
-            
+
             raw_caption = message.caption or message.text
             if not raw_caption:
                 await message.reply_text("❌ **Batch Off!**\nFile ke sath CAPTION mein movie naam likho.", parse_mode='Markdown')
                 return
-            
-            status_msg = await message.reply_text("🧠 Analyzing Thumbnail & Caption with Gemini Vision...", quote=True)
 
-            # 🛑 STEP 1: THUMBNAIL DOWNLOAD FOR GEMINI VISION
+            status_msg = await message.reply_text("🧠 Gemini → TMDB → IMDb pipeline chal raha hai...", quote=True)
+
+            # Thumbnail extract karo BATCH_SESSION ke liye (poster backup)
             image_bytes = None
-            thumb_file_id = None
-            
             try:
+                thumb_file_id = None
                 if message.photo:
                     thumb_file_id = message.photo[-1].file_id
                 elif message.video and message.video.thumbnail:
                     thumb_file_id = message.video.thumbnail.file_id
                 elif message.document and message.document.thumbnail:
                     thumb_file_id = message.document.thumbnail.file_id
-
                 if thumb_file_id:
-                    # Backup for Auto Post later (Agar TMDB fail hua)
                     BATCH_SESSION['extracted_thumb'] = thumb_file_id
-                    
-                    # Download immediately for Gemini to "SEE"
-                    # tg_file = await context.bot.get_file(thumb_file_id)
-                    # image_bytes = bytes(await tg_file.download_as_bytearray())
-                    # 🛑 TEMPORARY BYPASS: API bachane ke liye Gemini ko image nahi de rahe
-                    image_bytes = None
+                    # image_bytes = bytes(await (await context.bot.get_file(thumb_file_id)).download_as_bytearray())
+                    image_bytes = None  # TEMPORARY BYPASS
             except Exception as e:
-                logger.error(f"Failed to extract thumbnail for Gemini: {e}")
+                logger.error(f"Thumbnail extract error: {e}")
 
-            # 🎯 STEP 2: GEMINI AI SE DATA NIKALO (Passing Image & Caption!)
-            ai_data = await get_movie_name_from_caption(raw_caption, image_bytes)
-            
-            movie_name = ai_data.get("title", "UNKNOWN")
-            movie_year = ai_data.get("year", "")
-            movie_lang = ai_data.get("language", "")
-            movie_extra = ""
-            gemini_category = ai_data.get("category", "")
-            
-            if movie_name == "UNKNOWN" or len(movie_name) < 2:
+            # 🎯 CORE ENGINE — ek hi jagah se Gemini+TMDB+IMDb+DB
+            result = await _core_movie_processor(raw_caption, image_bytes)
+
+            if not result:
                 await status_msg.edit_text("❌ Movie naam extract nahi ho paya.\n\n`/batch Movie Name` use karein.")
                 return
-            
-            await status_msg.edit_text(f"✅ **Gemini Extracted:** 🎬 {movie_name}\n⏳ Fetching IMDb Data & TMDB HD Poster...")
 
-            # 🎯 STEP 3: IMDb (Data) + TMDB (HD Poster) FETCH
-            metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang)
-            
-            if metadata:
-                title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
-            else:
-                # Fallback: Jo Gemini AI ne dekha wahi maan lo
-                title = movie_name
-                year = int(movie_year) if movie_year and str(movie_year).isdigit() else 0
-                poster_url, imdb_id = None, None
-                genre, rating, plot = "Unknown", "N/A", "Auto Added"
-                category = gemini_category if gemini_category else "Movies"
+            movie_id   = result['movie_id']
+            title      = result['title']
+            year       = result['year']
+            category   = result['category']
+            movie_lang = result['movie_lang']
 
-            # 👇 NAYA CODE: IMDb ID milne par Cast (Stars) fetch karein
-            cast_str = ""
-            if imdb_id:
-                cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
-
-            # Database Insert...
+            # File count check (existing files)
+            file_count = 0
             conn = get_db_connection()
             if conn:
                 try:
                     cur = conn.cursor()
-                    # 👇 UPDATE: "cast" column aur COALESCE logic add kiya gaya hai
-                    cur.execute(
-                        """
-                        INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast") 
-                        VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
-                        ON CONFLICT (title) DO UPDATE 
-                        SET imdb_id = COALESCE(EXCLUDED.imdb_id, movies.imdb_id),
-                            poster_url = COALESCE(EXCLUDED.poster_url, movies.poster_url),
-                            year = CASE WHEN movies.year = 0 THEN EXCLUDED.year ELSE movies.year END,
-                            category = COALESCE(EXCLUDED.category, movies.category),
-                            genre = COALESCE(EXCLUDED.genre, movies.genre),
-                            rating = COALESCE(EXCLUDED.rating, movies.rating),
-                            description = COALESCE(EXCLUDED.description, movies.description),
-                            language = CASE WHEN EXCLUDED.language != '' THEN EXCLUDED.language ELSE movies.language END,
-                            extra_info = CASE WHEN EXCLUDED.extra_info != '' THEN EXCLUDED.extra_info ELSE movies.extra_info END,
-                            "cast" = COALESCE(EXCLUDED."cast", movies."cast")
-                        RETURNING id
-                        """,
-                        (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, movie_extra, cast_str)
-                    )
-                    movie_id = cur.fetchone()[0]
-                    conn.commit()
-                    
                     cur.execute("SELECT COUNT(*) FROM movie_files WHERE movie_id = %s", (movie_id,))
                     file_count = cur.fetchone()[0]
                     cur.close()
-
-                    BATCH_SESSION.update({
-                        'active': True, 'movie_id': movie_id, 'movie_title': title, 
-                        'file_count': file_count, 'admin_id': ADMIN_USER_ID,
-                        'year': str(year) if year else movie_year, 'category': category, 'language': movie_lang
-                    })
-                    
-                    keyboard = []
-                    if file_count > 0:
-                        keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
-                    keyboard.append([InlineKeyboardButton("❌ Cancel Batch", callback_data="cancel_batch")])
-                    
-                    await status_msg.edit_text(
-                        f"✅ **Batch Started!**\n\n🎬 Movie: **{title}**\n📅 Year: {year if year else 'N/A'}\n🏷️ Category: {category}\n\n🚀 **Ab apni files bhejna shuru karo!**\nJab ho jaye: `/done`",
-                        parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-                    
-                except Exception as e:
-                    logger.error(f"DB Error: {e}")
-                    await status_msg.edit_text(f"❌ Database Error: {e}")
+                except Exception:
+                    pass
                 finally:
                     close_db_connection(conn)
+
+            BATCH_SESSION.update({
+                'active': True, 'movie_id': movie_id, 'movie_title': title,
+                'file_count': file_count, 'admin_id': ADMIN_USER_ID,
+                'year': str(year) if year else "", 'category': category, 'language': movie_lang
+            })
+
+            keyboard = []
+            if file_count > 0:
+                keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
+            keyboard.append([InlineKeyboardButton("❌ Cancel Batch", callback_data="cancel_batch")])
+
+            await status_msg.edit_text(
+                f"✅ **Batch Started!**\n\n🎬 Movie: **{title}**\n📅 Year: {year if year else 'N/A'}\n🏷️ Category: {category}\n\n🚀 **Ab apni files bhejna shuru karo!**\nJab ho jaye: `/done`",
+                parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             return
 
         # ==========================================
@@ -11327,9 +11396,10 @@ def register_handlers(application: Application):
     application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_admin_poster), group=0)
 
     # 🚀 SUPER BATCH COMMANDS
+    # ✅ superbatch_listener HATA DIYA — ab pm_file_listener hi "muh" hai
+    # Jab SUPER_BATCH_SESSION active ho, pm_file_listener (group=2) khud files collect karta hai
     application.add_handler(CommandHandler("superbatch", superbatch_start))
     application.add_handler(CommandHandler("superdone", superbatch_done))
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & (filters.Document.ALL | filters.VIDEO), superbatch_listener), group=4)
     
     
     # ==========================================
