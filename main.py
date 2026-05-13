@@ -642,17 +642,13 @@ def get_gemini_keys():
 
 # 👇 UPDATED FUNCTION 1: Name Extraction (With Multi-Key Rotation)
 async def get_movie_name_from_caption(caption_text, image_bytes=None):
+    """
+    🎯 FULLY AI-POWERED EXTRACTION (MULTIMODAL WITH AUTO-KEY ROTATION)
+    """
     if not caption_text or len(caption_text.strip()) < 2:
         return {"title": "UNKNOWN", "year": "", "language": "", "extra_info": "", "category": ""}
     
     first_line = clean_telegram_text(caption_text.split('\n')[0].strip())
-    
-    # ✅ CACHE CHECK — pehle cache dekho, Gemini call bachao
-    cached = search_cache.get(f"gemini_caption:{first_line[:80]}")
-    if cached:
-        logger.info(f"✅ Cache hit! Skipping Gemini call for: {first_line[:50]}")
-        return cached
-    
     logger.info(f"📝 Processing caption: {first_line[:100]}...")
 
     gemini_keys = get_gemini_keys()
@@ -691,7 +687,6 @@ JSON:"""
                         data = json.loads(json_match.group())
                         if data.get("title") and len(data["title"]) > 2:
                             logger.info(f"✅ Gemini Success (Key used: {key[:5]}...): {data['title']}")
-                            search_cache.set(f"gemini_caption:{first_line[:80]}", data)  # ✅ YEH ADD KAR
                             return data
                 break # Agar response mila par JSON galat hai, toh aage wali key waste mat karo
                 
@@ -700,7 +695,6 @@ JSON:"""
                 # Agar Quota/Limit ka error aaya toh agli key try karo
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                     logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
-                    await asyncio.sleep(5)
                     continue
                 else:
                     logger.error(f"❌ Gemini Error on key {key[:5]}...: {e}")
@@ -758,7 +752,7 @@ Example format: alias1, alias2, alias3, alias4"""
             
             if not response or not response.parts:
                 logger.warning("Gemini response was empty or blocked. Trying basic.")
-                continue  # ← agli key try karo
+                return generate_basic_aliases(movie_title, year)
             
             ai_text = response.text.strip()
             aliases = []
@@ -787,7 +781,6 @@ Example format: alias1, alias2, alias3, alias4"""
             error_msg = str(e).lower()
             if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                 logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
-                time.sleep(5)
                 continue
             else:
                 logger.warning(f"❌ Alias Gemini error on key {key[:5]}...: {e}")
