@@ -676,7 +676,7 @@ JSON:"""
         for key in gemini_keys:
             try:
                 genai.configure(api_key=key)
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
                 response = await run_async(model.generate_content, contents)
                 
                 if response and response.text:
@@ -749,7 +749,7 @@ Example format: alias1, alias2, alias3, alias4"""
     for key in gemini_keys:
         try:
             genai.configure(api_key=key)
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
             response = model.generate_content(prompt, safety_settings=safety_settings)
             
             if not response or not response.parts:
@@ -7268,7 +7268,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         for key_idx, api_key in enumerate(api_keys):
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
                 gemini_resp = await run_async(model.generate_content, prompt, safety_settings=safety)
 
                 raw = gemini_resp.text.strip()
