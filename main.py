@@ -5869,14 +5869,17 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
-            if not raw_photo and image_bytes: 
+            
+            if not raw_photo and image_bytes:
                 raw_photo = image_bytes
                 
-            if raw_photo:
-                # Yahan hamara naya function call hoga
-                photo_to_send = await make_landscape_poster(raw_photo)
-            else: 
-                photo_to_send = DEFAULT_POSTER
+            # 👇 NAYA LOGIC: अगर ओरिजिनल इमेज (poster) नहीं मिली, तो इस मूवी को पोस्ट मत करो
+            if not raw_photo:
+                logger.warning(f"⚠️ Post Skipped: '{title}' के लिए कोई इमेज नहीं मिली।")
+                continue  # 'continue' का मतलब है ये चैनल/फोरम में पोस्ट किए बिना अगली मूवी पर चला जायेगा
+                
+            # अगर असली इमेज है, तभी लैंडस्केप पोस्टर बनाओ
+            photo_to_send = await make_landscape_poster(raw_photo)
 
             # 🛑 100% SAFE HTML CAPTION + RANDOM STYLES
             safe_rating = rating if rating else "N/A"
