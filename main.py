@@ -4424,7 +4424,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔊 <b>Language:</b> {m_lang}\n"
                 f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
         else:
@@ -4434,7 +4434,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f" ├ 🔊 Language: {m_lang}\n"
                 f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                 f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
 
@@ -5898,7 +5898,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
                     f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                     f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
             else:
@@ -5909,7 +5909,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
                     f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                     f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
 
@@ -6518,7 +6518,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Language: {db_lang}\n"
             f"Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
             f"👇 <b>Download Below</b> 👇"
         )
@@ -6667,7 +6667,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"Language: {m_lang}\n"
         f"Quality: V2 HQ-HDTC {dynamic_res}\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-        f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+        f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
         f"👇 <b>Download Below</b> 👇"
     )
@@ -7733,7 +7733,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔊 <b>Language:</b> {language or 'Hindi'}\n"
             f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
     else:
@@ -7743,7 +7743,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f" ├ 🔊 Language: {language or 'Hindi'}\n"
             f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
 
@@ -7910,7 +7910,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔞 18+  |  💎 <b>Premium Quality</b>\n"
             f"🚨 <i>Only For Adults (18+)</i>"
             f"{link_section}\n\n"
-            f"🔞 <b>Join Premium:</b> https://t.me/+mUxQt9wOhNYyNjc1" 
+            f"🔞 <b>Join Premium:</b> https://t.me/+n250bD5-fHAyOTY1" 
         )
 
         target_channel = os.environ.get('ADULT_CHANNEL_ID')
