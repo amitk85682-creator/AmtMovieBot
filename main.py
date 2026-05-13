@@ -5762,11 +5762,15 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
     )
 
-    # ── STEP 1: GROUPING ──────────────────────────────────────────────────────
+    # ── STEP 1: GROUPING (Bina Gemini API ke FAST Regex Grouping) ─────────────
     grouped_movies = defaultdict(list)
     for f in files:
         raw_text = f['caption'] if f['caption'] else f['file_name']
-        basic_data = await get_movie_name_from_caption(raw_text)
+        
+        # 👇 YAHAN BADLAV KIYA HAI: Ab ye Gemini ko call nahi karega! 
+        # Sirf normal naam nikal kar group bana dega.
+        basic_data = await fallback_extraction(raw_text) 
+        
         temp_title = basic_data.get('title', 'Unknown_Movie').lower()
         grouped_movies[temp_title].append(f)
 
