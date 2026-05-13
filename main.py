@@ -5422,33 +5422,43 @@ def generate_quality_label(file_name, file_size_str, ai_language=""):
     # Pehle episode format ko hamesha ke liye theek karo (S07E12 22 -> S07E12-22)
     name_lower = normalize_episodes(file_name.lower())
     quality = "HD"
-    
-    # 1. Detect Quality
+
+    # 1. Detect Quality (576p bhi add kiya)
     if "4k" in name_lower or "2160p" in name_lower: quality = "4K"
     elif "1080p" in name_lower: quality = "1080p"
-    elif "720p" in name_lower: quality = "720p"
-    elif "480p" in name_lower: quality = "480p"
-    elif "360p" in name_lower: quality = "360p"
+    elif "720p" in name_lower:  quality = "720p"
+    elif "576p" in name_lower:  quality = "576p"   # ← NEW
+    elif "480p" in name_lower:  quality = "480p"
+    elif "360p" in name_lower:  quality = "360p"
     elif "cam" in name_lower or "rip" in name_lower: quality = "CamRip"
-    
-    # 2. Add AI Detected Language
+
+    # 2. Detect Source (WEB-DL, BluRay, etc.)
+    source_tag = ""
+    if "web-dl" in name_lower or "webdl" in name_lower:   source_tag = " WEB-DL"
+    elif "webrip" in name_lower or "web-rip" in name_lower: source_tag = " WEBRip"
+    elif "bluray" in name_lower or "blu-ray" in name_lower: source_tag = " BluRay"
+    elif "hdtv" in name_lower:                              source_tag = " HDTV"
+    elif "hdrip" in name_lower:                             source_tag = " HDRip"
+
+    # 3. Add AI Detected Language
     lang_tag = f" ({ai_language})" if ai_language else ""
-    
-    # 3. Detect Series (S01, S02, S01E01, S01P01, Season 1, etc.)
-    # Yahan \b add kiya gaya hai taaki 1080p 10bit ka 'p 10' E10 na ban jaye
+
+    # 4. Detect Series (S01, S02, S01E01, S01P01, Season 1, etc.)
+    # \b used taaki 1080p 10bit ka 'p 10' E10 na ban jaye
     season_match = re.search(
-        r'(?i)(\bs\d{1,2}\s*(?:[ep]\d{1,3})?'                 
-        r'|\bs\d{1,2}\s*\[?(?:e|ep|episode|p|part)\s*\d{1,3}' 
+        r'(?i)(\bs\d{1,2}\s*(?:[ep]\d{1,3})?'
+        r'|\bs\d{1,2}\s*\[?(?:e|ep|episode|p|part)\s*\d{1,3}'
         r'|\b\[?(?:e|ep|episode|p|part)\s*\d{1,3}(?:\s*(?:[-~_]|to)\s*(?:e|ep|episode|p|part)?\s*\d{1,3})?\]?'
-        r'|\bseason\s?\d+\b)', 
+        r'|\bseason\s?\d+\b)',
         name_lower
     )
-    
+
     if season_match:
-        episode_tag = season_match.group(0).upper().replace("P", "E")  # P01 को E01 जैसा दिखाने के लिए
-        return f"{episode_tag} {quality}{lang_tag} [{file_size_str}]"
-        
-    return f"{quality}{lang_tag} [{file_size_str}]"
+        episode_tag = season_match.group(0).upper().replace("P", "E").strip()
+        # ✅ Season + Resolution + Source + Language — sab sath mein
+        return f"{episode_tag} {quality}{source_tag}{lang_tag} [{file_size_str}]"
+
+    return f"{quality}{source_tag}{lang_tag} [{file_size_str}]"
 
 def get_readable_file_size(size_in_bytes):
     """Converts bytes to readable format (MB, GB)"""
@@ -5720,25 +5730,32 @@ async def superbatch_listener(update: Update, context: ContextTypes.DEFAULT_TYPE
         await message.reply_text(f"📥 Received {count} files so far...")
 
 async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Smart Grouping -> Gemini AI -> TMDB -> Auto Post"""
+    """
+    Superbatch ka kaam:
+      1. Files ko movie ke hisaab se group karo
+      2. Har movie ke liye _core_movie_processor (Phase 1) → BATCH_SESSION set karo
+      3. Har file ke liye _pm_save_file (Phase 2) — pm_file_listener ka exact same code
+      4. Post karo channel pe
+    """
     if not SUPER_BATCH_SESSION['active'] or update.effective_user.id != SUPER_BATCH_SESSION['admin_id']:
         return
 
-    # 🚀 YAHAN PAR TURANT 'OFF' KAR DIYA TAAKI NORMAL BATCH KAAM KAR SAKE
     SUPER_BATCH_SESSION['active'] = False
     files = SUPER_BATCH_SESSION['files']
-    SUPER_BATCH_SESSION['files'] = [] 
-    
+    SUPER_BATCH_SESSION['files'] = []
+
     if not files:
         await update.message.reply_text("❌ Koi file nahi mili!")
         return
 
-    status_msg = await update.message.reply_text(f"🔄 **Grouping {len(files)} files... Please wait.**", parse_mode='Markdown')
+    status_msg = await update.message.reply_text(
+        f"🔄 **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
+    )
 
+    # ── STEP 1: GROUPING ──────────────────────────────────────────────────────
     grouped_movies = defaultdict(list)
     for f in files:
         raw_text = f['caption'] if f['caption'] else f['file_name']
-        # 🚀 FIX: Gemini AI use karo (pm_file_listener ki tarah) — fallback nahi
         basic_data = await get_movie_name_from_caption(raw_text)
         temp_title = basic_data.get('title', 'Unknown_Movie').lower()
         grouped_movies[temp_title].append(f)
@@ -5786,74 +5803,59 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             poster_url = result['poster_url']
             imdb_id    = result['imdb_id']
 
-            # 📂 FILES INSERT — storage channels mein copy karo, phir DB mein save karo
-            conn = get_db_connection()
-            if not conn:
+            # ── STEP 2: BATCH_SESSION set karo (Phase 1 jaisa) ──────────────────
+            BATCH_SESSION.update({
+                'active':      True,
+                'movie_id':    movie_id,
+                'movie_title': title,
+                'file_count':  0,
+                'admin_id':    ADMIN_USER_ID,
+                'year':        str(year) if year else '',
+                'category':    category,
+                'language':    movie_lang,
+            })
+
+            # ── STEP 3: Har file ke liye _pm_save_file (pm_file_listener Phase 2) ─
+            saved_labels = []
+            for f in movie_files:
+                label = await _pm_save_file(f['message_obj'], context)
+                if label:
+                    saved_labels.append(label)
+                await asyncio.sleep(0.5)
+
+            # BATCH_SESSION reset karo
+            BATCH_SESSION.update({'active': False, 'movie_id': None, 'movie_title': None,
+                                  'file_count': 0, 'admin_id': None, 'year': '',
+                                  'category': '', 'language': ''})
+
+            if not saved_labels:
+                logger.warning(f"Superbatch: '{temp_title}' — koi file save nahi ho paya")
                 continue
 
+            # ── STEP 4: ALIASES ──────────────────────────────────────────────────
             try:
-                cur = conn.cursor()
-
-                for f in movie_files:
-                    backup_map = {}
-                    main_url = ""
-
-                    if channels:
-                        for chat_id in channels:
+                aliases = await run_async(generate_aliases_gemini, title, str(year), category)
+                if not aliases:
+                    aliases = [title.lower().strip(), title.replace(" ", "").lower()]
+                conn = get_db_connection()
+                if conn:
+                    try:
+                        cur = conn.cursor()
+                        for alias in set(aliases):
+                            if not alias or len(alias) > 255: continue
                             try:
-                                sent = await f['message_obj'].copy(chat_id=chat_id)
-                                backup_map[str(chat_id)] = sent.message_id
-                                if chat_id == channels[0]:
-                                    main_url = f"https://t.me/c/{str(chat_id).replace('-100', '')}/{sent.message_id}"
-                                await asyncio.sleep(0.5)
-                            except Exception as e:
-                                logger.error(f"Backup failed for channel {chat_id}: {e}")
-
-                    file_size_str = get_readable_file_size(f['file_size'])
-                    text_for_detection = f['caption'] if f['caption'] else f['file_name']
-                    label = generate_quality_label(text_for_detection, file_size_str, movie_lang)
-
-                    f_ai_data = await get_movie_name_from_caption(text_for_detection)
-                    f_lang  = f_ai_data.get('language', '')
-                    f_extra = f_ai_data.get('extra_info', '')
-
-                    cur.execute(
-                        """
-                        INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (movie_id, quality) DO UPDATE SET
-                        url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
-                        languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
-                        """,
-                        (movie_id, label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra)
-                    )
-
-                # Movies + Files pehle commit karo
-                conn.commit()
-
-                # Aliases
-                try:
-                    aliases = await run_async(generate_aliases_gemini, title, str(year), category)
-                    if not aliases:
-                        aliases = [title.lower().strip(), title.replace(" ", "").lower()]
-                    for alias in set(aliases):
-                        if not alias or len(alias) > 255: continue
-                        try:
-                            cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
-                        except Exception:
-                            conn.rollback()
-                    conn.commit()
-                except Exception as alias_err:
-                    logger.error(f"SuperBatch Alias Error: {alias_err}")
-                    conn.rollback()
-
-                cur.close()
-
-            except Exception as db_err:
-                logger.error(f"SuperBatch DB Error: {db_err}")
-                if conn: conn.rollback()
-            finally:
-                if conn: close_db_connection(conn)
+                                cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
+                            except Exception:
+                                conn.rollback()
+                        conn.commit()
+                        cur.close()
+                    except Exception as alias_err:
+                        logger.error(f"SuperBatch Alias Error: {alias_err}")
+                        conn.rollback()
+                    finally:
+                        close_db_connection(conn)
+            except Exception as alias_err:
+                logger.error(f"SuperBatch Alias Outer Error: {alias_err}")
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
@@ -5871,12 +5873,18 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             safe_genre = genre if genre else "Unknown"
 
             res_set = set()
-            for f in movie_files:
-                match = re.search(r'(\d{3,4}p)', str(f.get('file_name', '')).lower())
+            for lbl in saved_labels:
+                match = re.search(r'(\d{3,4}p)', lbl)
                 if match:
                     res_set.add(match.group(1))
+            # file_names se bhi try karo agar label mein nahi mila
+            if not res_set:
+                for f in movie_files:
+                    match = re.search(r'(\d{3,4}p)', str(f.get('file_name', '')).lower())
+                    if match:
+                        res_set.add(match.group(1))
             res_list = sorted(list(res_set), key=lambda x: int(x.replace('p','')), reverse=True)
-            dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
+            dynamic_res = " | ".join(res_list) if res_list else "HD"
             
             safe_title = title.replace('<', '').replace('>', '')
             unicode_title = get_safe_font(safe_title)
@@ -6101,6 +6109,93 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         return None
     finally:
         close_db_connection(conn)
+
+
+# ==============================================================================
+# 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
+# superbatch_done bhi isko call karta hai — alag/duplicate code nahi
+# ==============================================================================
+async def _pm_save_file(message, context) -> str | None:
+    """
+    Ek file ko storage channels mein copy karo aur DB mein save karo.
+    BATCH_SESSION pehle se set hona chahiye (_core_movie_processor ke baad).
+    Returns: quality label (str) on success, None on failure.
+    """
+    channels = get_storage_channels()
+    if not channels:
+        logger.error("_pm_save_file: No STORAGE_CHANNELS found")
+        return None
+
+    backup_map = {}
+    success_uploads = 0
+    for chat_id in channels:
+        try:
+            sent = await message.copy(chat_id=chat_id)
+            backup_map[str(chat_id)] = sent.message_id
+            success_uploads += 1
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            logger.error(f"_pm_save_file upload failed for {chat_id}: {e}")
+
+    if success_uploads == 0:
+        logger.error("_pm_save_file: All uploads failed")
+        return None
+
+    main_channel_id = channels[0]
+    main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
+
+    file_name = (message.document.file_name if message.document
+                 else message.video.file_name if message.video
+                 else "File")
+    file_size = (message.document.file_size if message.document
+                 else message.video.file_size if message.video
+                 else 0)
+
+    # Thumbnail update BATCH_SESSION mein (poster ke liye)
+    if message.video and message.video.thumbnail:
+        BATCH_SESSION['extracted_thumb'] = message.video.thumbnail.file_id
+    elif message.document and message.document.thumbnail:
+        BATCH_SESSION['extracted_thumb'] = message.document.thumbnail.file_id
+
+    file_size_str = get_readable_file_size(file_size)
+    current_lang  = BATCH_SESSION.get('language', '')
+
+    # Caption prefer karo — zyada accurate info hoti hai
+    text_for_detection = message.caption if message.caption else file_name
+
+    label   = generate_quality_label(text_for_detection, file_size_str, current_lang)
+    ai_data = await get_movie_name_from_caption(text_for_detection)
+    f_lang  = ai_data.get('language', '')
+    f_extra = ai_data.get('extra_info', '')
+
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (movie_id, quality) DO UPDATE SET
+            url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
+            languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
+            """,
+            (BATCH_SESSION['movie_id'], label, file_size_str, main_url,
+             json.dumps(backup_map), f_lang, f_extra)
+        )
+        conn.commit()
+        cur.close()
+        BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
+        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
+    except Exception as e:
+        logger.error(f"_pm_save_file DB error: {e}")
+        if conn: conn.rollback()
+        return None
+    finally:
+        close_db_connection(conn)
+
+    return label
 
 
 async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -11059,7 +11154,7 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
 
 🎬 Movie: <b>{movie_title}</b>
 
-📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@owneramit</b> / <b>@owneramitma</b> को मिली गई है।
+📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@owneramit</b> / <b>@Ownermahi</b> को मिली गई है।
 ⏳ जैसे ही मूवी उपलब्ध होगी, वो खुद आपको यहाँ सूचित (Notify) कर देंगे।
 
 <i>हमसे जुड़े रहने के लिए धन्यवाद! 🙏</i>
