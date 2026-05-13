@@ -692,7 +692,9 @@ JSON:"""
                 
             except Exception as e:
                 error_msg = str(e).lower()
-                # Agar Quota/Limit ka error aaya toh agli key try karo
+                # 👇 Yahan ek print statement add karo taaki actual error log me dikhe
+                logger.error(f"🛑 Asli Gemini Error Key {key[:5]} par: {str(e)}")
+                
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                     logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
                     continue
@@ -779,6 +781,9 @@ Example format: alias1, alias2, alias3, alias4"""
 
         except Exception as e:
             error_msg = str(e).lower()
+            # 👇 Yahan ek print statement add karo taaki actual error log me dikhe
+            logger.error(f"🛑 Asli Gemini Error Key {key[:5]} par: {str(e)}")
+            
             if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                 logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
                 continue
