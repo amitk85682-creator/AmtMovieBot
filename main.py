@@ -116,16 +116,6 @@ def get_safe_font(text, style=None):
             else: result += char
         return result
 
-    # 2. Double Struck (𝕂𝕒𝕝𝕜𝕚 𝟚𝟠𝟡𝟠 𝔸𝔻)
-    def to_double_struck(s):
-        result = ""
-        for char in s:
-            if 'a' <= char <= 'z': result += chr(0x1D552 + ord(char) - ord('a'))
-            elif 'A' <= char <= 'Z': result += chr(0x1D538 + ord(char) - ord('A'))
-            elif '0' <= char <= '9': result += chr(0x1D7D8 + ord(char) - ord('0'))
-            else: result += char
-        return result
-
     # Randomly inme se ek uthayega taaki wo chutiya squared font na aaye
     return random.choice([to_bold_italic, to_double_struck])(text)
 
@@ -4434,7 +4424,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔊 <b>Language:</b> {m_lang}\n"
                 f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
         else:
@@ -4444,7 +4434,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f" ├ 🔊 Language: {m_lang}\n"
                 f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                 f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
 
@@ -5846,30 +5836,20 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning(f"Superbatch: '{temp_title}' — koi file save nahi ho paya")
                 continue
 
-            # ── STEP 4: ALIASES ──────────────────────────────────────────────────
+            # ── STEP 4: ALIASES (Bina AI ke simple aliases) ──────────────────────
+        aliases = generate_basic_aliases(title, str(year))
+        conn = get_db_connection()
+        if conn:
             try:
-                aliases = await run_async(generate_aliases_gemini, title, str(year), category)
-                if not aliases:
-                    aliases = [title.lower().strip(), title.replace(" ", "").lower()]
-                conn = get_db_connection()
-                if conn:
-                    try:
-                        cur = conn.cursor()
-                        for alias in set(aliases):
-                            if not alias or len(alias) > 255: continue
-                            try:
-                                cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
-                            except Exception:
-                                conn.rollback()
-                        conn.commit()
-                        cur.close()
-                    except Exception as alias_err:
-                        logger.error(f"SuperBatch Alias Error: {alias_err}")
-                        conn.rollback()
-                    finally:
-                        close_db_connection(conn)
+                cur = conn.cursor()
+                for alias in set(aliases):
+                    cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
+                conn.commit()
+                cur.close()
             except Exception as alias_err:
-                logger.error(f"SuperBatch Alias Outer Error: {alias_err}")
+                logger.error(f"SuperBatch Alias Error: {alias_err}")
+            finally:
+                close_db_connection(conn)
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
@@ -5918,7 +5898,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
                     f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                     f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
             else:
@@ -5929,7 +5909,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
                     f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                     f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
 
@@ -6538,7 +6518,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Language: {db_lang}\n"
             f"Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
             f"👇 <b>Download Below</b> 👇"
         )
@@ -6687,7 +6667,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"Language: {m_lang}\n"
         f"Quality: V2 HQ-HDTC {dynamic_res}\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-        f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+        f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
         f"👇 <b>Download Below</b> 👇"
     )
@@ -7753,7 +7733,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔊 <b>Language:</b> {language or 'Hindi'}\n"
             f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
     else:
@@ -7763,7 +7743,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f" ├ 🔊 Language: {language or 'Hindi'}\n"
             f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+mUxQt9wOhNYyNjc1'>Join Premium</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
 
@@ -7930,7 +7910,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔞 18+  |  💎 <b>Premium Quality</b>\n"
             f"🚨 <i>Only For Adults (18+)</i>"
             f"{link_section}\n\n"
-            f"🔞 <b>Join Premium:</b> https://t.me/+wcYoTQhIz-ZmOTY1" 
+            f"🔞 <b>Join Premium:</b> https://t.me/+mUxQt9wOhNYyNjc1" 
         )
 
         target_channel = os.environ.get('ADULT_CHANNEL_ID')
