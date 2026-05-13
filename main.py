@@ -2370,7 +2370,7 @@ def get_tmdb_backdrop(query, search_year=""):
         logger.error(f"TMDB Error: {e}")
     return None
 
-def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False):
+def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = ""):
     """
     IMDb से डेटा और TMDb से सिर्फ Lamba (Portrait) पोस्टर निकालने वाला इंजन
     adult_mode=True होने पर TMDb सर्च में include_adult=true भेजेगा और OMDb को बायपास करेगा।
@@ -2435,7 +2435,9 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
         if is_imdb_id:
             url = f"https://www.omdbapi.com/?i={search_query}&apikey={omdb_api_key}&plot=full"
         else:
-            url = f"https://www.omdbapi.com/?t={quote(search_query)}&apikey={omdb_api_key}&plot=full"
+            is_series = "series" in hint_category.lower() if hint_category else False
+            omdb_type = "series" if is_series else "movie"
+            url = f"https://www.omdbapi.com/?t={quote(search_query)}&type={omdb_type}&apikey={omdb_api_key}&plot=full"
             if search_year and str(search_year).strip().isdigit():
                 url += f"&y={str(search_year).strip()}"
 
@@ -2443,7 +2445,10 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
 
         if resp.get("Response") != "True":
             # OMDb फेल होने पर TMDb का उपयोग करें
-            tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}"
+            if is_series:
+                tmdb_search = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={quote(search_query)}"
+            else:
+                tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}"
             if search_year and str(search_year).strip().isdigit():
                 tmdb_search += f"&year={search_year.strip()}"
             t_resp = requests.get(tmdb_search, timeout=10).json()
@@ -6041,7 +6046,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         return None
 
     # --- STEP 2: TMDB + IMDb METADATA ---
-    metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang)
+    metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, False, gemini_category)
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
     else:
