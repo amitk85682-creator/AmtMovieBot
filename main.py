@@ -695,6 +695,7 @@ JSON:"""
                 # Agar Quota/Limit ka error aaya toh agli key try karo
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                     logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
+                    await asyncio.sleep(5)
                     continue
                 else:
                     logger.error(f"❌ Gemini Error on key {key[:5]}...: {e}")
@@ -752,7 +753,7 @@ Example format: alias1, alias2, alias3, alias4"""
             
             if not response or not response.parts:
                 logger.warning("Gemini response was empty or blocked. Trying basic.")
-                return generate_basic_aliases(movie_title, year)
+                continue  # ← agli key try karo
             
             ai_text = response.text.strip()
             aliases = []
@@ -781,6 +782,7 @@ Example format: alias1, alias2, alias3, alias4"""
             error_msg = str(e).lower()
             if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
                 logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
+                time.sleep(5)
                 continue
             else:
                 logger.warning(f"❌ Alias Gemini error on key {key[:5]}...: {e}")
