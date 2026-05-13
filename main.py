@@ -5837,19 +5837,22 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
 
             # ── STEP 4: ALIASES (Bina AI ke simple aliases) ──────────────────────
-        aliases = generate_basic_aliases(title, str(year))
-        conn = get_db_connection()
-        if conn:
-            try:
-                cur = conn.cursor()
-                for alias in set(aliases):
-                    cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
-                conn.commit()
-                cur.close()
-            except Exception as alias_err:
-                logger.error(f"SuperBatch Alias Error: {alias_err}")
-            finally:
-                close_db_connection(conn)
+            aliases = generate_basic_aliases(title, str(year))
+            conn = get_db_connection()
+            if conn:
+                try:
+                    cur = conn.cursor()
+                    for alias in set(aliases):
+                        cur.execute(
+                            "INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", 
+                            (movie_id, alias.lower().strip())
+                        )
+                    conn.commit()
+                    cur.close()
+                except Exception as alias_err:
+                    logger.error(f"SuperBatch Alias Error: {alias_err}")
+                finally:
+                    close_db_connection(conn)
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
