@@ -666,7 +666,7 @@ JSON:"""
         for key in gemini_keys:
             try:
                 genai.configure(api_key=key)
-                model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 response = await run_async(model.generate_content, contents)
                 
                 if response and response.text:
@@ -739,7 +739,7 @@ Example format: alias1, alias2, alias3, alias4"""
     for key in gemini_keys:
         try:
             genai.configure(api_key=key)
-            model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             response = model.generate_content(prompt, safety_settings=safety_settings)
             
             if not response or not response.parts:
@@ -5752,16 +5752,16 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
     )
 
-    # ── STEP 1: GROUPING (Bina Gemini API ke FAST Regex Grouping) ─────────────
+    # ── STEP 1: GROUPING (Ab sirf Regex use hoga, Gemini nahi) ────────────────
     grouped_movies = defaultdict(list)
     for f in files:
         raw_text = f['caption'] if f['caption'] else f['file_name']
         
-        # 👇 YAHAN BADLAV KIYA HAI: Ab ye Gemini ko call nahi karega! 
-        # Sirf normal naam nikal kar group bana dega.
+        # AI function (get_movie_name_from_caption) को हटाकर 
+        # fallback_extraction का इस्तेमाल करें
         basic_data = await fallback_extraction(raw_text) 
         
-        temp_title = basic_data.get('title', 'Unknown_Movie').lower()
+        temp_title = basic_data.get('title', 'Unknown_Movie').lower().strip()
         grouped_movies[temp_title].append(f)
 
     total_movies = len(grouped_movies)
@@ -7258,7 +7258,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         for key_idx, api_key in enumerate(api_keys):
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 gemini_resp = await run_async(model.generate_content, prompt, safety_settings=safety)
 
                 raw = gemini_resp.text.strip()
