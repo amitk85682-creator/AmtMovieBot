@@ -6807,8 +6807,12 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             link2 = secure_link
             link3 = secure_link
         else:
+            import re
             # ⚠️ Agar movie DB me nahi hai (Sirf search query hai), to purana link chalega
-            link_param = f"q_{query_text.replace(' ', '_')}"
+            # Clean text to contain only alphanumeric, underscores, and hyphens, and limit to 64 bytes
+            safe_query = re.sub(r'[^a-zA-Z0-9_-]', '', query_text.replace(' ', '_'))
+            link_param = f"q_{safe_query}"[:64]
+            
             link1 = f"https://t.me/{bot1}?start={link_param}"
             link2 = f"https://t.me/{bot2}?start={link_param}"
             link3 = f"https://t.me/{bot3}?start={link_param}"
