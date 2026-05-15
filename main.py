@@ -6167,12 +6167,13 @@ async def _pm_save_file(message, context) -> str | None:
     current_lang  = BATCH_SESSION.get('language', '')
 
     # Caption prefer karo — zyada accurate info hoti hai
-    text_for_detection = message.caption if message.caption else file_name
+        text_for_detection = message.caption if message.caption else file_name
+        label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
-    label   = generate_quality_label(text_for_detection, file_size_str, current_lang)
-    ai_data = await get_movie_name_from_caption(text_for_detection)
-    f_lang  = ai_data.get('language', '')
-    f_extra = ai_data.get('extra_info', '')
+        # ✅ FIXED: Sirf regex/fallback use karo baaki files ke liye taaki AI Key bache!
+        ai_data = await fallback_extraction(text_for_detection)
+        f_lang = ai_data.get('language', '')
+        f_extra = ai_data.get('extra_info', '')
 
     conn = get_db_connection()
     if not conn:
@@ -7575,14 +7576,14 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_lang = BATCH_18_SESSION.get('language', 'Hindi')
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
-    # 🚀 FIX: Gemini AI se language/extra_info nikalo (pm_file_listener ki tarah)
-    try:
-        ai_data_f = await get_movie_name_from_caption(text_for_detection)
-        f_lang = ai_data_f.get('language', '')
-        f_extra = ai_data_f.get('extra_info', '')
-    except:
-        f_lang = ''
-        f_extra = ''
+    # 🚀 FIXED: Batch ki baaki files ke liye sirf Fallback (Regex) use karein (API Key bachegi)
+        try:
+            ai_data_f = await fallback_extraction(text_for_detection)
+            f_lang = ai_data_f.get('language', '')
+            f_extra = ai_data_f.get('extra_info', '')
+        except:
+            f_lang = ''
+            f_extra = ''
 
     # Build main URL
     main_url = ""
