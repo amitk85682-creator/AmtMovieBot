@@ -5774,6 +5774,8 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(f"✅ **Files grouped into {total_movies} unique movies!**\n\n🚀 Auto-Processing & Posting starts now...", parse_mode='Markdown')
 
     success_movies = 0
+    total_files_saved = 0           # 👈 NAYA: Kitni files save hui uski ginti
+    movies_posted_list = []         # 👈 NAYA: Jo movies post hui unki list
     channels = get_storage_channels()
     target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
 
@@ -5841,6 +5843,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not saved_labels:
                 logger.warning(f"Superbatch: '{temp_title}' — koi file save nahi ho paya")
                 continue
+            total_files_saved += len(saved_labels)
 
             # ── STEP 4: ALIASES (Bina AI ke simple aliases) ──────────────────────
             aliases = generate_basic_aliases(title, str(year))
@@ -6002,18 +6005,28 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.error(f"❌ Failed to post in channel {chat_id_str}: {e}")
 
             success_movies += 1
+            movies_posted_list.append(title) # 👈 NAYA: List me Title add kiya
             await asyncio.sleep(2) # Flood limit se bachne ke liye delay
 
         except Exception as e:
             logger.error(f"SuperBatch Movie Error: {e}")
             continue
 
-    await status_msg.edit_text(
-        f"🎉 **SUPER BATCH COMPLETED!**\n\n"
-        f"✅ Total Movies Processed: {success_movies}/{total_movies}\n"
-        f"🚀 All movies auto-posted to Channels & Forum successfully!",
-        parse_mode='Markdown'
+    # 📝 NAYA: List format banana
+    if movies_posted_list:
+        posted_names = "\n".join([f"🔹 {name}" for name in movies_posted_list])
+    else:
+        posted_names = "Koyi nayi movie post nahi hui."
+
+    # 🎉 NAYA: Final Message (HTML format me)
+    final_text = (
+        f"🎉 <b>SUPER BATCH COMPLETED!</b>\n\n"
+        f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
+        f"🚀 <b>Movies/Series Auto-Posted:</b> {len(movies_posted_list)}/{total_movies}\n\n"
+        f"<b>📑 Posted List:</b>\n{posted_names}"
     )
+
+    await status_msg.edit_text(final_text, parse_mode='HTML')
 
     SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
 
