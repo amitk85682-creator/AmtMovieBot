@@ -116,9 +116,7 @@ def get_safe_font(text, style=None):
             else: result += char
         return result
 
-    # Randomly inme se ek uthayega taaki wo chutiya squared font na aaye
-    return random.choice([to_bold_italic, to_double_struck])(text)
-
+    return to_bold_italic(text)
 # ==================== GLOBAL VARIABLES ====================
 BATCH_18_SESSION = {'active': False, 'admin_id': None, 'files': []}
 
@@ -389,7 +387,7 @@ FORCE_JOIN_ENABLED = True
 
 # ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
-STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "")  # ✅ NEW: Backup Channels List
+STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # ✅ NEW: Backup Channels List
 
 # Verified users cache (Taaki baar baar API call na ho)
 verified_users = {}
