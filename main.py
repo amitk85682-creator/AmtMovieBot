@@ -130,7 +130,7 @@ DEFAULT_POSTER = os.environ.get(
 WAITING_FOR_NAME, CONFIRMATION = range(2)
 SEARCHING, REQUESTING, MAIN_MENU, REQUESTING_FROM_BUTTON = range(2, 6)
 # ================= CONFIGURATION =================
-FORUM_GROUP_ID = -1003696437312  # Apne Group ki ID
+FORUM_GROUP_ID = ""  # Apne Group ki ID
 
 # Yahan Topic ID aur uske Keywords set karo
 # Bot in shabdon ko Genre ya Description me dhundega
