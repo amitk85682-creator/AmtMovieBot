@@ -496,6 +496,9 @@ async def get_poster_bytes(url):
         logger.error(f"Error downloading poster: {e}")
         return None
 
+import re
+import unicodedata
+
 def preprocess_query(query):
     """Clean and normalize user query"""
     query = re.sub(r'[^\w\s-]', '', query)
@@ -504,21 +507,26 @@ def preprocess_query(query):
 def clean_telegram_text(text):
     """Removes emojis and converts fancy fonts to normal text"""
     if not text: return ""
+    
+    # 👇 NAYA FIX: Sabse pehle ye faltu text hatao (taaki fancy font normal hone se pehle hi cut jaye)
+    text = text.replace("@BuLMoviee 𝗝𝗼𝗶𝗻 𝗨𝘀 𝗢𝗻 𝗧𝗲𝗹𝗲𝗴𝗿𝗮𝗺", "")
+    
     fancy = {'ᴀ':'a','ʙ':'b','ᴄ':'c','ᴅ':'d','ᴇ':'e','ғ':'f','ɢ':'g','ʜ':'h','ɪ':'i','ᴊ':'j','ᴋ':'k','ʟ':'l','ᴍ':'m','ɴ':'n','ᴏ':'o','ᴘ':'p','ǫ':'q','ʀ':'r','s':'s','ᴛ':'t','ᴜ':'u','ᴠ':'v','ᴡ':'w','x':'x','ʏ':'y','ᴢ':'z'}
     for k, v in fancy.items(): 
         text = text.replace(k, v)
     
-    import unicodedata
     text = unicodedata.normalize('NFKC', text)
     
-    import re
     text = re.sub(r'[^\w\s\.\-\'\[\]\(\)@:]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     
     text = re.sub(r'^[\.\-\s]+', '', text)
     
-    # 👇 NAYA FIX: "Name:", "Title:", "File Name:" jaise words ko shuruat se hata dega
+    # "Name:", "Title:", "File Name:" jaise words ko shuruat se hata dega
     text = re.sub(r'(?i)^(name|title|file\s*name|movie)\s*:\s*', '', text).strip()
+    
+    # 👇 Ek aur safety check: Agar normalize hone ke baad simple text me bach gaya ho toh wo bhi hata dega
+    text = text.replace("@BuLMoviee Join Us On Telegram", "").strip()
     
     return text
 async def make_landscape_poster(url_or_bytes):
