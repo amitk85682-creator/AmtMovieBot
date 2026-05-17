@@ -7588,14 +7588,13 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
     # 🚀 FIXED: Batch ki baaki files ke liye sirf Fallback (Regex) use karein (API Key bachegi)
-        try:
-            ai_data_f = await fallback_extraction(text_for_detection)
-            f_lang = ai_data_f.get('language', '')
-            f_extra = ai_data_f.get('extra_info', '')
-        except:
-            f_lang = ''
-            f_extra = ''
-
+    try:
+        ai_data_f = await fallback_extraction(text_for_detection)
+        f_lang = ai_data_f.get('language', '')
+        f_extra = ai_data_f.get('extra_info', '')
+    except:
+        f_lang = ''
+        f_extra = ''
     # Build main URL
     main_url = ""
     if channels and backup_map:
