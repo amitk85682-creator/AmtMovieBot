@@ -7593,8 +7593,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f_lang = ai_data_f.get('language', '')
             f_extra = ai_data_f.get('extra_info', '')
         except:
-        f_lang = ''
-        f_extra = ''
+            f_lang = ''
+            f_extra = ''
 
     # Build main URL
     main_url = ""
