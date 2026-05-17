@@ -3202,7 +3202,6 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             bot_username = context.bot.username
             text = f"📁 <b>{title}</b>\n\n👇 <b>Your Requested Files Are Here</b>\n\n"
             
-            import re # Text clean karne ke liye taaki links break na hon
             
             for idx, f_data in enumerate(current_files, start=1):
                 q_name = str(f_data[0])
@@ -5102,7 +5101,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += "❌ No files found for this filter.\n"
                 else:
                     bot_username = context.bot.username
-                    import re # Text clean karne ke liye tool
                     
                     for idx, file_data in enumerate(current_page_files, start=start_idx + 1):
                         quality = str(file_data[0])
@@ -6474,7 +6472,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
 
         # 🚀 FIX: Same Gemini AI jo Phase 1 mein use hua (consistent extraction)
-        ai_data = await get_movie_name_from_caption(text_for_detection)
+        ai_data = await fallback_extraction(text_for_detection)
         f_lang = ai_data.get('language', '')
         f_extra = ai_data.get('extra_info', '')
 
@@ -7591,10 +7589,10 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 🚀 FIXED: Batch ki baaki files ke liye sirf Fallback (Regex) use karein (API Key bachegi)
     try:
-        ai_data_f = await fallback_extraction(text_for_detection)
-        f_lang = ai_data_f.get('language', '')
-        f_extra = ai_data_f.get('extra_info', '')
-    except:
+            ai_data_f = await fallback_extraction(text_for_detection)
+            f_lang = ai_data_f.get('language', '')
+            f_extra = ai_data_f.get('extra_info', '')
+        except:
         f_lang = ''
         f_extra = ''
 
