@@ -6413,8 +6413,12 @@ async def _pm_save_file(message, context) -> str | None:
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
 
         # ✅ STREAMWISH: Trigger background upload (zero blocking time for admin)
-        # Only attempts upload if: API key set + Pyrogram ready + file ≤ 2GB
-        if STREAMWISH_API_KEY and mtproto_client:
+        logger.info(f"Streamwish Debug: STREAMWISH_API_KEY={bool(STREAMWISH_API_KEY)}, mtproto_client={bool(mtproto_client)}")
+        if not STREAMWISH_API_KEY:
+            logger.warning("Streamwish: Skipped because STREAMWISH_API_KEY is not set.")
+        elif not mtproto_client:
+            logger.warning("Streamwish: Skipped because mtproto_client is None (Check API_ID/API_HASH).")
+        else:
             tg_file_id = None
             sw_file_size = 0
             sw_file_name = file_name  # Already extracted above (line 6322)
@@ -6422,11 +6426,16 @@ async def _pm_save_file(message, context) -> str | None:
             if message.video:
                 tg_file_id = message.video.file_id
                 sw_file_size = message.video.file_size or 0
+                logger.info(f"Streamwish Debug: File is video, size={sw_file_size}, file_id={tg_file_id[:10]}...")
             elif message.document:
                 tg_file_id = message.document.file_id
                 sw_file_size = message.document.file_size or 0
+                logger.info(f"Streamwish Debug: File is document, size={sw_file_size}, file_id={tg_file_id[:10]}...")
+            else:
+                logger.warning("Streamwish Debug: File is neither video nor document!")
 
             if tg_file_id and sw_file_size <= MAX_STREAMWISH_SIZE:
+                logger.info("Streamwish Debug: Launching background upload task...")
                 asyncio.create_task(
                     _streamwish_background_upload(
                         tg_file_id, sw_file_name, sw_file_size,
@@ -6434,9 +6443,9 @@ async def _pm_save_file(message, context) -> str | None:
                     )
                 )
             elif tg_file_id and sw_file_size > MAX_STREAMWISH_SIZE:
-                logger.info(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
+                logger.warning(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
     except Exception as e:
-        logger.error(f"_pm_save_file DB error: {e}")
+        logger.error(f"_pm_save_file DB error: {e}", exc_info=True)
         if conn: conn.rollback()
         return None
     finally:
