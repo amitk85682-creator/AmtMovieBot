@@ -3170,14 +3170,21 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 res = cur.fetchone()
                 if res and res[0] and res[0].strip():
                     extra_val = res[0].strip()
+                    ext = extra_val.upper()
                     
-                    # 👇 SMART FIX: Check karega ki UNCUT/EXTENDED (Movie) hai ya Episode (Web Series)
+                    # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
                     edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
                     
-                    if any(word in extra_val.upper() for word in edition_keywords):
+                    if any(word in ext for word in edition_keywords):
                         extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
-                    else:
+                    elif "S" in ext and "E" in ext:
+                        extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
+                    elif "S" in ext:
+                        extra_display = f"📌 <b>Season:</b> {extra_val}\n"
+                    elif "E" in ext:
                         extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
+                    else:
+                        extra_display = f"📌 <b>Info:</b> {extra_val}\n"
                         
                 cur.close()
             except Exception:
