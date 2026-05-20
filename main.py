@@ -19,6 +19,15 @@ from telegram import KeyboardButton, WebAppInfo
 from telegram import MenuButtonWebApp, WebAppInfo
 import aiohttp
 # import anthropic  # Agar zaroorat ho toh uncomment karein
+
+# ✅ Pyrogram MTProto Client (for streaming large files past 20MB Bot API limit)
+try:
+    from pyrogram import Client as PyroClient
+    PYROGRAM_AVAILABLE = True
+except ImportError:
+    PYROGRAM_AVAILABLE = False
+    PyroClient = None
+    logging.getLogger(__name__).warning("Pyrogram not installed. Streamwish uploads will be disabled.")
 from flask import jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -388,6 +397,30 @@ FORCE_JOIN_ENABLED = True
 # ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
 STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # ✅ NEW: Backup Channels List
+STREAMWISH_API_KEY = os.environ.get("STREAMWISH_API_KEY", "")  # ✅ NEW: Streamwish Video Hosting API Key
+
+# ✅ Pyrogram MTProto Config (Required for Streamwish large file uploads)
+API_ID = int(os.environ.get("API_ID", "0"))
+API_HASH = os.environ.get("API_HASH", "")
+MAX_STREAMWISH_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB — Telegram bot MTProto limit
+
+# Pyrogram client instance (started in main(), used by background Streamwish uploads)
+mtproto_client = None
+if PYROGRAM_AVAILABLE and API_ID and API_HASH and TELEGRAM_BOT_TOKEN and STREAMWISH_API_KEY:
+    mtproto_client = PyroClient(
+        "flimfybox_mtproto_stream",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=TELEGRAM_BOT_TOKEN,
+        in_memory=True,   # No session file on disk
+        no_updates=True    # Don't process updates, only use for file streaming
+    )
+    logger.info("✅ Pyrogram MTProto client configured (will start in main()).")
+else:
+    if STREAMWISH_API_KEY and not PYROGRAM_AVAILABLE:
+        logger.warning("⚠️ STREAMWISH_API_KEY set but Pyrogram not installed. Run: pip install pyrogram tgcrypto")
+    elif STREAMWISH_API_KEY and (not API_ID or not API_HASH):
+        logger.warning("⚠️ STREAMWISH_API_KEY set but API_ID/API_HASH missing. Get them from https://my.telegram.org")
 
 # Verified users cache (Taaki baar baar API call na ho)
 verified_users = {}
@@ -3157,34 +3190,40 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 close_db_connection(conn)
 
     # 👇 NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! 👇
+    streamwish_url = None  # ✅ Streamwish URL for Watch Online button
     if url or file_id:
         conn = get_db_connection()
         if conn:
             try:
                 cur = conn.cursor()
                 if file_id:
-                    cur.execute("SELECT extra_info FROM movie_files WHERE file_id = %s LIMIT 1", (file_id,))
+                    cur.execute("SELECT extra_info, streamwish_url FROM movie_files WHERE file_id = %s LIMIT 1", (file_id,))
                 else:
-                    cur.execute("SELECT extra_info FROM movie_files WHERE url = %s LIMIT 1", (url,))
+                    cur.execute("SELECT extra_info, streamwish_url FROM movie_files WHERE url = %s LIMIT 1", (url,))
                 
                 res = cur.fetchone()
-                if res and res[0] and res[0].strip():
-                    extra_val = res[0].strip()
-                    ext = extra_val.upper()
+                if res:
+                    # ✅ Extract Streamwish URL (column index 1)
+                    if res[1] and str(res[1]).strip():
+                        streamwish_url = str(res[1]).strip()
+
+                    if res[0] and res[0].strip():
+                        extra_val = res[0].strip()
+                        ext = extra_val.upper()
                     
-                    # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
-                    edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
+                        # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
+                        edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
                     
-                    if any(word in ext for word in edition_keywords):
-                        extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
-                    elif "S" in ext and "E" in ext:
-                        extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
-                    elif "S" in ext:
-                        extra_display = f"📌 <b>Season:</b> {extra_val}\n"
-                    elif "E" in ext:
-                        extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
-                    else:
-                        extra_display = f"📌 <b>Info:</b> {extra_val}\n"
+                        if any(word in ext for word in edition_keywords):
+                            extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
+                        elif "S" in ext and "E" in ext:
+                            extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
+                        elif "S" in ext:
+                            extra_display = f"📌 <b>Season:</b> {extra_val}\n"
+                        elif "E" in ext:
+                            extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
+                        else:
+                            extra_display = f"📌 <b>Info:</b> {extra_val}\n"
                         
                 cur.close()
             except Exception:
@@ -3273,7 +3312,15 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             f"🔹 <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>"
         )
         
-        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
+        # ✅ NEW: 3-Button Inline Keyboard (Watch Online + Fast Download + Join Channel)
+        keyboard_buttons = []
+        if streamwish_url:
+            keyboard_buttons.append([InlineKeyboardButton("🍿 Watch Online", url=streamwish_url)])
+        download_link = url if url else streamwish_url
+        if download_link:
+            keyboard_buttons.append([InlineKeyboardButton("⚡ Fast Download", url=download_link)])
+        keyboard_buttons.append([InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)])
+        join_keyboard = InlineKeyboardMarkup(keyboard_buttons)
 
         sent_msg = None
         if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
@@ -6136,6 +6183,157 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 
 
 # ==============================================================================
+# ==============================================================================
+# 🌐 STREAMWISH INTEGRATION — Pyrogram MTProto Streaming Upload
+# Streams file chunks directly: Telegram (MTProto) → Streamwish (HTTP multipart)
+# No disk writes. No 20MB limit. Handles files up to 2GB.
+# ==============================================================================
+async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size: int) -> str | None:
+    """
+    Upload a file to Streamwish by streaming it from Telegram via Pyrogram MTProto.
+
+    Flow:
+    1. Get Streamwish upload server URL
+    2. Use Pyrogram stream_media() to get async chunk generator from Telegram
+    3. Pipe chunks directly to Streamwish via aiohttp multipart POST
+    4. Return the watch URL
+
+    Returns: Streamwish watch URL (str) on success, None on failure.
+    Bot NEVER crashes — all errors are caught and logged.
+    """
+    if not STREAMWISH_API_KEY:
+        logger.warning("Streamwish: API key not configured, skipping upload.")
+        return None
+
+    if not mtproto_client or not mtproto_client.is_connected:
+        logger.warning("Streamwish: Pyrogram MTProto client not connected, skipping.")
+        return None
+
+    # 2 GB gate — Telegram bot MTProto limit
+    if file_size and file_size > MAX_STREAMWISH_SIZE:
+        logger.info(f"Streamwish: File size ({file_size} bytes) exceeds 2GB limit, skipping.")
+        return None
+
+    try:
+        # ── Step 1: Get Streamwish Upload Server URL ──
+        upload_url = None
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as session:
+            async with session.get(
+                "https://api.streamwish.com/api/upload/server",
+                params={"key": STREAMWISH_API_KEY}
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Streamwish: Upload server API HTTP error: {resp.status}")
+                    return None
+                data = await resp.json()
+                if data.get("status") != 200:
+                    logger.error(f"Streamwish: Upload server error: {data.get('msg', 'Unknown')}")
+                    return None
+                upload_url = data.get("result")
+
+        if not upload_url:
+            logger.error("Streamwish: No upload server URL received.")
+            return None
+
+        logger.info(f"Streamwish: Got upload server → {upload_url}")
+
+        # ── Step 2: Stream from Telegram via Pyrogram MTProto ──
+        # stream_media() returns an async generator yielding ~1MB chunks
+        # These chunks are piped directly to Streamwish — zero disk I/O
+        async def telegram_chunk_generator():
+            """Async generator: yields file bytes from Telegram MTProto servers."""
+            try:
+                async for chunk in mtproto_client.stream_media(telegram_file_id):
+                    yield chunk
+            except Exception as stream_err:
+                logger.error(f"Streamwish: Pyrogram stream broke: {stream_err}")
+                raise
+
+        # ── Step 3: Upload to Streamwish via multipart/form-data POST ──
+        # Using aiohttp with async generator — Chunked Transfer Encoding
+        # No Content-Length needed; aiohttp handles chunked encoding automatically
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=600)
+        ) as upload_session:
+            form_data = aiohttp.FormData()
+            form_data.add_field('key', STREAMWISH_API_KEY)
+            form_data.add_field(
+                'file',
+                telegram_chunk_generator(),
+                filename=file_name or 'video.mp4',
+                content_type='application/octet-stream'
+            )
+
+            logger.info(f"Streamwish: Starting streaming upload ({file_size} bytes)...")
+
+            async with upload_session.post(upload_url, data=form_data) as upload_resp:
+                if upload_resp.status != 200:
+                    resp_text = await upload_resp.text()
+                    logger.error(f"Streamwish: Upload HTTP {upload_resp.status}: {resp_text[:200]}")
+                    return None
+
+                result = await upload_resp.json()
+
+                if result.get("status") != 200:
+                    logger.error(f"Streamwish: Upload rejected: {result}")
+                    return None
+
+                # ── Step 4: Extract filecode from response ──
+                files_list = result.get("result", [])
+                file_code = None
+                if isinstance(files_list, list) and files_list:
+                    file_code = files_list[0].get("filecode")
+                elif isinstance(files_list, dict):
+                    file_code = files_list.get("filecode")
+
+                if file_code:
+                    watch_url = f"https://streamwish.to/{file_code}"
+                    logger.info(f"✅ Streamwish: Upload complete → {watch_url}")
+                    return watch_url
+
+                logger.error(f"Streamwish: No filecode in response: {result}")
+                return None
+
+    except Exception as e:
+        logger.error(f"Streamwish upload exception (non-fatal): {e}")
+        return None
+
+
+async def _streamwish_background_upload(telegram_file_id: str, file_name: str, file_size: int, movie_id: int, quality_label: str):
+    """
+    Background task: Stream file from Telegram → Streamwish, then update DB.
+    Runs via asyncio.create_task() — admin NEVER waits for this.
+    """
+    try:
+        sw_url = await upload_to_streamwish(telegram_file_id, file_name, file_size)
+        if not sw_url:
+            return
+
+        conn = get_db_connection()
+        if not conn:
+            logger.error("Streamwish BG: Could not get DB connection for URL update.")
+            return
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE movie_files SET streamwish_url = %s WHERE movie_id = %s AND quality = %s",
+                (sw_url, movie_id, quality_label)
+            )
+            conn.commit()
+            cur.close()
+            logger.info(f"✅ Streamwish URL saved in DB: {sw_url} (movie_id={movie_id}, quality={quality_label})")
+        except Exception as db_err:
+            logger.error(f"Streamwish BG DB update error: {db_err}")
+            if conn:
+                conn.rollback()
+        finally:
+            close_db_connection(conn)
+    except Exception as e:
+        logger.error(f"Streamwish background upload error (non-fatal): {e}")
+
+
 # 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
 # superbatch_done bhi isko call karta hai — alag/duplicate code nahi
 # ==============================================================================
@@ -6213,6 +6411,30 @@ async def _pm_save_file(message, context) -> str | None:
         cur.close()
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
+
+        # ✅ STREAMWISH: Trigger background upload (zero blocking time for admin)
+        # Only attempts upload if: API key set + Pyrogram ready + file ≤ 2GB
+        if STREAMWISH_API_KEY and mtproto_client:
+            tg_file_id = None
+            sw_file_size = 0
+            sw_file_name = file_name  # Already extracted above (line 6322)
+
+            if message.video:
+                tg_file_id = message.video.file_id
+                sw_file_size = message.video.file_size or 0
+            elif message.document:
+                tg_file_id = message.document.file_id
+                sw_file_size = message.document.file_size or 0
+
+            if tg_file_id and sw_file_size <= MAX_STREAMWISH_SIZE:
+                asyncio.create_task(
+                    _streamwish_background_upload(
+                        tg_file_id, sw_file_name, sw_file_size,
+                        BATCH_SESSION['movie_id'], label
+                    )
+                )
+            elif tg_file_id and sw_file_size > MAX_STREAMWISH_SIZE:
+                logger.info(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
     except Exception as e:
         logger.error(f"_pm_save_file DB error: {e}")
         if conn: conn.rollback()
@@ -11645,6 +11867,15 @@ async def main():
             await app.initialize()
             await app.start()
             await app.updater.start_polling(drop_pending_updates=True)
+
+            # ✅ Start Pyrogram MTProto client (only once, for first bot)
+            if i == 0 and mtproto_client and not mtproto_client.is_connected:
+                try:
+                    await mtproto_client.start()
+                    logger.info("✅ Pyrogram MTProto client started (for Streamwish streaming).")
+                except Exception as pyro_err:
+                    logger.error(f"⚠️ Pyrogram MTProto client failed to start: {pyro_err}")
+                    logger.error("   Streamwish uploads will be disabled this session.")
             asyncio.create_task(auto_delete_worker(app))
             if i == 0:
                 logger.info("🚀 Starting Trending Worker for Main Bot...")
@@ -11671,6 +11902,14 @@ async def main():
     await stop_signal.wait()
 
     # Cleanup
+    # ✅ Stop Pyrogram MTProto client first
+    if mtproto_client and mtproto_client.is_connected:
+        try:
+            await mtproto_client.stop()
+            logger.info("🛑 Pyrogram MTProto client stopped.")
+        except Exception as pyro_err:
+            logger.error(f"Pyrogram cleanup error: {pyro_err}")
+
     for app in apps:
         try:
             await app.stop()
