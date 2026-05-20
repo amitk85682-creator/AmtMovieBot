@@ -27,3 +27,5 @@ Pillow
 Flask-Cors
 groq
 qrcode
+pyrogram
+tgcrypto
