@@ -6733,11 +6733,40 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 BATCH_SESSION['file_count'] += 1
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
                 await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}", parse_mode='Markdown')
+
+                # ✅ STREAMWISH: Trigger background upload (zero blocking time for admin)
+                if STREAMWISH_API_KEY and mtproto_client:
+                    tg_file_id = None
+                    sw_file_size = 0
+                    sw_file_name = file_name
+
+                    if message.video:
+                        tg_file_id = message.video.file_id
+                        sw_file_size = message.video.file_size or 0
+                    elif message.document:
+                        tg_file_id = message.document.file_id
+                        sw_file_size = message.document.file_size or 0
+
+                    if tg_file_id and sw_file_size <= MAX_STREAMWISH_SIZE:
+                        logger.info(f"Streamwish: Launching background upload for '{sw_file_name}' ({sw_file_size} bytes)")
+                        asyncio.create_task(
+                            _streamwish_background_upload(
+                                tg_file_id, sw_file_name, sw_file_size,
+                                BATCH_SESSION['movie_id'], label
+                            )
+                        )
+                    elif tg_file_id and sw_file_size > MAX_STREAMWISH_SIZE:
+                        logger.warning(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
+                elif not STREAMWISH_API_KEY:
+                    logger.warning("Streamwish: Skipped because STREAMWISH_API_KEY is not set.")
+                elif not mtproto_client:
+                    logger.warning("Streamwish: Skipped because mtproto_client is None (Check API_ID/API_HASH).")
+
             except Exception as e:
                 await upload_status.edit_text(f"❌ DB Save Failed: {e}")
             finally:
                 close_db_connection(conn)
-    
+
 async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not BATCH_SESSION.get('active'): 
         await update.message.reply_text("❌ Koi batch active nahi hai!")
