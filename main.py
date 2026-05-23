@@ -19,13 +19,6 @@ from telegram import KeyboardButton, WebAppInfo
 from telegram import MenuButtonWebApp, WebAppInfo
 import aiohttp
 # import anthropic  # Agar zaroorat ho toh uncomment karein
-
-# ✅ Pyrogram MTProto Client (for streaming large files past 20MB Bot API limit)
-try:
-    from pyrogram import Client as PyroClient
-except ImportError:
-    PyroClient = None
-    logging.getLogger(__name__).warning("Pyrogram not installed. SeekStreaming uploads will be disabled.")
 from flask import jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -395,7 +388,6 @@ FORCE_JOIN_ENABLED = True
 # ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
 STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # ✅ NEW: Backup Channels List
-STREAM_BOT_URL = os.environ.get("STREAM_BOT_URL", "")  # ✅ TG-FileStreamBot URL (e.g., https://my-streamer.onrender.com)
 
 # Verified users cache (Taaki baar baar API call na ho)
 verified_users = {}
@@ -3176,24 +3168,23 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     cur.execute("SELECT extra_info FROM movie_files WHERE url = %s LIMIT 1", (url,))
                 
                 res = cur.fetchone()
-                if res:
-                    if res[0] and res[0].strip():
-                        extra_val = res[0].strip()
-                        ext = extra_val.upper()
+                if res and res[0] and res[0].strip():
+                    extra_val = res[0].strip()
+                    ext = extra_val.upper()
                     
-                        # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
-                        edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
+                    # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
+                    edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
                     
-                        if any(word in ext for word in edition_keywords):
-                            extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
-                        elif "S" in ext and "E" in ext:
-                            extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
-                        elif "S" in ext:
-                            extra_display = f"📌 <b>Season:</b> {extra_val}\n"
-                        elif "E" in ext:
-                            extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
-                        else:
-                            extra_display = f"📌 <b>Info:</b> {extra_val}\n"
+                    if any(word in ext for word in edition_keywords):
+                        extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
+                    elif "S" in ext and "E" in ext:
+                        extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
+                    elif "S" in ext:
+                        extra_display = f"📌 <b>Season:</b> {extra_val}\n"
+                    elif "E" in ext:
+                        extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
+                    else:
+                        extra_display = f"📌 <b>Info:</b> {extra_val}\n"
                         
                 cur.close()
             except Exception:
@@ -3282,34 +3273,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             f"🔹 <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>"
         )
         
-        # ✅ NEW: 3-Button Inline Keyboard (Watch Online + Fast Download + Join Channel)
-        keyboard_buttons = []
-        
-        # Determine watch online link for TG-FileStreamBot
-        watch_url = None
-        if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
-            try:
-                parts = url.strip().rstrip('/').split('/')
-                msg_id = int(parts[-1])
-                # Agar user ne ENV me STREAM_BOT_URL nahi daala, toh ek dummy host dalenge taaki button gayab na ho
-                base_stream_url = STREAM_BOT_URL.rstrip('/') if STREAM_BOT_URL else "https://your-streamer-bot.onrender.com"
-                watch_url = f"{base_stream_url}/{msg_id}"
-            except Exception as e:
-                logger.error(f"Failed to generate watch URL: {e}")
-
-        # User ki demand: Fast download me bhi wahi stream link lagao
-        download_link = watch_url if watch_url else url
-
-        # Add Watch Online button if we have a valid stream link
-        if watch_url:
-            keyboard_buttons.append([InlineKeyboardButton("🍿 Watch Online", url=watch_url)])
-            
-        # Add Fast Download button
-        if download_link:
-            keyboard_buttons.append([InlineKeyboardButton("⚡ Fast Download", url=download_link)])
-            
-        keyboard_buttons.append([InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)])
-        join_keyboard = InlineKeyboardMarkup(keyboard_buttons)
+        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
 
         sent_msg = None
         if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
@@ -6172,43 +6136,6 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 
 
 # ==============================================================================
-# ==============================================================================
-# Streams file chunks directly: Telegram (MTProto) → SeekStreaming (HTTP multipart)
-# No disk writes. No 20MB limit. Handles files up to 2GB.
-# ==============================================================================
-        return None
-
-
-    """
-    Background task: Stream file from Telegram → SeekStreaming, then update DB.
-    Runs via asyncio.create_task() — admin NEVER waits for this.
-    """
-    try:
-        if not sw_url:
-            return
-
-        conn = get_db_connection()
-        if not conn:
-            logger.error("SeekStreaming BG: Could not get DB connection for URL update.")
-            return
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                (sw_url, movie_id, quality_label)
-            )
-            conn.commit()
-            cur.close()
-            logger.info(f"✅ SeekStreaming URL saved in DB: {sw_url} (movie_id={movie_id}, quality={quality_label})")
-        except Exception as db_err:
-            logger.error(f"SeekStreaming BG DB update error: {db_err}")
-            if conn:
-                conn.rollback()
-        finally:
-            close_db_connection(conn)
-    except Exception as e:
-        logger.error(f"SeekStreaming background upload error (non-fatal): {e}")
-
-
 # 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
 # superbatch_done bhi isko call karta hai — alag/duplicate code nahi
 # ==============================================================================
@@ -6286,8 +6213,8 @@ async def _pm_save_file(message, context) -> str | None:
         cur.close()
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
-
-        logger.error(f"_pm_save_file DB error: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(f"_pm_save_file DB error: {e}")
         if conn: conn.rollback()
         return None
     finally:
@@ -6575,12 +6502,11 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 BATCH_SESSION['file_count'] += 1
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
                 await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}", parse_mode='Markdown')
-
             except Exception as e:
                 await upload_status.edit_text(f"❌ DB Save Failed: {e}")
             finally:
                 close_db_connection(conn)
-
+    
 async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not BATCH_SESSION.get('active'): 
         await update.message.reply_text("❌ Koi batch active nahi hai!")
@@ -11719,7 +11645,7 @@ async def main():
             await app.initialize()
             await app.start()
             await app.updater.start_polling(drop_pending_updates=True)
-
+            asyncio.create_task(auto_delete_worker(app))
             if i == 0:
                 logger.info("🚀 Starting Trending Worker for Main Bot...")
                 asyncio.create_task(trending_worker_loop(app, ADMIN_USER_ID))
