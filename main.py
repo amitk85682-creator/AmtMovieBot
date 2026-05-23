@@ -6225,7 +6225,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
-            url = f"https://api.seekstreaming.com/api/upload/server?key={STREAMWISH_API_KEY}"
+            url = f"https://seekstreaming.com/api/upload/server?key={STREAMWISH_API_KEY}"
             async with session.get(url) as resp:
                 if resp.status != 200:
                     logger.error(f"Streamwish: Upload server API HTTP error: {resp.status}")
