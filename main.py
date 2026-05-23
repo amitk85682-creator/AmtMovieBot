@@ -23,11 +23,9 @@ import aiohttp
 # ✅ Pyrogram MTProto Client (for streaming large files past 20MB Bot API limit)
 try:
     from pyrogram import Client as PyroClient
-    PYROGRAM_AVAILABLE = True
 except ImportError:
-    PYROGRAM_AVAILABLE = False
     PyroClient = None
-    logging.getLogger(__name__).warning("Pyrogram not installed. Streamwish uploads will be disabled.")
+    logging.getLogger(__name__).warning("Pyrogram not installed. SeekStreaming uploads will be disabled.")
 from flask import jsonify
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -397,35 +395,7 @@ FORCE_JOIN_ENABLED = True
 # ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
 STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # ✅ NEW: Backup Channels List
-STREAMWISH_API_KEY = os.environ.get("STREAMWISH_API_KEY", "")  # ✅ NEW: Streamwish Video Hosting API Key
-
-if STREAMWISH_API_KEY:
-    logger.info(f"🕵️♂️ Loaded Streamwish Key: {STREAMWISH_API_KEY[:4]}*** (Length: {len(STREAMWISH_API_KEY)})")
-else:
-    logger.warning("🕵️♂️ Streamwish Key is COMPLETELY EMPTY!")
-
-# ✅ Pyrogram MTProto Config (Required for Streamwish large file uploads)
-API_ID = int(os.environ.get("API_ID", "0"))
-API_HASH = os.environ.get("API_HASH", "")
-MAX_STREAMWISH_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB — Telegram bot MTProto limit
-
-# Pyrogram client instance (started in main(), used by background Streamwish uploads)
-mtproto_client = None
-if PYROGRAM_AVAILABLE and API_ID and API_HASH and TELEGRAM_BOT_TOKEN and STREAMWISH_API_KEY:
-    mtproto_client = PyroClient(
-        "flimfybox_mtproto_stream",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=TELEGRAM_BOT_TOKEN,
-        in_memory=True,   # No session file on disk
-        no_updates=True    # Don't process updates, only use for file streaming
-    )
-    logger.info("✅ Pyrogram MTProto client configured (will start in main()).")
-else:
-    if STREAMWISH_API_KEY and not PYROGRAM_AVAILABLE:
-        logger.warning("⚠️ STREAMWISH_API_KEY set but Pyrogram not installed. Run: pip install pyrogram tgcrypto")
-    elif STREAMWISH_API_KEY and (not API_ID or not API_HASH):
-        logger.warning("⚠️ STREAMWISH_API_KEY set but API_ID/API_HASH missing. Get them from https://my.telegram.org")
+STREAM_BOT_URL = os.environ.get("STREAM_BOT_URL", "")  # ✅ TG-FileStreamBot URL (e.g., https://my-streamer.onrender.com)
 
 # Verified users cache (Taaki baar baar API call na ho)
 verified_users = {}
@@ -3195,23 +3165,18 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 close_db_connection(conn)
 
     # 👇 NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! 👇
-    streamwish_url = None  # ✅ Streamwish URL for Watch Online button
     if url or file_id:
         conn = get_db_connection()
         if conn:
             try:
                 cur = conn.cursor()
                 if file_id:
-                    cur.execute("SELECT extra_info, streamwish_url FROM movie_files WHERE file_id = %s LIMIT 1", (file_id,))
+                    cur.execute("SELECT extra_info FROM movie_files WHERE file_id = %s LIMIT 1", (file_id,))
                 else:
-                    cur.execute("SELECT extra_info, streamwish_url FROM movie_files WHERE url = %s LIMIT 1", (url,))
+                    cur.execute("SELECT extra_info FROM movie_files WHERE url = %s LIMIT 1", (url,))
                 
                 res = cur.fetchone()
                 if res:
-                    # ✅ Extract Streamwish URL (column index 1)
-                    if res[1] and str(res[1]).strip():
-                        streamwish_url = str(res[1]).strip()
-
                     if res[0] and res[0].strip():
                         extra_val = res[0].strip()
                         ext = extra_val.upper()
@@ -3319,11 +3284,28 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # ✅ NEW: 3-Button Inline Keyboard (Watch Online + Fast Download + Join Channel)
         keyboard_buttons = []
-        if streamwish_url:
-            keyboard_buttons.append([InlineKeyboardButton("🍿 Watch Online", url=streamwish_url)])
-        download_link = url if url else streamwish_url
+        
+        # Determine download link
+        download_link = url if url else None
+        
+        # Determine watch online link for TG-FileStreamBot
+        watch_url = None
+        if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url and STREAM_BOT_URL:
+            try:
+                parts = url.strip().rstrip('/').split('/')
+                msg_id = int(parts[-1])
+                watch_url = f"{STREAM_BOT_URL.rstrip('/')}/{msg_id}"
+            except Exception as e:
+                logger.error(f"Failed to generate watch URL: {e}")
+
+        # Add Watch Online button if we have a valid stream link
+        if watch_url:
+            keyboard_buttons.append([InlineKeyboardButton("🍿 Watch Online", url=watch_url)])
+            
+        # Add Fast Download button
         if download_link:
             keyboard_buttons.append([InlineKeyboardButton("⚡ Fast Download", url=download_link)])
+            
         keyboard_buttons.append([InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)])
         join_keyboard = InlineKeyboardMarkup(keyboard_buttons)
 
@@ -6189,222 +6171,40 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 
 # ==============================================================================
 # ==============================================================================
-# 🌐 STREAMWISH INTEGRATION — Pyrogram MTProto Streaming Upload
-# Streams file chunks directly: Telegram (MTProto) → Streamwish (HTTP multipart)
+# Streams file chunks directly: Telegram (MTProto) → SeekStreaming (HTTP multipart)
 # No disk writes. No 20MB limit. Handles files up to 2GB.
 # ==============================================================================
-async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size: int) -> str | None:
+        return None
+
+
     """
-    Upload a file to SeekStreaming using TUS resumable upload protocol.
-    Streams file chunks from Telegram via Pyrogram MTProto directly to SeekStreaming.
-
-    Flow:
-    1. GET /api/v1/video/upload → receive tusUrl + accessToken
-    2. POST to tusUrl to create TUS upload session → receive Location header
-    3. Stream chunks from Telegram via Pyrogram MTProto, PATCH each to TUS endpoint
-    4. Extract file code from TUS Location URL → return watch URL
-
-    Returns: SeekStreaming watch URL (str) on success, None on failure.
-    Bot NEVER crashes — all errors are caught and logged.
-    """
-    import base64
-
-    if not STREAMWISH_API_KEY:
-        logger.warning("SeekStreaming: API key not configured, skipping upload.")
-        return None
-
-    if not mtproto_client or not mtproto_client.is_connected:
-        logger.warning("SeekStreaming: Pyrogram MTProto client not connected, skipping.")
-        return None
-
-    # 2 GB gate — Telegram bot MTProto limit
-    if file_size and file_size > MAX_STREAMWISH_SIZE:
-        logger.info(f"SeekStreaming: File size ({file_size} bytes) exceeds 2GB limit, skipping.")
-        return None
-
-    try:
-        # ── Step 1: Get SeekStreaming TUS URL & Access Token ──
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as session:
-            async with session.get(
-                "https://seekstreaming.com/api/v1/video/upload",
-                headers={"api-token": STREAMWISH_API_KEY}
-            ) as resp:
-                if resp.status != 200:
-                    logger.error(f"SeekStreaming: Upload API HTTP error: {resp.status}")
-                    return None
-                data = await resp.json()
-                logger.info(f"SeekStreaming: API response → {data}")
-
-        tus_url = data.get("tusUrl")
-        access_token = data.get("accessToken")
-
-        if not tus_url or not access_token:
-            logger.error(f"SeekStreaming: Missing tusUrl or accessToken: {data}")
-            return None
-
-        logger.info(f"SeekStreaming: Got TUS endpoint → {tus_url}")
-
-        # ── Step 2: Create TUS Upload Session (POST) ──
-        # Per official OpenAPI docs: "accessToken", "filename", "filetype" must be
-        # passed in the "metadata" header (Upload-Metadata) when POST/PATCH-ing.
-        safe_filename = (file_name or "video.mp4")
-        filetype = "video/mp4"  # Default MIME type
-        if safe_filename.lower().endswith(".mkv"):
-            filetype = "video/x-matroska"
-        elif safe_filename.lower().endswith(".avi"):
-            filetype = "video/x-msvideo"
-
-        # TUS Upload-Metadata: each key-value is "key base64value", comma-separated
-        encoded_filename = base64.b64encode(safe_filename.encode()).decode()
-        encoded_filetype = base64.b64encode(filetype.encode()).decode()
-        encoded_token = base64.b64encode(access_token.encode()).decode()
-
-        upload_metadata = f"accessToken {encoded_token},filename {encoded_filename},filetype {encoded_filetype}"
-        logger.info(f"SeekStreaming: Upload-Metadata → accessToken <len={len(access_token)}>, filename={safe_filename}, filetype={filetype}")
-
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=60)
-        ) as session:
-            async with session.post(
-                tus_url,
-                headers={
-                    "Tus-Resumable": "1.0.0",
-                    "Upload-Length": str(file_size),
-                    "Upload-Metadata": upload_metadata
-                }
-            ) as resp:
-                resp_headers = dict(resp.headers)
-                logger.info(f"SeekStreaming: TUS create HTTP {resp.status}, headers → {resp_headers}")
-
-                if resp.status not in (200, 201):
-                    resp_text = await resp.text()
-                    logger.error(f"SeekStreaming: TUS create failed HTTP {resp.status}: {resp_text[:300]}")
-                    return None
-
-                upload_location = resp.headers.get("Location")
-
-                if not upload_location:
-                    logger.error("SeekStreaming: No Location header in TUS create response.")
-                    return None
-
-        logger.info(f"SeekStreaming: TUS upload location → {upload_location}")
-
-        # ── Step 3: Stream from Telegram via Pyrogram MTProto & PATCH to TUS ──
-        # chunkSize should be 52,428,800 bytes per official docs
-        offset = 0
-        chunk_buffer = bytearray()
-        TUS_CHUNK_SIZE = 52_428_800  # 50 MB as required by SeekStreaming
-
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=600)
-        ) as upload_session:
-            async for chunk in mtproto_client.stream_media(telegram_file_id):
-                chunk_buffer.extend(chunk)
-
-                # Send when buffer reaches TUS_CHUNK_SIZE or more
-                while len(chunk_buffer) >= TUS_CHUNK_SIZE:
-                    to_send = bytes(chunk_buffer[:TUS_CHUNK_SIZE])
-                    del chunk_buffer[:TUS_CHUNK_SIZE]
-
-                    async with upload_session.patch(
-                        upload_location,
-                        headers={
-                            "Tus-Resumable": "1.0.0",
-                            "Upload-Offset": str(offset),
-                            "Content-Type": "application/offset+octet-stream",
-                            "Content-Length": str(len(to_send)),
-                            "Upload-Metadata": upload_metadata
-                        },
-                        data=to_send
-                    ) as patch_resp:
-                        if patch_resp.status not in (200, 204):
-                            resp_text = await patch_resp.text()
-                            logger.error(f"SeekStreaming: TUS PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
-                            return None
-
-                        server_offset = patch_resp.headers.get("Upload-Offset")
-                        offset = int(server_offset) if server_offset else offset + len(to_send)
-
-                    # Progress logging every chunk
-                    progress = (offset / file_size * 100) if file_size else 0
-                    logger.info(f"SeekStreaming: Upload progress {progress:.1f}% ({offset}/{file_size} bytes)")
-
-            # Send remaining bytes in buffer
-            if chunk_buffer:
-                to_send = bytes(chunk_buffer)
-                async with upload_session.patch(
-                    upload_location,
-                    headers={
-                        "Tus-Resumable": "1.0.0",
-                        "Upload-Offset": str(offset),
-                        "Content-Type": "application/offset+octet-stream",
-                        "Content-Length": str(len(to_send)),
-                        "Upload-Metadata": upload_metadata
-                    },
-                    data=to_send
-                ) as patch_resp:
-                    if patch_resp.status not in (200, 204):
-                        resp_text = await patch_resp.text()
-                        logger.error(f"SeekStreaming: TUS final PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
-                        return None
-
-                    server_offset = patch_resp.headers.get("Upload-Offset")
-                    offset = int(server_offset) if server_offset else offset + len(to_send)
-
-
-
-        logger.info(f"SeekStreaming: TUS upload complete. Total bytes sent: {offset}")
-
-        # ── Step 4: Extract file code from TUS upload location URL ──
-        # Location URL is like: https://srqz.up-seekstreaming.com/upload/<file_code>
-        file_code = upload_location.rstrip("/").split("/")[-1]
-
-        if file_code and file_code != "upload":
-            watch_url = f"https://seekstreaming.com/{file_code}"
-            logger.info(f"✅ SeekStreaming: Upload complete → {watch_url}")
-            return watch_url
-
-        logger.warning(f"SeekStreaming: Could not extract file code from location: {upload_location}")
-        return None
-
-    except Exception as e:
-        logger.error(f"SeekStreaming upload exception (non-fatal): {e}")
-        return None
-
-
-async def _streamwish_background_upload(telegram_file_id: str, file_name: str, file_size: int, movie_id: int, quality_label: str):
-    """
-    Background task: Stream file from Telegram → Streamwish, then update DB.
+    Background task: Stream file from Telegram → SeekStreaming, then update DB.
     Runs via asyncio.create_task() — admin NEVER waits for this.
     """
     try:
-        sw_url = await upload_to_streamwish(telegram_file_id, file_name, file_size)
         if not sw_url:
             return
 
         conn = get_db_connection()
         if not conn:
-            logger.error("Streamwish BG: Could not get DB connection for URL update.")
+            logger.error("SeekStreaming BG: Could not get DB connection for URL update.")
             return
         try:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE movie_files SET streamwish_url = %s WHERE movie_id = %s AND quality = %s",
                 (sw_url, movie_id, quality_label)
             )
             conn.commit()
             cur.close()
-            logger.info(f"✅ Streamwish URL saved in DB: {sw_url} (movie_id={movie_id}, quality={quality_label})")
+            logger.info(f"✅ SeekStreaming URL saved in DB: {sw_url} (movie_id={movie_id}, quality={quality_label})")
         except Exception as db_err:
-            logger.error(f"Streamwish BG DB update error: {db_err}")
+            logger.error(f"SeekStreaming BG DB update error: {db_err}")
             if conn:
                 conn.rollback()
         finally:
             close_db_connection(conn)
     except Exception as e:
-        logger.error(f"Streamwish background upload error (non-fatal): {e}")
+        logger.error(f"SeekStreaming background upload error (non-fatal): {e}")
 
 
 # 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
@@ -6485,39 +6285,6 @@ async def _pm_save_file(message, context) -> str | None:
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
 
-        # ✅ STREAMWISH: Trigger background upload (zero blocking time for admin)
-        logger.info(f"Streamwish Debug: STREAMWISH_API_KEY={bool(STREAMWISH_API_KEY)}, mtproto_client={bool(mtproto_client)}")
-        if not STREAMWISH_API_KEY:
-            logger.warning("Streamwish: Skipped because STREAMWISH_API_KEY is not set.")
-        elif not mtproto_client:
-            logger.warning("Streamwish: Skipped because mtproto_client is None (Check API_ID/API_HASH).")
-        else:
-            tg_file_id = None
-            sw_file_size = 0
-            sw_file_name = file_name  # Already extracted above (line 6322)
-
-            if message.video:
-                tg_file_id = message.video.file_id
-                sw_file_size = message.video.file_size or 0
-                logger.info(f"Streamwish Debug: File is video, size={sw_file_size}, file_id={tg_file_id[:10]}...")
-            elif message.document:
-                tg_file_id = message.document.file_id
-                sw_file_size = message.document.file_size or 0
-                logger.info(f"Streamwish Debug: File is document, size={sw_file_size}, file_id={tg_file_id[:10]}...")
-            else:
-                logger.warning("Streamwish Debug: File is neither video nor document!")
-
-            if tg_file_id and sw_file_size <= MAX_STREAMWISH_SIZE:
-                logger.info("Streamwish Debug: Launching background upload task...")
-                asyncio.create_task(
-                    _streamwish_background_upload(
-                        tg_file_id, sw_file_name, sw_file_size,
-                        BATCH_SESSION['movie_id'], label
-                    )
-                )
-            elif tg_file_id and sw_file_size > MAX_STREAMWISH_SIZE:
-                logger.warning(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
-    except Exception as e:
         logger.error(f"_pm_save_file DB error: {e}", exc_info=True)
         if conn: conn.rollback()
         return None
@@ -6806,34 +6573,6 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 BATCH_SESSION['file_count'] += 1
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
                 await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}", parse_mode='Markdown')
-
-                # ✅ STREAMWISH: Trigger background upload (zero blocking time for admin)
-                if STREAMWISH_API_KEY and mtproto_client:
-                    tg_file_id = None
-                    sw_file_size = 0
-                    sw_file_name = file_name
-
-                    if message.video:
-                        tg_file_id = message.video.file_id
-                        sw_file_size = message.video.file_size or 0
-                    elif message.document:
-                        tg_file_id = message.document.file_id
-                        sw_file_size = message.document.file_size or 0
-
-                    if tg_file_id and sw_file_size <= MAX_STREAMWISH_SIZE:
-                        logger.info(f"Streamwish: Launching background upload for '{sw_file_name}' ({sw_file_size} bytes)")
-                        asyncio.create_task(
-                            _streamwish_background_upload(
-                                tg_file_id, sw_file_name, sw_file_size,
-                                BATCH_SESSION['movie_id'], label
-                            )
-                        )
-                    elif tg_file_id and sw_file_size > MAX_STREAMWISH_SIZE:
-                        logger.warning(f"Streamwish: Skipped {sw_file_name} ({sw_file_size} bytes > 2GB limit)")
-                elif not STREAMWISH_API_KEY:
-                    logger.warning("Streamwish: Skipped because STREAMWISH_API_KEY is not set.")
-                elif not mtproto_client:
-                    logger.warning("Streamwish: Skipped because mtproto_client is None (Check API_ID/API_HASH).")
 
             except Exception as e:
                 await upload_status.edit_text(f"❌ DB Save Failed: {e}")
@@ -11979,15 +11718,6 @@ async def main():
             await app.start()
             await app.updater.start_polling(drop_pending_updates=True)
 
-            # ✅ Start Pyrogram MTProto client (only once, for first bot)
-            if i == 0 and mtproto_client and not mtproto_client.is_connected:
-                try:
-                    await mtproto_client.start()
-                    logger.info("✅ Pyrogram MTProto client started (for Streamwish streaming).")
-                except Exception as pyro_err:
-                    logger.error(f"⚠️ Pyrogram MTProto client failed to start: {pyro_err}")
-                    logger.error("   Streamwish uploads will be disabled this session.")
-            asyncio.create_task(auto_delete_worker(app))
             if i == 0:
                 logger.info("🚀 Starting Trending Worker for Main Bot...")
                 asyncio.create_task(trending_worker_loop(app, ADMIN_USER_ID))
@@ -12013,14 +11743,6 @@ async def main():
     await stop_signal.wait()
 
     # Cleanup
-    # ✅ Stop Pyrogram MTProto client first
-    if mtproto_client and mtproto_client.is_connected:
-        try:
-            await mtproto_client.stop()
-            logger.info("🛑 Pyrogram MTProto client stopped.")
-        except Exception as pyro_err:
-            logger.error(f"Pyrogram cleanup error: {pyro_err}")
-
     for app in apps:
         try:
             await app.stop()
