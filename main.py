@@ -6258,9 +6258,15 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                 headers={
                     "Tus-Resumable": "1.0.0",
                     "Upload-Length": str(file_size),
-                    "Upload-Metadata": f"filename {encoded_filename}",
+                    "Upload-Metadata": f"filename {encoded_filename}, token {base64.b64encode(access_token.encode()).decode()}",
                     "Access-Token": access_token,
-                    "api-token": access_token
+                    "api-token": access_token,
+                    "access_token": access_token,
+                    "accesstoken": access_token,
+                    "X-Access-Token": access_token,
+                    "X-Auth-Token": access_token,
+                    "token": access_token,
+                    "Authorization": access_token
                 }
             ) as resp:
                 resp_headers = dict(resp.headers)
@@ -6295,7 +6301,13 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                         "Content-Type": "application/offset+octet-stream",
                         "Content-Length": str(chunk_size),
                         "Access-Token": access_token,
-                        "api-token": access_token
+                        "api-token": access_token,
+                        "access_token": access_token,
+                        "accesstoken": access_token,
+                        "X-Access-Token": access_token,
+                        "X-Auth-Token": access_token,
+                        "token": access_token,
+                        "Authorization": access_token
                     },
                     data=chunk
                 ) as patch_resp:
