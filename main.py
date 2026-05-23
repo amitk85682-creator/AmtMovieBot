@@ -6220,27 +6220,29 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         return None
 
     try:
-        # ── Step 1: Get Streamwish Upload Server URL ──
+        # ── Step 1: Get SeekStreaming Upload Server URL ──
         upload_url = None
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
-            url = f"https://seekstreaming.com/api/upload/server?key={STREAMWISH_API_KEY}"
-            async with session.get(url) as resp:
+            async with session.get(
+                "https://seekstreaming.com/api/v1/video/upload",
+                headers={"Authorization": f"Bearer {STREAMWISH_API_KEY}"}
+            ) as resp:
                 if resp.status != 200:
-                    logger.error(f"Streamwish: Upload server API HTTP error: {resp.status}")
+                    logger.error(f"SeekStreaming: Upload server API HTTP error: {resp.status}")
                     return None
                 data = await resp.json()
                 if data.get("status") != 200:
-                    logger.error(f"Streamwish: Upload server error: {data.get('msg', 'Unknown')}")
+                    logger.error(f"SeekStreaming: Upload server error: {data.get('msg', 'Unknown')}")
                     return None
                 upload_url = data.get("result")
 
         if not upload_url:
-            logger.error("Streamwish: No upload server URL received.")
+            logger.error("SeekStreaming: No upload server URL received.")
             return None
 
-        logger.info(f"Streamwish: Got upload server → {upload_url}")
+        logger.info(f"SeekStreaming: Got upload server → {upload_url}")
 
         # ── Step 2: Stream from Telegram via Pyrogram MTProto ──
         # stream_media() returns an async generator yielding ~1MB chunks
