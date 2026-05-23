@@ -6259,7 +6259,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                     "Tus-Resumable": "1.0.0",
                     "Upload-Length": str(file_size),
                     "Upload-Metadata": f"filename {encoded_filename}",
-                    "Authorization": f"Bearer {access_token}"
+                    "Authorization": access_token
                 }
             ) as resp:
                 if resp.status not in (200, 201):
@@ -6291,7 +6291,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                         "Upload-Offset": str(offset),
                         "Content-Type": "application/offset+octet-stream",
                         "Content-Length": str(chunk_size),
-                        "Authorization": f"Bearer {access_token}"
+                        "Authorization": access_token
                     },
                     data=chunk
                 ) as patch_resp:
