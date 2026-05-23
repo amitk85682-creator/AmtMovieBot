@@ -6250,25 +6250,30 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         safe_filename = (file_name or "video.mp4")
         encoded_filename = base64.b64encode(safe_filename.encode()).decode()
 
+        # SeekStreaming's TUS server expects the access token in the URL
+        tus_create_url = f"{tus_url.rstrip('/')}/?access_token={access_token}"
+        logger.info(f"SeekStreaming: TUS create URL → {tus_create_url[:80]}...")
+
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=60)
         ) as session:
             async with session.post(
-                tus_url,
+                tus_create_url,
                 headers={
                     "Tus-Resumable": "1.0.0",
                     "Upload-Length": str(file_size),
-                    "Upload-Metadata": f"filename {encoded_filename}",
-                    "Authorization": access_token
+                    "Upload-Metadata": f"filename {encoded_filename}"
                 }
             ) as resp:
+                resp_headers = dict(resp.headers)
+                logger.info(f"SeekStreaming: TUS create HTTP {resp.status}, headers → {resp_headers}")
+
                 if resp.status not in (200, 201):
                     resp_text = await resp.text()
                     logger.error(f"SeekStreaming: TUS create failed HTTP {resp.status}: {resp_text[:300]}")
                     return None
 
                 upload_location = resp.headers.get("Location")
-                logger.info(f"SeekStreaming: TUS create response headers → {dict(resp.headers)}")
 
                 if not upload_location:
                     logger.error("SeekStreaming: No Location header in TUS create response.")
@@ -6290,8 +6295,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                         "Tus-Resumable": "1.0.0",
                         "Upload-Offset": str(offset),
                         "Content-Type": "application/offset+octet-stream",
-                        "Content-Length": str(chunk_size),
-                        "Authorization": access_token
+                        "Content-Length": str(chunk_size)
                     },
                     data=chunk
                 ) as patch_resp:
