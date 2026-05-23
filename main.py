@@ -3285,18 +3285,20 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         # ✅ NEW: 3-Button Inline Keyboard (Watch Online + Fast Download + Join Channel)
         keyboard_buttons = []
         
-        # Determine download link
-        download_link = url if url else None
-        
         # Determine watch online link for TG-FileStreamBot
         watch_url = None
-        if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url and STREAM_BOT_URL:
+        if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
             try:
                 parts = url.strip().rstrip('/').split('/')
                 msg_id = int(parts[-1])
-                watch_url = f"{STREAM_BOT_URL.rstrip('/')}/{msg_id}"
+                # Agar user ne ENV me STREAM_BOT_URL nahi daala, toh ek dummy host dalenge taaki button gayab na ho
+                base_stream_url = STREAM_BOT_URL.rstrip('/') if STREAM_BOT_URL else "https://your-streamer-bot.onrender.com"
+                watch_url = f"{base_stream_url}/{msg_id}"
             except Exception as e:
                 logger.error(f"Failed to generate watch URL: {e}")
+
+        # User ki demand: Fast download me bhi wahi stream link lagao
+        download_link = watch_url if watch_url else url
 
         # Add Watch Online button if we have a valid stream link
         if watch_url:
