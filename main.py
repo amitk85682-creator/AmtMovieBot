@@ -6247,8 +6247,22 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         logger.info(f"SeekStreaming: Got TUS endpoint → {tus_url}")
 
         # ── Step 2: Create TUS Upload Session (POST) ──
+        # Per official OpenAPI docs: "accessToken", "filename", "filetype" must be
+        # passed in the "metadata" header (Upload-Metadata) when POST/PATCH-ing.
         safe_filename = (file_name or "video.mp4")
+        filetype = "video/mp4"  # Default MIME type
+        if safe_filename.lower().endswith(".mkv"):
+            filetype = "video/x-matroska"
+        elif safe_filename.lower().endswith(".avi"):
+            filetype = "video/x-msvideo"
+
+        # TUS Upload-Metadata: each key-value is "key base64value", comma-separated
         encoded_filename = base64.b64encode(safe_filename.encode()).decode()
+        encoded_filetype = base64.b64encode(filetype.encode()).decode()
+        encoded_token = base64.b64encode(access_token.encode()).decode()
+
+        upload_metadata = f"accessToken {encoded_token},filename {encoded_filename},filetype {encoded_filetype}"
+        logger.info(f"SeekStreaming: Upload-Metadata → accessToken <len={len(access_token)}>, filename={safe_filename}, filetype={filetype}")
 
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=60)
@@ -6258,15 +6272,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                 headers={
                     "Tus-Resumable": "1.0.0",
                     "Upload-Length": str(file_size),
-                    "Upload-Metadata": f"filename {encoded_filename}, token {base64.b64encode(access_token.encode()).decode()}",
-                    "Access-Token": access_token,
-                    "api-token": access_token,
-                    "access_token": access_token,
-                    "accesstoken": access_token,
-                    "X-Access-Token": access_token,
-                    "X-Auth-Token": access_token,
-                    "token": access_token,
-                    "Authorization": access_token
+                    "Upload-Metadata": upload_metadata
                 }
             ) as resp:
                 resp_headers = dict(resp.headers)
@@ -6286,44 +6292,68 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         logger.info(f"SeekStreaming: TUS upload location → {upload_location}")
 
         # ── Step 3: Stream from Telegram via Pyrogram MTProto & PATCH to TUS ──
+        # chunkSize should be 52,428,800 bytes per official docs
         offset = 0
+        chunk_buffer = bytearray()
+        TUS_CHUNK_SIZE = 52_428_800  # 50 MB as required by SeekStreaming
+
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=600)
         ) as upload_session:
             async for chunk in mtproto_client.stream_media(telegram_file_id):
-                chunk_size = len(chunk)
+                chunk_buffer.extend(chunk)
 
+                # Send when buffer reaches TUS_CHUNK_SIZE or more
+                while len(chunk_buffer) >= TUS_CHUNK_SIZE:
+                    to_send = bytes(chunk_buffer[:TUS_CHUNK_SIZE])
+                    del chunk_buffer[:TUS_CHUNK_SIZE]
+
+                    async with upload_session.patch(
+                        upload_location,
+                        headers={
+                            "Tus-Resumable": "1.0.0",
+                            "Upload-Offset": str(offset),
+                            "Content-Type": "application/offset+octet-stream",
+                            "Content-Length": str(len(to_send)),
+                            "Upload-Metadata": upload_metadata
+                        },
+                        data=to_send
+                    ) as patch_resp:
+                        if patch_resp.status not in (200, 204):
+                            resp_text = await patch_resp.text()
+                            logger.error(f"SeekStreaming: TUS PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
+                            return None
+
+                        server_offset = patch_resp.headers.get("Upload-Offset")
+                        offset = int(server_offset) if server_offset else offset + len(to_send)
+
+                    # Progress logging every chunk
+                    progress = (offset / file_size * 100) if file_size else 0
+                    logger.info(f"SeekStreaming: Upload progress {progress:.1f}% ({offset}/{file_size} bytes)")
+
+            # Send remaining bytes in buffer
+            if chunk_buffer:
+                to_send = bytes(chunk_buffer)
                 async with upload_session.patch(
                     upload_location,
                     headers={
                         "Tus-Resumable": "1.0.0",
                         "Upload-Offset": str(offset),
                         "Content-Type": "application/offset+octet-stream",
-                        "Content-Length": str(chunk_size),
-                        "Access-Token": access_token,
-                        "api-token": access_token,
-                        "access_token": access_token,
-                        "accesstoken": access_token,
-                        "X-Access-Token": access_token,
-                        "X-Auth-Token": access_token,
-                        "token": access_token,
-                        "Authorization": access_token
+                        "Content-Length": str(len(to_send)),
+                        "Upload-Metadata": upload_metadata
                     },
-                    data=chunk
+                    data=to_send
                 ) as patch_resp:
                     if patch_resp.status not in (200, 204):
                         resp_text = await patch_resp.text()
-                        logger.error(f"SeekStreaming: TUS PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
+                        logger.error(f"SeekStreaming: TUS final PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
                         return None
 
-                    # Update offset from server response (more reliable than manual count)
                     server_offset = patch_resp.headers.get("Upload-Offset")
-                    offset = int(server_offset) if server_offset else offset + chunk_size
+                    offset = int(server_offset) if server_offset else offset + len(to_send)
 
-                # Progress logging every ~50MB
-                if offset % (50 * 1024 * 1024) < chunk_size:
-                    progress = (offset / file_size * 100) if file_size else 0
-                    logger.info(f"SeekStreaming: Upload progress {progress:.1f}% ({offset}/{file_size} bytes)")
+
 
         logger.info(f"SeekStreaming: TUS upload complete. Total bytes sent: {offset}")
 
