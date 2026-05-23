@@ -4357,7 +4357,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Hello <b>{first_name}!</b> आपकी Requested Movie अब उपलब्ध है।\n\n"
                 f"🎬 File: <b>{movie_title}</b>\n\n"
                 f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
             btn_status = "✅ User Notified: Added"
         else:
@@ -4365,7 +4365,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"😔 <b>Update!</b> 👋\n\n"
                 f"Hello <b>{first_name}!</b> आपकी Requested File (<b>{movie_title}</b>) अभी हमें कहीं नहीं मिल पाई है।\n\n"
                 f"जैसे ही यह अवेलेबल होगी, हम आपको जरूर बताएंगे।\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
             btn_status = "❌ User Notified: Not Found"
 
@@ -6220,10 +6220,8 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
-            async with session.get(
-                "https://api.streamwish.com/api/upload/server",
-                params={"key": STREAMWISH_API_KEY}
-            ) as resp:
+            url = f"https://api.streamwish.com/api/upload/server?key={STREAMWISH_API_KEY}"
+            async with session.get(url) as resp:
                 if resp.status != 200:
                     logger.error(f"Streamwish: Upload server API HTTP error: {resp.status}")
                     return None
@@ -6299,7 +6297,6 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
     except Exception as e:
         logger.error(f"Streamwish upload exception (non-fatal): {e}")
         return None
-
 
 async def _streamwish_background_upload(telegram_file_id: str, file_name: str, file_size: int, movie_id: int, quality_label: str):
     """
@@ -8388,7 +8385,7 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Hello <b>{first_name}!</b> आपकी Requested File अब उपलब्ध है।\n\n"
             f"🎬 File: <b>{movie_name}</b>\n\n"
             f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
         )
 
         # Multi-bot send function call karo
@@ -11442,7 +11439,7 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
 
 🎬 Movie: <b>{movie_title}</b>
 
-📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@owneramit</b> / <b>@Ownermahi</b> को मिली गई है।
+📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@Ownermahi</b> / <b>@Ownermahi</b> को मिली गई है।
 ⏳ जैसे ही मूवी उपलब्ध होगी, वो खुद आपको यहाँ सूचित (Notify) कर देंगे।
 
 <i>हमसे जुड़े रहने के लिए धन्यवाद! 🙏</i>
