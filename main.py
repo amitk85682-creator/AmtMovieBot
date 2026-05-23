@@ -6233,8 +6233,9 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                     logger.error(f"SeekStreaming: Upload server API HTTP error: {resp.status}")
                     return None
                 data = await resp.json()
+                logger.info(f"SeekStreaming: Full API response → {data}")
                 if data.get("status") != 200:
-                    logger.error(f"SeekStreaming: Upload server error: {data.get('msg', 'Unknown')}")
+                    logger.error(f"SeekStreaming: Upload server error: {data}")
                     return None
                 upload_url = data.get("result")
 
