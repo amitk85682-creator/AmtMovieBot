@@ -6227,7 +6227,7 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
         ) as session:
             async with session.get(
                 "https://seekstreaming.com/api/v1/video/upload",
-                headers={"Authorization": f"Bearer {STREAMWISH_API_KEY}"}
+                headers={"api-token": STREAMWISH_API_KEY}
             ) as resp:
                 if resp.status != 200:
                     logger.error(f"SeekStreaming: Upload server API HTTP error: {resp.status}")
