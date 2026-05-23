@@ -6195,33 +6195,35 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 # ==============================================================================
 async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size: int) -> str | None:
     """
-    Upload a file to Streamwish by streaming it from Telegram via Pyrogram MTProto.
+    Upload a file to SeekStreaming using TUS resumable upload protocol.
+    Streams file chunks from Telegram via Pyrogram MTProto directly to SeekStreaming.
 
     Flow:
-    1. Get Streamwish upload server URL
-    2. Use Pyrogram stream_media() to get async chunk generator from Telegram
-    3. Pipe chunks directly to Streamwish via aiohttp multipart POST
-    4. Return the watch URL
+    1. GET /api/v1/video/upload → receive tusUrl + accessToken
+    2. POST to tusUrl to create TUS upload session → receive Location header
+    3. Stream chunks from Telegram via Pyrogram MTProto, PATCH each to TUS endpoint
+    4. Extract file code from TUS Location URL → return watch URL
 
-    Returns: Streamwish watch URL (str) on success, None on failure.
+    Returns: SeekStreaming watch URL (str) on success, None on failure.
     Bot NEVER crashes — all errors are caught and logged.
     """
+    import base64
+
     if not STREAMWISH_API_KEY:
-        logger.warning("Streamwish: API key not configured, skipping upload.")
+        logger.warning("SeekStreaming: API key not configured, skipping upload.")
         return None
 
     if not mtproto_client or not mtproto_client.is_connected:
-        logger.warning("Streamwish: Pyrogram MTProto client not connected, skipping.")
+        logger.warning("SeekStreaming: Pyrogram MTProto client not connected, skipping.")
         return None
 
     # 2 GB gate — Telegram bot MTProto limit
     if file_size and file_size > MAX_STREAMWISH_SIZE:
-        logger.info(f"Streamwish: File size ({file_size} bytes) exceeds 2GB limit, skipping.")
+        logger.info(f"SeekStreaming: File size ({file_size} bytes) exceeds 2GB limit, skipping.")
         return None
 
     try:
-        # ── Step 1: Get SeekStreaming Upload Server URL ──
-        upload_url = None
+        # ── Step 1: Get SeekStreaming TUS URL & Access Token ──
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
@@ -6230,80 +6232,99 @@ async def upload_to_streamwish(telegram_file_id: str, file_name: str, file_size:
                 headers={"api-token": STREAMWISH_API_KEY}
             ) as resp:
                 if resp.status != 200:
-                    logger.error(f"SeekStreaming: Upload server API HTTP error: {resp.status}")
+                    logger.error(f"SeekStreaming: Upload API HTTP error: {resp.status}")
                     return None
                 data = await resp.json()
-                logger.info(f"SeekStreaming: Full API response → {data}")
-                if data.get("status") != 200:
-                    logger.error(f"SeekStreaming: Upload server error: {data}")
-                    return None
-                upload_url = data.get("result")
+                logger.info(f"SeekStreaming: API response → {data}")
 
-        if not upload_url:
-            logger.error("SeekStreaming: No upload server URL received.")
+        tus_url = data.get("tusUrl")
+        access_token = data.get("accessToken")
+
+        if not tus_url or not access_token:
+            logger.error(f"SeekStreaming: Missing tusUrl or accessToken: {data}")
             return None
 
-        logger.info(f"SeekStreaming: Got upload server → {upload_url}")
+        logger.info(f"SeekStreaming: Got TUS endpoint → {tus_url}")
 
-        # ── Step 2: Stream from Telegram via Pyrogram MTProto ──
-        # stream_media() returns an async generator yielding ~1MB chunks
-        # These chunks are piped directly to Streamwish — zero disk I/O
-        async def telegram_chunk_generator():
-            """Async generator: yields file bytes from Telegram MTProto servers."""
-            try:
-                async for chunk in mtproto_client.stream_media(telegram_file_id):
-                    yield chunk
-            except Exception as stream_err:
-                logger.error(f"Streamwish: Pyrogram stream broke: {stream_err}")
-                raise
+        # ── Step 2: Create TUS Upload Session (POST) ──
+        safe_filename = (file_name or "video.mp4")
+        encoded_filename = base64.b64encode(safe_filename.encode()).decode()
 
-        # ── Step 3: Upload to Streamwish via multipart/form-data POST ──
-        # Using aiohttp with async generator — Chunked Transfer Encoding
-        # No Content-Length needed; aiohttp handles chunked encoding automatically
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=60)
+        ) as session:
+            async with session.post(
+                tus_url,
+                headers={
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Length": str(file_size),
+                    "Upload-Metadata": f"filename {encoded_filename}",
+                    "Authorization": f"Bearer {access_token}"
+                }
+            ) as resp:
+                if resp.status not in (200, 201):
+                    resp_text = await resp.text()
+                    logger.error(f"SeekStreaming: TUS create failed HTTP {resp.status}: {resp_text[:300]}")
+                    return None
+
+                upload_location = resp.headers.get("Location")
+                logger.info(f"SeekStreaming: TUS create response headers → {dict(resp.headers)}")
+
+                if not upload_location:
+                    logger.error("SeekStreaming: No Location header in TUS create response.")
+                    return None
+
+        logger.info(f"SeekStreaming: TUS upload location → {upload_location}")
+
+        # ── Step 3: Stream from Telegram via Pyrogram MTProto & PATCH to TUS ──
+        offset = 0
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=None, sock_connect=60, sock_read=600)
         ) as upload_session:
-            form_data = aiohttp.FormData()
-            form_data.add_field('key', STREAMWISH_API_KEY)
-            form_data.add_field(
-                'file',
-                telegram_chunk_generator(),
-                filename=file_name or 'video.mp4',
-                content_type='application/octet-stream'
-            )
+            async for chunk in mtproto_client.stream_media(telegram_file_id):
+                chunk_size = len(chunk)
 
-            logger.info(f"Streamwish: Starting streaming upload ({file_size} bytes)...")
+                async with upload_session.patch(
+                    upload_location,
+                    headers={
+                        "Tus-Resumable": "1.0.0",
+                        "Upload-Offset": str(offset),
+                        "Content-Type": "application/offset+octet-stream",
+                        "Content-Length": str(chunk_size),
+                        "Authorization": f"Bearer {access_token}"
+                    },
+                    data=chunk
+                ) as patch_resp:
+                    if patch_resp.status not in (200, 204):
+                        resp_text = await patch_resp.text()
+                        logger.error(f"SeekStreaming: TUS PATCH failed at offset {offset}: HTTP {patch_resp.status} → {resp_text[:200]}")
+                        return None
 
-            async with upload_session.post(upload_url, data=form_data) as upload_resp:
-                if upload_resp.status != 200:
-                    resp_text = await upload_resp.text()
-                    logger.error(f"Streamwish: Upload HTTP {upload_resp.status}: {resp_text[:200]}")
-                    return None
+                    # Update offset from server response (more reliable than manual count)
+                    server_offset = patch_resp.headers.get("Upload-Offset")
+                    offset = int(server_offset) if server_offset else offset + chunk_size
 
-                result = await upload_resp.json()
+                # Progress logging every ~50MB
+                if offset % (50 * 1024 * 1024) < chunk_size:
+                    progress = (offset / file_size * 100) if file_size else 0
+                    logger.info(f"SeekStreaming: Upload progress {progress:.1f}% ({offset}/{file_size} bytes)")
 
-                if result.get("status") != 200:
-                    logger.error(f"Streamwish: Upload rejected: {result}")
-                    return None
+        logger.info(f"SeekStreaming: TUS upload complete. Total bytes sent: {offset}")
 
-                # ── Step 4: Extract filecode from response ──
-                files_list = result.get("result", [])
-                file_code = None
-                if isinstance(files_list, list) and files_list:
-                    file_code = files_list[0].get("filecode")
-                elif isinstance(files_list, dict):
-                    file_code = files_list.get("filecode")
+        # ── Step 4: Extract file code from TUS upload location URL ──
+        # Location URL is like: https://srqz.up-seekstreaming.com/upload/<file_code>
+        file_code = upload_location.rstrip("/").split("/")[-1]
 
-                if file_code:
-                    watch_url = f"https://seekstreaming.com/{file_code}"
-                    logger.info(f"✅ Streamwish: Upload complete → {watch_url}")
-                    return watch_url
+        if file_code and file_code != "upload":
+            watch_url = f"https://seekstreaming.com/{file_code}"
+            logger.info(f"✅ SeekStreaming: Upload complete → {watch_url}")
+            return watch_url
 
-                logger.error(f"Streamwish: No filecode in response: {result}")
-                return None
+        logger.warning(f"SeekStreaming: Could not extract file code from location: {upload_location}")
+        return None
 
     except Exception as e:
-        logger.error(f"Streamwish upload exception (non-fatal): {e}")
+        logger.error(f"SeekStreaming upload exception (non-fatal): {e}")
         return None
 
 
