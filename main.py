@@ -10576,7 +10576,7 @@ def serve_mini_app():
         }
         .dp-poster-float {
             position: absolute;
-            bottom: -80px;
+            bottom: -40px;
             left: 28px;
             z-index: 2015;
             width: 140px;
@@ -10594,7 +10594,7 @@ def serve_mini_app():
         }
         .dp-info {
             padding: 28px;
-            margin-top: 40px; /* Ise thoda kam kar dein */
+            margin-top: 10px;
             position: relative;
             z-index: 2005;
         }
