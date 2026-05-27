@@ -2648,7 +2648,7 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
                     warning_msg = await context.bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=int(DUMP_CHANNEL_ID),
-                        message_id=1773
+                        message_id=3383 # ✅ यहाँ 3383 अपडेट कर दिया गया है[cite: 3]
                     )
                 except Exception:
                     warning_msg = None
@@ -3256,7 +3256,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 warning_msg = await context.bot.copy_message(
                     chat_id=chat_id,
                     from_chat_id=-1003893346701,
-                    message_id=1773
+                    message_id=3383
                 )
             except Exception as e:
                 logger.error(f"Warning file send failed: {e}")
@@ -3794,7 +3794,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await context.bot.copy_message(
             chat_id=chat_id,
             from_chat_id=int(DUMP_CHANNEL_ID),
-            message_id=6057, # Tumhari GIF ki Message ID
+            message_id=62, # Tumhari GIF ki Message ID
             caption=caption_text,
             parse_mode='HTML',
             reply_markup=inline_buttons
@@ -4598,7 +4598,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warning_msg = await context.bot.copy_message(
                 chat_id=chat_id,
                 from_chat_id=-1003893346701, # Apka Channel ID
-                message_id=1773              # Warning File Message ID
+                message_id=3383              # Warning File Message ID
             )
             track_message_for_deletion(context, chat_id, warning_msg.message_id, 60)
         except Exception as e:
@@ -5429,6 +5429,177 @@ def get_storage_channels():
     channels_str = os.environ.get('STORAGE_CHANNELS', '')
     return [int(c.strip()) for c in channels_str.split(',') if c.strip()]
 
+# ==================== 🔄 THEATER PRINT AUTO-UPGRADE SYSTEM ====================
+
+# 4-Level Hierarchy: Higher level aane par lower level auto-delete ho jayega
+_SOURCE_LEVELS = {
+    # Level 1 — Camera Prints (सबसे घटिया)
+    1: ['cam', 'camrip', 'hdcam', 'hd-cam', 'hqcam', 'hq-cam',
+        'telecine', 'tc', 'telesync', 'ts'],
+    # Level 2 — Theater Prints with Better Audio
+    2: ['hdts', 'hd-ts', 'predvd', 'pre-dvd', 'dvdscr', 'dvdscreener',
+        'scr', 'screener', 'line', 'line audio', 'hdtc', 'hd-tc', 'hq-hdtc'],
+    # Level 3 — Good Digital but Compressed/TV
+    3: ['hdrip', 'webrip', 'web-rip', 'hc-webrip', 'hdtv'],
+    # Level 4 — Ultimate OTT / Disc Quality
+    4: ['web-dl', 'webdl', 'bluray', 'blu-ray', 'bdrip', 'brrip',
+        'ds4k', 'remux'],
+}
+
+# Reverse lookup: keyword → level (for fast detection)
+_KEYWORD_TO_LEVEL = {}
+for _lvl, _keywords in _SOURCE_LEVELS.items():
+    for _kw in _keywords:
+        _KEYWORD_TO_LEVEL[_kw] = _lvl
+
+
+def get_source_level(text):
+    """
+    File name ya quality label se source level detect karta hai.
+    Level 1 = CamRip (सबसे घटिया)
+    Level 2 = HDTS/PreDVD (थोड़ा अच्छा theater print)
+    Level 3 = HDRip/WEBRip (Good digital, compressed)
+    Level 4 = WEB-DL/BluRay (Ultimate OTT/Disc)
+    Returns: 0 (unknown), 1, 2, 3, or 4
+    """
+    if not text:
+        return 0
+    text_lower = text.lower()
+
+    # Longer keywords pehle check karo (e.g., 'web-dl' before 'web')
+    # Sorted by length descending for greedy matching
+    for kw in sorted(_KEYWORD_TO_LEVEL.keys(), key=len, reverse=True):
+        # Word boundary check using regex for accuracy
+        if re.search(r'(?:^|[\s._\-\[\(])' + re.escape(kw) + r'(?:$|[\s._\-\]\)])', text_lower):
+            return _KEYWORD_TO_LEVEL[kw]
+
+    return 0  # Unknown source
+
+
+def get_resolution(text):
+    """
+    File name ya quality label se resolution extract karta hai.
+    Returns: '2160p', '1080p', '720p', '576p', '480p', '360p', ya 'unknown'
+    """
+    if not text:
+        return 'unknown'
+    text_lower = text.lower()
+
+    # 4K / 2160p check
+    if '2160p' in text_lower or '4k' in text_lower:
+        return '2160p'
+    # Standard resolutions (higher to lower)
+    for res in ['1080p', '720p', '576p', '480p', '360p']:
+        if res in text_lower:
+            return res
+
+    return 'unknown'
+
+
+def is_downgrade(movie_id, new_quality_label, conn):
+    """
+    🛡️ Anti-Downgrade Shield
+    Check karo ki kya DB mein SAME resolution ki koi HIGHER level file maujud hai.
+    Agar haan, toh nayi (lower level) file ko REJECT karo (save mat karo).
+
+    Returns:
+        (True, existing_label)  → REJECT: DB mein better file hai
+        (False, None)           → ALLOW: File save karo
+    """
+    new_level = get_source_level(new_quality_label)
+    new_res = get_resolution(new_quality_label)
+
+    # Agar source ya resolution unknown hai, toh allow kar do (safe side)
+    if new_level == 0 or new_res == 'unknown':
+        return False, None
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT quality FROM movie_files WHERE movie_id = %s AND quality != %s",
+            (movie_id, new_quality_label)
+        )
+        existing_files = cur.fetchall()
+        cur.close()
+
+        for row in existing_files:
+            old_label = row[0]
+            old_level = get_source_level(old_label)
+            old_res = get_resolution(old_label)
+
+            # Same resolution + DB mein higher level already hai → REJECT
+            if old_res == new_res and old_level > new_level:
+                logger.info(
+                    f"🛡️ Anti-Downgrade BLOCKED: movie_id={movie_id} | "
+                    f"Tried='{new_quality_label}' (L{new_level}) | "
+                    f"DB has='{old_label}' (L{old_level}) | "
+                    f"Same res={new_res}"
+                )
+                return True, old_label
+
+        return False, None
+
+    except Exception as e:
+        logger.error(f"❌ Anti-Downgrade check error: {e}")
+        return False, None  # Error par allow kar do (safe side)
+
+
+def auto_upgrade_delete(movie_id, new_quality_label, conn):
+    """
+    🔄 Resolution-Locked Auto-Upgrade System
+    Nayi file ka source level + resolution check karo.
+    Sirf SAME resolution ki lower level files DELETE karo.
+    Different resolution ki files SAFE rahein.
+    Same level = koi delete nahi (dono save rahein).
+    Returns: (deleted_count, deleted_labels)
+    """
+    new_level = get_source_level(new_quality_label)
+    new_res = get_resolution(new_quality_label)
+
+    if new_level == 0 or new_res == 'unknown':
+        return 0, []  # Unknown source/resolution, kuch delete mat karo
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT quality FROM movie_files WHERE movie_id = %s AND quality != %s",
+            (movie_id, new_quality_label)
+        )
+        existing_files = cur.fetchall()
+
+        labels_to_delete = []
+        for row in existing_files:
+            old_label = row[0]
+            old_level = get_source_level(old_label)
+            old_res = get_resolution(old_label)
+
+            # ✅ Resolution-Locked: Sirf SAME resolution + lower level = DELETE
+            if old_level > 0 and old_level < new_level and old_res == new_res:
+                labels_to_delete.append(old_label)
+
+        deleted_count = 0
+        if labels_to_delete:
+            placeholders = ','.join(['%s'] * len(labels_to_delete))
+            cur.execute(
+                f"DELETE FROM movie_files WHERE movie_id = %s AND quality IN ({placeholders})",
+                [movie_id] + labels_to_delete
+            )
+            deleted_count = cur.rowcount
+            conn.commit()
+            logger.info(
+                f"🔄 Auto-Upgrade: movie_id={movie_id} | "
+                f"New='{new_quality_label}' (L{new_level}, {new_res}) | "
+                f"Deleted {deleted_count} lower prints (same res): {labels_to_delete}"
+            )
+
+        cur.close()
+        return deleted_count, labels_to_delete
+
+    except Exception as e:
+        logger.error(f"❌ Auto-Upgrade Error for movie_id={movie_id}: {e}")
+        return 0, []
+
+
 def generate_quality_label(file_name, file_size_str, ai_language=""):
     # Pehle episode format ko hamesha ke liye theek karo (S07E12 22 -> S07E12-22)
     name_lower = normalize_episodes(file_name.lower())
@@ -5850,23 +6021,10 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
             total_files_saved += len(saved_labels)
 
-            # ── STEP 4: ALIASES (Bina AI ke simple aliases) ──────────────────────
-            aliases = generate_basic_aliases(title, str(year))
-            conn = get_db_connection()
-            if conn:
-                try:
-                    cur = conn.cursor()
-                    for alias in set(aliases):
-                        cur.execute(
-                            "INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", 
-                            (movie_id, alias.lower().strip())
-                        )
-                    conn.commit()
-                    cur.close()
-                except Exception as alias_err:
-                    logger.error(f"SuperBatch Alias Error: {alias_err}")
-                finally:
-                    close_db_connection(conn)
+            # 🚫 AI Alias Generation OFF — Flask Web App mein Google Suggest + pg_trgm handles typos
+            # generate_basic_aliases() bhi hata diya — DB clean rahega
+            aliases = []
+            alias_count = 0
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
@@ -6197,6 +6355,13 @@ async def _pm_save_file(message, context) -> str | None:
     if not conn:
         return None
     try:
+        # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+        rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
+        if rejected:
+            logger.info(f"🛡️ _pm_save_file: REJECTED '{label}' — DB already has better '{existing}'")
+            close_db_connection(conn)
+            return None  # File save nahi hogi, skip karo
+
         cur = conn.cursor()
         cur.execute(
             """
@@ -6213,6 +6378,15 @@ async def _pm_save_file(message, context) -> str | None:
         cur.close()
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
+
+        # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
+        try:
+            deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
+            if deleted > 0:
+                BATCH_SESSION['file_count'] = max(0, BATCH_SESSION.get('file_count', 0) - deleted)
+                logger.info(f"🔄 _pm_save_file: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
+        except Exception as ue:
+            logger.error(f"Auto-Upgrade error in _pm_save_file: {ue}")
     except Exception as e:
         logger.error(f"_pm_save_file DB error: {e}")
         if conn: conn.rollback()
@@ -6486,6 +6660,19 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = get_db_connection()
         if conn:
             try:
+                # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+                rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
+                if rejected:
+                    logger.info(f"🛡️ Phase2: REJECTED '{label}' — DB already has better '{existing}'")
+                    await upload_status.edit_text(
+                        f"🛡️ **Downgrade Blocked!**\n"
+                        f"❌ `{label}` save nahi hua\n"
+                        f"✅ DB mein pehle se better print hai: `{existing}`",
+                        parse_mode='Markdown'
+                    )
+                    close_db_connection(conn)
+                    return
+
                 cur = conn.cursor()
                 cur.execute(
                     """
@@ -6500,8 +6687,20 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
                 cur.close()
                 BATCH_SESSION['file_count'] += 1
+
+                # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
+                upgrade_msg = ""
+                try:
+                    deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
+                    if deleted > 0:
+                        BATCH_SESSION['file_count'] = max(0, BATCH_SESSION['file_count'] - deleted)
+                        upgrade_msg = f"\n🔄 Upgraded! {deleted} पुरानी print(s) auto-deleted"
+                        logger.info(f"🔄 Phase2: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
+                except Exception as ue:
+                    logger.error(f"Auto-Upgrade error in Phase2: {ue}")
+
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
-                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}", parse_mode='Markdown')
+                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
             except Exception as e:
                 await upload_status.edit_text(f"❌ DB Save Failed: {e}")
             finally:
@@ -6512,7 +6711,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Koi batch active nahi hai!")
         return
     
-    status_msg = await update.message.reply_text("🔄 **Batch complete kar raha hoon...**\n🧠 AI Aliases generate ho rahe hain...", parse_mode='Markdown')
+    status_msg = await update.message.reply_text("🔄 **Batch complete kar raha hoon...**", parse_mode='Markdown')
 
     try:
         movie_id = BATCH_SESSION.get('movie_id')
@@ -6551,29 +6750,10 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"👇 <b>Download Below</b> 👇"
         )
         
-        # 👇 यहाँ स्पेसिंग (Indentation) ठीक कर दी गई है
-        aliases = generate_aliases_gemini(movie_title, movie_year, movie_category)
+        # 🚫 AI Alias Generation OFF — Flask Web App mein Google Suggest + pg_trgm already handles typos
+        # generate_aliases_gemini() hata diya — Gemini API keys bachegi + DB clean rahega
+        aliases = []
         alias_count = 0
-        conn = get_db_connection()
-        
-        if conn and aliases:
-            try:
-                cur = conn.cursor()
-                for alias in aliases:
-                    if not alias or len(alias) > 255: continue
-                    try:
-                        cur.execute("SAVEPOINT sp_alias")
-                        cur.execute("INSERT INTO movie_aliases (movie_id, alias) VALUES (%s, %s) ON CONFLICT (movie_id, alias) DO NOTHING", (movie_id, alias.lower().strip()))
-                        cur.execute("RELEASE SAVEPOINT sp_alias")
-                        alias_count += 1
-                    except Exception:
-                        cur.execute("ROLLBACK TO SAVEPOINT sp_alias")
-                conn.commit()
-                cur.close()
-            except Exception:
-                if conn: conn.rollback()
-            finally:
-                close_db_connection(conn)
 
         # 🚀 POST TO FORUM
         forum_post_status = "⏳ Posting to Forum..."
@@ -6625,8 +6805,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🎬 **Movie:** `{movie_title}`\n"
             f"📅 **Year:** {movie_year if movie_year else 'N/A'}\n"
             f"🏷️ **Category:** {movie_category}\n"
-            f"📂 **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n"
-            f"🤖 **AI Aliases:** {alias_count}\n\n"
+            f"📂 **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n\n"
             f"✅ Backups: {channels_count} channels\n"
             f"💬 {forum_post_status}"
         )
@@ -7612,6 +7791,19 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     if conn:
         try:
+            # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+            rejected, existing = is_downgrade(BATCH_18_SESSION['movie_id'], label, conn)
+            if rejected:
+                logger.info(f"🛡️ Batch18: REJECTED '{label}' — DB already has better '{existing}'")
+                await upload_status.edit_text(
+                    f"🛡️ **Downgrade Blocked!**\n"
+                    f"❌ `{label}` save nahi hua\n"
+                    f"✅ DB mein pehle se better print hai: `{existing}`",
+                    parse_mode='Markdown'
+                )
+                close_db_connection(conn)
+                return
+
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO movie_files 
@@ -7637,10 +7829,21 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.close()
             
             BATCH_18_SESSION['file_count'] += 1
+
+            # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
+            upgrade_msg = ""
+            try:
+                deleted, deleted_labels = auto_upgrade_delete(BATCH_18_SESSION['movie_id'], label, conn)
+                if deleted > 0:
+                    BATCH_18_SESSION['file_count'] = max(0, BATCH_18_SESSION['file_count'] - deleted)
+                    upgrade_msg = f"\n🔄 Upgraded! {deleted} पुरानी print(s) auto-deleted"
+                    logger.info(f"🔄 Batch18: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
+            except Exception as ue:
+                logger.error(f"Auto-Upgrade error in Batch18: {ue}")
             
             await upload_status.edit_text(
                 f"✅ **Saved:** `{BATCH_18_SESSION['movie_title']} {label}`\n"
-                f"📦 Total Files: {BATCH_18_SESSION['file_count']}",
+                f"📦 Total Files: {BATCH_18_SESSION['file_count']}{upgrade_msg}",
                 parse_mode='Markdown'
             )
             
