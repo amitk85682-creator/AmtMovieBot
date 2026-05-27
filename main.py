@@ -10575,38 +10575,43 @@ def serve_mini_app():
             background: linear-gradient(to top, var(--bg) 0%, rgba(0,0,0,0.6) 70%, transparent 100%);
         }
         .dp-poster-float {
-            position: absolute;
-            bottom: -40px;
-            left: 28px;
-            z-index: 2015;
-            width: 140px;
+            flex-shrink: 0;
+            width: 120px;
             border-radius: 12px;
+            overflow: hidden;
             box-shadow: 0 20px 40px -10px black;
             border: 2px solid rgba(255,255,255,0.2);
         }
         .dp-poster-float img {
             width: 100%;
-            aspect-ratio: 2 / 3; /* 👉 Yeh poster ko hamesha LAMBA (Vertical) banayega */
-            object-fit: cover;   /* 👉 Yeh image ko pichakne nahi dega, perfectly crop karega */
+            aspect-ratio: 2 / 3;
+            object-fit: cover;
             border-radius: 12px;
             display: block;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.8); /* Poster ko thoda background se alag dikhane ke liye */
+        }
+        .dp-title-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 18px;
+            margin-top: -100px;
+            position: relative;
+            z-index: 2015;
+            margin-bottom: 24px;
         }
         .dp-info {
             padding: 28px;
-            margin-top: 10px;
+            margin-top: 0;
             position: relative;
             z-index: 2005;
         }
         
         .dp-title {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 800;
             line-height: 1.2;
-            margin-bottom: 16px;
             text-shadow: 0 4px 20px black;
-            margin-left: 155px; /* 👈 Title ko chote poster ke right side dhakel dega */
-            min-height: 80px;   /* 👈 Poster ki height ko balance karne ke liye */
+            flex: 1;
+            min-width: 0;
         }
         .rich-info-box {
             background: rgba(20,20,20,0.7);
@@ -10789,11 +10794,13 @@ def serve_mini_app():
         </div>
         <div class="dp-layout">
             <div class="dp-backdrop" id="dpBackdrop"></div>
-            <div class="dp-poster-float" id="dpPosterFloat">
-                <img id="dpFloatPoster" src="" alt="Poster">
-            </div>
             <div class="dp-info">
-                <h1 class="dp-title" id="dpTitle">Title</h1>
+                <div class="dp-title-row">
+                    <div class="dp-poster-float" id="dpPosterFloat">
+                        <img id="dpFloatPoster" src="" alt="Poster">
+                    </div>
+                    <h1 class="dp-title" id="dpTitle">Title</h1>
+                </div>
                 <div class="rich-info-box">
                     <div><span>IMDb</span> <label id="dpRating" style="color:var(--primary);">—</label></div>
                     <div><span>Genre</span> <label id="dpGenre">—</label></div>
