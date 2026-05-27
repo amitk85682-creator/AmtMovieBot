@@ -383,7 +383,7 @@ REQUIRED_GROUP_ID = os.environ.get('REQUIRED_GROUP_ID', '-1003930961567')
 FILMFYBOX_GROUP_URL = 'https://t.me/+dxaCr_cMmGpkYTFl'
 REQUEST_CHANNEL_ID = os.environ.get('REQUEST_CHANNEL_ID', '-1003078990647')
 DUMP_CHANNEL_ID = os.environ.get('DUMP_CHANNEL_ID', '-1003893346701')
-FORCE_JOIN_ENABLED = True
+FORCE_JOIN_ENABLED = False
 
 # ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
@@ -4310,7 +4310,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Hello <b>{first_name}!</b> आपकी Requested Movie अब उपलब्ध है।\n\n"
                 f"🎬 File: <b>{movie_title}</b>\n\n"
                 f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
             btn_status = "✅ User Notified: Added"
         else:
@@ -4318,7 +4318,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"😔 <b>Update!</b> 👋\n\n"
                 f"Hello <b>{first_name}!</b> आपकी Requested File (<b>{movie_title}</b>) अभी हमें कहीं नहीं मिल पाई है।\n\n"
                 f"जैसे ही यह अवेलेबल होगी, हम आपको जरूर बताएंगे।\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
             btn_status = "❌ User Notified: Not Found"
 
@@ -8331,7 +8331,7 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Hello <b>{first_name}!</b> आपकी Requested File अब उपलब्ध है।\n\n"
             f"🎬 File: <b>{movie_name}</b>\n\n"
             f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@owneramit</b>"
+            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
         )
 
         # Multi-bot send function call karo
@@ -11385,7 +11385,7 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
 
 🎬 Movie: <b>{movie_title}</b>
 
-📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@owneramit</b> / <b>@Ownermahi</b> को मिली गई है।
+📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@Ownermahi</b> / <b>@Ownermahi</b> को मिली गई है।
 ⏳ जैसे ही मूवी उपलब्ध होगी, वो खुद आपको यहाँ सूचित (Notify) कर देंगे।
 
 <i>हमसे जुड़े रहने के लिए धन्यवाद! 🙏</i>
