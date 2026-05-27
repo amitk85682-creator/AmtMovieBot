@@ -2648,7 +2648,7 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
                     warning_msg = await context.bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=int(DUMP_CHANNEL_ID),
-                        message_id=3383 # ✅ यहाँ 3383 अपडेट कर दिया गया है[cite: 3]
+                        message_id=3384 # ✅ यहाँ 3384 अपडेट कर दिया गया है[cite: 3]
                     )
                 except Exception:
                     warning_msg = None
@@ -3256,7 +3256,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 warning_msg = await context.bot.copy_message(
                     chat_id=chat_id,
                     from_chat_id=-1003893346701,
-                    message_id=3383
+                    message_id=3384
                 )
             except Exception as e:
                 logger.error(f"Warning file send failed: {e}")
@@ -3623,7 +3623,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         close_db_connection(conn)
                         title = res[0] if res else "Requested File"
                         
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=False)
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                         
                         try: await status_msg.delete() 
                         except: pass
@@ -3663,7 +3663,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title = res[0] if res else "Requested File"
                         
                         # Tera premium thumbnail wala function!
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=False)
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                         
                         try: await status_msg.delete() 
                         except: pass
@@ -4117,7 +4117,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title=title, 
                 url=None, 
                 file_id=file_id_to_send, 
-                send_warning=False # Har single file ke sath auto-delete warning baar-baar na bheje
+                send_warning=True  # Single file click → ek baar GIF bhejna zaroori hai
             )
             await query.answer("✅ File Sent!", show_alert=False)
         except Exception as e:
@@ -4598,7 +4598,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warning_msg = await context.bot.copy_message(
                 chat_id=chat_id,
                 from_chat_id=-1003893346701, # Apka Channel ID
-                message_id=3383              # Warning File Message ID
+                message_id=3384              # Warning File Message ID
             )
             track_message_for_deletion(context, chat_id, warning_msg.message_id, 60)
         except Exception as e:
