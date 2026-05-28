@@ -13,6 +13,7 @@ import random
 import requests
 import signal
 import sys
+import concurrent.futures
 from PIL import Image, ImageFilter
 from trending_manager import trending_worker_loop
 from telegram import KeyboardButton, WebAppInfo
@@ -10186,39 +10187,50 @@ def get_movie_details(movie_id):
         cur.close()
         close_db_connection(conn)
 
-        # TMDB: include year to disambiguate (ONLY for Backdrop and Trailer fallback)
-        try:
-            # Build search query with title and year if present
-            search_term = movie['title']
-            if movie['year']:
-                search_term += f" {movie['year']}"
-            search_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={quote(search_term)}"
-            resp = requests.get(search_url, timeout=5).json()
-            if resp.get('results'):
-                first = resp['results'][0]
-                media_type = first.get('media_type', 'movie')
-                tmdb_id = first['id']
+        # Trailer Fallback & Backdrop Fetch (ONLY if trailer_key is missing)
+        if not movie.get('trailer_key'):
+            try:
+                # Build search query with title and year if present
+                search_term = movie['title']
+                if movie['year']:
+                    search_term += f" {movie['year']}"
+                search_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={quote(search_term)}"
+                resp = requests.get(search_url, timeout=5).json()
+                if resp.get('results'):
+                    first = resp['results'][0]
+                    media_type = first.get('media_type', 'movie')
+                    tmdb_id = first['id']
 
-                # Backdrop
-                backdrop_path = first.get('backdrop_path')
-                if backdrop_path:
-                    movie['backdrop'] = f"https://image.tmdb.org/t/p/w1280{backdrop_path}"
-                else:
-                    movie['backdrop'] = None
-
-                # Cast - NOW LOADED FROM LOCAL DB (No TMDB Call)
-                # Front-end will split comma separated names into badges.
-                
-                # Trailer Fallback (Only if local DB doesn't have it)
-                if not movie.get('trailer_key'):
+                    # Backdrop
+                    backdrop_path = first.get('backdrop_path')
+                    if backdrop_path:
+                        movie['backdrop'] = f"https://image.tmdb.org/t/p/w1280{backdrop_path}"
+                    else:
+                        movie['backdrop'] = None
+                    
+                    # Fetch Trailer from TMDB
                     videos_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={TMDB_API_KEY}"
                     videos = requests.get(videos_url, timeout=5).json()
                     trailer = next((v for v in videos.get('results', []) if v['type'] == 'Trailer' and v['site'] == 'YouTube'), None)
                     if trailer:
                         movie['trailer_key'] = trailer['key']
-        except Exception as e:
-            logger.warning(f"TMDB fetch failed for {movie['title']}: {e}")
-            movie['backdrop'] = None
+                        # 🔥 FIX: Permanently save to DB
+                        try:
+                            conn_update = get_db_connection()
+                            if conn_update:
+                                cur_update = conn_update.cursor()
+                                cur_update.execute("UPDATE movies SET trailer_key = %s WHERE id = %s", (trailer['key'], movie_id))
+                                conn_update.commit()
+                                cur_update.close()
+                                close_db_connection(conn_update)
+                        except Exception as db_e:
+                            logger.error(f"Error updating trailer_key: {db_e}")
+            except Exception as e:
+                logger.warning(f"TMDB fetch failed for {movie['title']}: {e}")
+                movie['backdrop'] = None
+        else:
+            # If we already have the trailer, skip TMDB completely and use poster as backdrop
+            movie['backdrop'] = movie['image']
 
         result = {'status': 'success', 'movie': movie}
         api_movies_cache.set(cache_key, result)
@@ -10398,6 +10410,105 @@ def get_suggestions():
         logger.error(f"Suggest API Error: {e}")
         return jsonify([])
 
+@flask_app.route('/api/smart-merge', methods=['POST'])
+def smart_merge_api():
+    """Hybrid Search Endpoint: Checks Local DB first, then fetches TMDB concurrently."""
+    data = request.json or {}
+    queries = data.get('queries', [])
+    if not queries:
+        return jsonify({'status': 'success', 'results': []})
+    
+    conn = get_db_connection()
+    local_results = []
+    found_titles = set()
+    
+    if conn:
+        try:
+            cur = conn.cursor()
+            # Fetch local DB matches (case insensitive)
+            placeholders = ', '.join(['%s'] * len(queries))
+            query_sql = f"""
+                SELECT id, title, year, poster_url, rating, genre, category 
+                FROM movies 
+                WHERE title ILIKE ANY (ARRAY[{placeholders}])
+            """
+            cur.execute(query_sql, queries)
+            rows = cur.fetchall()
+            for r in rows:
+                title = r[1]
+                found_titles.add(title.lower())
+                local_results.append({
+                    'id': r[0],
+                    'title': title,
+                    'year': r[2] if r[2] else '',
+                    'image': r[3] if r[3] else 'https://via.placeholder.com/300x450?text=No+Poster',
+                    'rating': r[4] if r[4] else 'N/A',
+                    'genre': r[5] if r[5] else 'Unknown',
+                    'category': r[6] if r[6] else 'Movie',
+                    'source': 'local'
+                })
+            cur.close()
+        except Exception as e:
+            logger.error(f"Error in smart_merge local check: {e}")
+        finally:
+            close_db_connection(conn)
+
+    # Find missing titles to fetch from TMDB
+    missing_queries = [q for q in queries if q.lower() not in found_titles]
+    tmdb_results = []
+    
+    def fetch_tmdb(q):
+        try:
+            url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={quote(q)}"
+            resp = requests.get(url, timeout=3).json()
+            results = resp.get('results', [])
+            if results:
+                # Top hit
+                item = results[0]
+                img_path = item.get('poster_path') or item.get('backdrop_path')
+                if img_path:
+                    return {
+                        'id': 'tmdb_' + str(item['id']),
+                        'title': item.get('title') or item.get('name') or 'Unknown',
+                        'year': (item.get('release_date') or item.get('first_air_date') or '')[:4],
+                        'image': f"https://image.tmdb.org/t/p/w500{img_path}",
+                        'rating': round(item.get('vote_average', 0), 1),
+                        'genre': 'Action, Drama',
+                        'category': 'Movie' if item.get('media_type') == 'movie' else 'TV Series',
+                        'source': 'tmdb',
+                        'description': item.get('overview', '')
+                    }
+        except Exception as e:
+            logger.error(f"TMDB fetch error for {q}: {e}")
+        return None
+
+    # Fetch concurrently for maximum speed
+    if missing_queries:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(fetch_tmdb, q) for q in missing_queries]
+            for future in concurrent.futures.as_completed(futures):
+                res = future.result()
+                if res:
+                    tmdb_results.append(res)
+                    
+    # Combine and order according to original queries list (local first, then tmdb)
+    final_results = []
+    for q in queries:
+        # Match local
+        local_match = next((l for l in local_results if l['title'].lower() == q.lower()), None)
+        if local_match:
+            if local_match['id'] not in [f['id'] for f in final_results]:
+                final_results.append(local_match)
+            continue
+            
+        # Match TMDB (loosely matching by start of title or exact)
+        tmdb_match = next((t for t in tmdb_results if q.lower() in t['title'].lower() or t['title'].lower() in q.lower()), None)
+        if tmdb_match:
+            if tmdb_match['id'] not in [f['id'] for f in final_results]:
+                final_results.append(tmdb_match)
+                
+    return jsonify({'status': 'success', 'results': final_results})
+
 @flask_app.route('/api/imdb_id/<int:tmdb_id>', methods=['GET'])
 def get_imdb_id(tmdb_id):
     """Fetch IMDB ID from TMDB API for the Web Player streamimdb.ru requirement."""
@@ -10559,6 +10670,10 @@ def serve_mini_app():
         .search-item:last-child { border-bottom: none; }
         .search-item:active { background: rgba(229,9,20,0.1); }
         .search-item img { width: 50px; height: 75px; border-radius: 8px; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .skeleton-poster { width: 50px; height: 75px; border-radius: 8px; background: rgba(255,255,255,0.1); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .fade-in { animation: fadeIn 0.3s forwards; }
+        
         .search-item-info { flex: 1; min-width: 0; }
         .search-item-title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
         .search-item-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
@@ -11162,30 +11277,44 @@ def serve_mini_app():
             }).join('');
         }
 
-        // Search
-let searchTimeout;
-document.getElementById('searchInput').addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    const q = e.target.value.trim();
+// Google Suggest JSONP Callback Function
+window.googleSuggestCb = async function(data) {
+    const q = document.getElementById('searchInput').value.trim();
     const dropdown = document.getElementById('searchDropdown');
     
-    if (!q) {
-        dropdown.classList.remove('active');
-        return;
-    }
+    // Clean and select top 5 suggestions
+    let suggs = data[1] || [];
+    // Safe-strip 'movie' from response
+    suggs = suggs.map(s => s.replace(/ movie$/i, '').trim()
+                             .replace(/\b\w/g, c => c.toUpperCase())).slice(0, 5);
     
-    dropdown.innerHTML = '<div class="loader">Searching...</div>';
-    dropdown.classList.add('active');
-
-    searchTimeout = setTimeout(async () => {
+    if(suggs.length > 0) {
+        // Instant Text/Skeleton UI rendering
+        let html = suggs.map((title, i) => `
+            <div class="search-item skeleton-item" id="skel-${i}">
+                <div class="skeleton-poster"></div>
+                <div class="search-item-info">
+                    <div class="search-item-title">${title}</div>
+                    <div class="search-item-meta" style="color:var(--text-muted);font-size:11px;">Loading...</div>
+                </div>
+            </div>
+        `).join('');
+        
+        dropdown.innerHTML = html;
+        
+        // Background call to /api/smart-merge
         try {
-            const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-            const data = await res.json();
+            const mergeRes = await fetch('/api/smart-merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ queries: suggs })
+            });
+            const mergeData = await mergeRes.json();
             
-            if (data.status === 'success' && data.results.length > 0) {
-                const results = data.results;
+            if (mergeData.status === 'success' && mergeData.results.length > 0) {
+                const results = mergeData.results;
                 
-                // Save to local mapping for details click
+                // Save mappings
                 results.forEach(r => {
                     if (r.source === 'tmdb') {
                         tmdbMoviesMap[r.id] = r;
@@ -11194,7 +11323,8 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                     }
                 });
 
-                let html = '';
+                // Update DOM dynamically with fade-in
+                let newHtml = '';
                 results.forEach(r => {
                     const isTMDB = r.source === 'tmdb';
                     const rating = r.rating && r.rating !== 'N/A' ? `<span>⭐ ${r.rating}</span>` : '';
@@ -11202,8 +11332,8 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                     
                     if (isTMDB) {
                         const rawTmdbId = r.id.replace('tmdb_', '');
-                        html += `
-                            <div class="search-item">
+                        newHtml += `
+                            <div class="search-item fade-in">
                                 <img src="${r.image}" loading="lazy" onerror="this.src='https://via.placeholder.com/50x75?text=No+Poster'">
                                 <div class="search-item-info">
                                     <div class="search-item-title">${r.title}</div>
@@ -11216,8 +11346,8 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                             </div>
                         `;
                     } else {
-                        html += `
-                            <div class="search-item" onclick="openDetails('${r.id}', false); document.getElementById('searchDropdown').classList.remove('active');">
+                        newHtml += `
+                            <div class="search-item fade-in" onclick="openDetails('${r.id}', false); document.getElementById('searchDropdown').classList.remove('active');">
                                 <img src="${r.image}" loading="lazy" onerror="this.src='https://via.placeholder.com/50x75?text=No+Poster'">
                                 <div class="search-item-info">
                                     <div class="search-item-title">${r.title}</div>
@@ -11230,10 +11360,10 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                         `;
                     }
                 });
-                dropdown.innerHTML = html;
+                dropdown.innerHTML = newHtml;
             } else {
                 dropdown.innerHTML = `
-                    <div style="text-align:center; padding: 20px;">
+                    <div style="text-align:center; padding: 20px;" class="fade-in">
                         <p style="color: var(--text-muted); margin-bottom: 15px;">We couldn't find "${q}".</p>
                         <button onclick="requestSilent('${q.replace(/'/g, "\\'")}')" class="request-glow-btn">
                             <i class="fas fa-paper-plane"></i> Request This Movie
@@ -11241,10 +11371,54 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                     </div>
                 `;
             }
-        } catch (err) {
-            dropdown.innerHTML = '<div class="loader">Error searching</div>';
+        } catch (e) {
+            console.error(e);
+            dropdown.innerHTML = '<div class="loader">Error loading details</div>';
         }
-    }, 500);
+    } else {
+        dropdown.innerHTML = `
+            <div style="text-align:center; padding: 20px;">
+                <p style="color: var(--text-muted); margin-bottom: 15px;">We couldn't find "${q}".</p>
+                <button onclick="requestSilent('${q.replace(/'/g, "\\'")}')" class="request-glow-btn">
+                    <i class="fas fa-paper-plane"></i> Request This Movie
+                </button>
+            </div>
+        `;
+    }
+    
+    // Script tag cleanup
+    const oldScript = document.getElementById('googleSuggestScript');
+    if (oldScript) oldScript.remove();
+};
+
+// Hybrid Search
+let searchTimeout;
+document.getElementById('searchInput').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    const q = e.target.value.trim();
+    const dropdown = document.getElementById('searchDropdown');
+    
+    if (!q) {
+        dropdown.classList.remove('active');
+        return;
+    }
+    
+    dropdown.innerHTML = '<div class="loader">Loading suggestions...</div>';
+    dropdown.classList.add('active');
+
+    searchTimeout = setTimeout(() => {
+        // Inject script for JSONP Google Suggest call
+        const script = document.createElement('script');
+        script.id = 'googleSuggestScript';
+        // Append 'movie' for better context
+        script.src = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(q + ' movie')}&callback=googleSuggestCb`;
+        
+        script.onerror = function() {
+            dropdown.innerHTML = '<div class="loader">Network Error</div>';
+        };
+        
+        document.head.appendChild(script);
+    }, 300);
 });
 
 // Hide dropdown if clicked outside
@@ -11305,11 +11479,11 @@ document.addEventListener('click', (e) => {
                         } else {
                             document.getElementById('castSection').innerHTML = '';
                         }
-                        // Trailer button
+                        // Trailer button (Strict In-App Play Only)
                         if (m.trailer_key) {
                             document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="playTrailer('${m.trailer_key}')"><i class="fab fa-youtube"></i> Watch Trailer</button>`;
                         } else {
-                            document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="tg.openLink('https://www.youtube.com/results?search_query=${encodeURIComponent(m.title)}+trailer')"><i class="fas fa-play"></i> Search Trailer</button>`;
+                            document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="showToast('❌ Trailer not found')"><i class="fas fa-video-slash"></i> No Trailer</button>`;
                         }
                         // Download links
                         if (m.files && m.files.length) {
