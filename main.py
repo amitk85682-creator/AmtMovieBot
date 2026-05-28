@@ -10072,8 +10072,7 @@ flask_app = Flask(__name__)
 CORS(flask_app, resources={r"/*": {"origins": "*"}})
 
 # --- TMDB API Key (for fetching trailers & cast) ---
-api_key = os.environ.get("TMDB_API_KEY")
-
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "9fa44f5e9fbd41415df930ce5b81c4d7")
 # ==================== DATABASE HELPERS (use existing functions) ====================
 # Make sure these functions are already defined in your main code:
 # get_db_connection(), close_db_connection(), store_user_request()
