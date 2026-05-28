@@ -342,7 +342,7 @@ try:
     pool_url = FIXED_DATABASE_URL or DATABASE_URL
     if pool_url:
         db_pool = psycopg2.pool.ThreadedConnectionPool(
-            1, 5, # Supabase ki 10 connections limit ke hisaab se aur Thread-Safe
+            2, 8,  # Supabase Free Tier (60 connections) ke liye optimized
             dsn=pool_url
         )
         logger.info("✅ Database Connection Pool Created (Thread-Safe)!")
@@ -441,6 +441,95 @@ async def run_async(func, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(None, func_partial)
 # 👆👆👆 END COPY HERE 👆👆👆
 
+
+# ==================== 🛡️ SAFE_SEND — Global Anti-FloodWait Wrapper ====================
+_send_semaphore = asyncio.Semaphore(25)  # Max 25 concurrent outgoing messages
+_last_send_time = 0
+
+async def safe_send(coro, max_retries=3):
+    """
+    🛡️ Global Anti-FloodWait Shield.
+    Har high-risk outgoing message isse guzrega.
+    - Semaphore se max 25 concurrent sends
+    - Min 40ms gap (≈25 msg/sec)
+    - RetryAfter auto-catch + wait + retry
+    """
+    global _last_send_time
+    for attempt in range(max_retries):
+        async with _send_semaphore:
+            now = time.time()
+            gap = now - _last_send_time
+            if gap < 0.04:
+                await asyncio.sleep(0.04 - gap)
+            _last_send_time = time.time()
+            try:
+                return await coro
+            except RetryAfter as e:
+                wait = e.retry_after + 1
+                logger.warning(f"⏳ FloodWait! Waiting {wait}s (attempt {attempt+1}/{max_retries})")
+                await asyncio.sleep(wait)
+            except (TelegramError, Exception) as e:
+                if 'flood' in str(e).lower():
+                    logger.warning(f"⏳ Possible flood error, waiting 5s: {e}")
+                    await asyncio.sleep(5)
+                else:
+                    logger.error(f"safe_send error: {e}")
+                    if attempt == max_retries - 1:
+                        raise
+    return None
+
+
+# ==================== 🧹 STRIP_CAPTION_JUNK — Caption Cleaner ====================
+def strip_caption_junk(text):
+    """
+    File caption se third-party promotions, links, usernames strip karta hai.
+    Hindi/Regional characters aur Anime/Series ki multi-line info ko SAFE rakhta hai.
+    Call karo BEFORE generate_quality_label().
+    """
+    if not text:
+        return text
+
+    cleaned_lines = []
+    lines = text.split('\n')
+    
+    # Protection Keywords (Quality aur Season/Episode info)
+    protection_pattern = r'(?i)\b(1080p|720p|480p|360p|2160p|4k|s\d+|e\d+|season|episode|ep|hindi|english|dual audio|multi|sub|dub|bluray|web-dl|webrip)\b'
+    
+    # Promotional Keywords
+    promo_pattern = r'(?i)\b(join\s*now|join|subscribe|channel|visit|powered\s*by|telegram|premium|group|owner|main\s*channel|movie\s*channel|backup)\b'
+
+    for line in lines:
+        original_line = line
+        
+        # Line-by-Line Filter: Kachra links remove karo
+        line = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', line) # Markdown links
+        line = re.sub(r'https?://\S+', '', line) # HTTP/HTTPS URLs
+        line = re.sub(r'(?i)t\.me/\S+', '', line) # t.me/ links
+        line = re.sub(r'@[a-zA-Z][a-zA-Z0-9_]{2,}', '', line) # @username (but file info like @480p safe)
+        
+        line = line.strip()
+        
+        if not line:
+            continue
+            
+        # Smart Promo Drop: Agar line me promo words hain aur protection words NAHI hain, tabhi delete karo
+        has_promo = re.search(promo_pattern, original_line)
+        has_protection = re.search(protection_pattern, original_line)
+        
+        if has_promo and not has_protection:
+            continue # Is line ko chhod do (delete)
+            
+        cleaned_lines.append(line)
+
+    # Wapas lines join karo (taki multi-line structure safe rahe)
+    text = '\n'.join(cleaned_lines)
+    
+    # Extra trailing spaces clean karo
+    text = re.sub(r'[ \t]+', ' ', text).strip()
+
+    return text
+
+
 # ==================== UTILITY FUNCTIONS ====================
 
 def extract_season_name(extra_info):
@@ -527,14 +616,45 @@ def clean_telegram_text(text):
     text = text.replace("@BuLMoviee Join Us On Telegram", "").strip()
     
     return text
+def _process_poster_sync(image_data):
+    """
+    🎨 PIL Image Processing (Background Thread me chalega)
+    Portrait poster ko Square 1:1 format me convert karta hai.
+    """
+    from PIL import Image, ImageFilter
+    img = Image.open(BytesIO(image_data)).convert("RGB")
+    target_w, target_h = 800, 800
+
+    bg_img = img.resize((target_w, int(img.height * (target_w / img.width))), Image.Resampling.LANCZOS)
+    if bg_img.height > target_h:
+        top = (bg_img.height - target_h) // 2
+        bg_img = bg_img.crop((0, top, target_w, top + target_h))
+    else:
+        bg_img = bg_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+    bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=40))
+
+    fg_h = int(target_h * 0.95)
+    fg_w = int(img.width * (fg_h / img.height))
+    fg_img = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
+
+    paste_x = (target_w - fg_w) // 2
+    paste_y = (target_h - fg_h) // 2
+    bg_img.paste(fg_img, (paste_x, paste_y))
+
+    output = BytesIO()
+    output.name = "cinematic_poster.jpg"
+    bg_img.save(output, format='JPEG', quality=95)
+    output.seek(0)
+    return output
+
+
 async def make_landscape_poster(url_or_bytes):
     """
     Portrait poster ko Mobile+PC friendly (Square 1:1) format me convert karta hai.
-    Heavily Blurred background aur Center me Sharp image.
+    PIL processing background thread me hoti hai (event loop block nahi hoga).
     """
     try:
-        from PIL import Image, ImageFilter 
-        
         image_data = None
         if isinstance(url_or_bytes, str) and url_or_bytes.startswith('http'):
             async with aiohttp.ClientSession() as session:
@@ -544,46 +664,15 @@ async def make_landscape_poster(url_or_bytes):
                         image_data = await resp.read()
         elif isinstance(url_or_bytes, bytes):
             image_data = url_or_bytes
-        elif hasattr(url_or_bytes, 'getvalue'): 
+        elif hasattr(url_or_bytes, 'getvalue'):
             image_data = url_or_bytes.getvalue()
-            
+
         if not image_data:
             return url_or_bytes
 
-        # ---------------- IMAGE MAGIC (MOBILE FRIENDLY) ----------------
-        img = Image.open(BytesIO(image_data)).convert("RGB")
-        
-        # TARGET SIZE: Square format (Phone aur Desktop dono pe best lagta hai)
-        # 800x800 resolution rakhte hain.
-        target_w, target_h = 800, 800
-        
-        # 1. Background Blur (Zoomed in and heavily blurred)
-        bg_img = img.resize((target_w, int(img.height * (target_w / img.width))), Image.Resampling.LANCZOS)
-        if bg_img.height > target_h:
-            top = (bg_img.height - target_h) // 2
-            bg_img = bg_img.crop((0, top, target_w, top + target_h))
-        else:
-            bg_img = bg_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
-            
-        bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=40)) # Extra strong blur background ke liye
-        
-        # 2. Foreground Paste (Portrait poster ko centre me chhota karke lagana)
-        # Foreground height ko thoda chota karenge (like 90% of target) taaki breathing room mile
-        fg_h = int(target_h * 0.95)
-        fg_w = int(img.width * (fg_h / img.height))
-        fg_img = img.resize((fg_w, fg_h), Image.Resampling.LANCZOS)
-        
-        paste_x = (target_w - fg_w) // 2
-        paste_y = (target_h - fg_h) // 2
-        bg_img.paste(fg_img, (paste_x, paste_y))
-        
-        # 3. Output as Bytes
-        output = BytesIO()
-        output.name = "cinematic_poster.jpg"
-        bg_img.save(output, format='JPEG', quality=95) 
-        output.seek(0)
-        return output
-        
+        # 🚀 PIL ops background thread me — event loop free!
+        return await run_async(_process_poster_sync, image_data)
+
     except Exception as e:
         logger.error(f"❌ Cinematic Conversion Error: {e}")
         return url_or_bytes
@@ -1554,6 +1643,7 @@ def migrate_add_imdb_columns():
         cur.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS extra_info TEXT;")
         # Important: quote column name with double quotes in SQL
         cur.execute('ALTER TABLE movies ADD COLUMN IF NOT EXISTS "cast" TEXT;')
+        cur.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS trailer_key TEXT;")
         
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_imdb_id ON movies (imdb_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_year ON movies (year);")
@@ -2344,7 +2434,7 @@ def fetch_cast_from_imdb(imdb_id: str, limit: int = 5) -> str:
 # ==================== NEW METADATA HELPER FUNCTIONS ====================
 
 def get_tmdb_backdrop(query, search_year=""):
-    """TMDB API se HD Original Poster (Vertical with Text) nikalta hai"""
+    """TMDB API se HD Original Poster (Vertical with Text) nikalta hai — run_async se call karo"""
     api_key = "9fa44f5e9fbd41415df930ce5b81c4d7" 
     try:
         url = f"https://api.themoviedb.org/3/search/multi?api_key={api_key}&query={quote(query)}"
@@ -2636,20 +2726,20 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
             try:
                 # Optional heads-up text
                 try:
-                    await context.bot.send_message(
+                    await safe_send(context.bot.send_message(
                         chat_id=user_id,
                         text=f"🎉 Hey {first_name or username or 'there'}! Your requested movie '{movie_title}' is now available!"
-                    )
+                    ))
                 except Exception:
                     pass
 
                 warning_msg = None
                 try:
-                    warning_msg = await context.bot.copy_message(
+                    warning_msg = await safe_send(context.bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=int(DUMP_CHANNEL_ID),
-                        message_id=3384 # ✅ यहाँ 3384 अपडेट कर दिया गया है[cite: 3]
-                    )
+                        message_id=3384
+                    ))
                 except Exception:
                     warning_msg = None
 
@@ -2663,47 +2753,47 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
                 if is_file_id:
                     # try video then document
                     try:
-                        sent_msg = await context.bot.send_video(
+                        sent_msg = await safe_send(context.bot.send_video(
                             chat_id=user_id, video=val, caption=caption_text,
                             parse_mode='HTML', reply_markup=join_keyboard
-                        )
+                        ))
                     except telegram.error.BadRequest:
-                        sent_msg = await context.bot.send_document(
+                        sent_msg = await safe_send(context.bot.send_document(
                             chat_id=user_id, document=val, caption=caption_text,
                             parse_mode='HTML', reply_markup=join_keyboard
-                        )
+                        ))
 
                 elif val.startswith("https://t.me/c/"):
                     parts = val.split('/')
                     from_chat_id = int("-100" + parts[-2])
                     msg_id = int(parts[-1])
-                    sent_msg = await context.bot.copy_message(
+                    sent_msg = await safe_send(context.bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=from_chat_id,
                         message_id=msg_id,
                         caption=caption_text,
                         parse_mode='HTML',
                         reply_markup=join_keyboard
-                    )
+                    ))
 
                 elif val.startswith("http"):
-                    sent_msg = await context.bot.send_message(
+                    sent_msg = await safe_send(context.bot.send_message(
                         chat_id=user_id,
                         text=f"{caption_text}\n\n<b>Link:</b> {val}",
                         parse_mode='HTML',
                         disable_web_page_preview=True,
                         reply_markup=join_keyboard
-                    )
+                    ))
 
                 else:
                     # last fallback: try send as document
-                    sent_msg = await context.bot.send_document(
+                    sent_msg = await safe_send(context.bot.send_document(
                         chat_id=user_id,
                         document=val,
                         caption=caption_text,
                         parse_mode='HTML',
                         reply_markup=join_keyboard
-                    )
+                    ))
 
                 # Auto delete both after 60 seconds
                 ids = []
@@ -3253,11 +3343,11 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         warning_msg = None
         if send_warning:
             try:
-                warning_msg = await context.bot.copy_message(
+                warning_msg = await safe_send(context.bot.copy_message(
                     chat_id=chat_id,
                     from_chat_id=-1003893346701,
                     message_id=3384
-                )
+                ))
             except Exception as e:
                 logger.error(f"Warning file send failed: {e}")
         
@@ -3287,36 +3377,36 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 else:
                     from_chat_id = f"@{parts[-2]}"
 
-                sent_msg = await context.bot.copy_message(
+                sent_msg = await safe_send(context.bot.copy_message(
                     chat_id=chat_id,
                     from_chat_id=from_chat_id,
                     message_id=msg_id,
                     caption=caption_text,
                     parse_mode='HTML',
                     reply_markup=join_keyboard
-                )
+                ))
             except Exception as e:
                 logger.error(f"Copy link failed: {e}")
 
         if not sent_msg and file_id:
             clean_file_id = str(file_id).strip()
             try:
-                sent_msg = await context.bot.send_video(
+                sent_msg = await safe_send(context.bot.send_video(
                     chat_id=chat_id,
                     video=clean_file_id,
                     caption=caption_text,
                     parse_mode='HTML',
                     reply_markup=join_keyboard
-                )
+                ))
             except telegram.error.BadRequest:
                 try:
-                    sent_msg = await context.bot.send_document(
+                    sent_msg = await safe_send(context.bot.send_document(
                         chat_id=chat_id,
                         document=clean_file_id,
                         caption=caption_text,
                         parse_mode='HTML',
                         reply_markup=join_keyboard
-                    )
+                    ))
                 except Exception as e:
                     logger.error(f"Send Document failed: {e}")
 
@@ -4009,7 +4099,7 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
                 return REQUESTING
 
-        stored = store_user_request(
+        stored = await run_async(store_user_request,
             user.id,
             user.username,
             user.first_name,
@@ -6342,8 +6432,8 @@ async def _pm_save_file(message, context) -> str | None:
     file_size_str = get_readable_file_size(file_size)
     current_lang  = BATCH_SESSION.get('language', '')
 
-    # Caption prefer karo — zyada accurate info hoti hai
-    text_for_detection = message.caption if message.caption else file_name
+    # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
+    text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
     # ✅ FIXED: Sirf regex/fallback use karo baaki files ke liye taaki AI Key bache!
@@ -6645,7 +6735,8 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_lang = BATCH_SESSION.get('language', '')
         
         # 👇 NAYA FIX: Telegram file name cut kar deta hai, isliye Caption check karenge 👇
-        text_for_detection = message.caption if message.caption else file_name
+        # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
+        text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
         
         label = generate_quality_label(text_for_detection, file_size_str, current_lang)
         
@@ -6791,9 +6882,9 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         try:
             if topic_id == 1:
-                await context.bot.send_photo(chat_id=FORUM_GROUP_ID, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard)
+                await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
             else:
-                await context.bot.send_photo(chat_id=FORUM_GROUP_ID, message_thread_id=topic_id, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard)
+                await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, message_thread_id=topic_id, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
             forum_post_status = f"✅ Auto-Posted to Forum (Topic ID: {topic_id})"
         except Exception as e:
             logger.error(f"Auto Forum Post Error: {e}")
@@ -7768,8 +7859,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  else (message.video.file_size if message.video else 0))
     file_size_str = get_readable_file_size(file_size)
 
-    # Generate quality label
-    text_for_detection = message.caption if message.caption else file_name
+    # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
+    text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
     current_lang = BATCH_18_SESSION.get('language', 'Hindi')
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
@@ -9772,31 +9863,31 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
                 extra['message_thread_id'] = topic_id
 
             if media_type == "photo" and media_file_id:
-                sent = await context.bot.send_photo(
+                sent = await safe_send(context.bot.send_photo(
                     chat_id      = new_channel_id,
                     photo        = media_file_id,
                     caption      = caption or "",
                     parse_mode   = 'Markdown',
                     reply_markup = new_keyboard,
                     **extra
-                )
+                ))
             elif media_type == "video" and media_file_id:
-                sent = await context.bot.send_video(
+                sent = await safe_send(context.bot.send_video(
                     chat_id      = new_channel_id,
                     video        = media_file_id,
                     caption      = caption or "",
                     parse_mode   = 'Markdown',
                     reply_markup = new_keyboard,
                     **extra
-                )
+                ))
             elif caption:
-                sent = await context.bot.send_message(
+                sent = await safe_send(context.bot.send_message(
                     chat_id      = new_channel_id,
                     text         = caption,
                     parse_mode   = 'Markdown',
                     reply_markup = new_keyboard,
                     **extra
-                )
+                ))
             else:
                 skipped += 1
                 continue
@@ -10067,7 +10158,7 @@ def get_movie_details(movie_id):
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, title, year, poster_url, rating, genre, description, category, language
+            SELECT id, title, year, poster_url, rating, genre, description, category, language, "cast", trailer_key
             FROM movies WHERE id = %s
         """, (movie_id,))
         row = cur.fetchone()
@@ -10083,7 +10174,9 @@ def get_movie_details(movie_id):
             'genre': row[5] if row[5] else 'Unknown',
             'description': row[6] if row[6] else 'No description available.',
             'category': row[7] if row[7] else 'Movie',
-            'language': row[8] if row[8] else ''
+            'language': row[8] if row[8] else '',
+            'cast': row[9] if row[9] else '',
+            'trailer_key': row[10] if row[10] else None
         }
 
         # Get files
@@ -10094,7 +10187,7 @@ def get_movie_details(movie_id):
         cur.close()
         close_db_connection(conn)
 
-        # TMDB: include year to disambiguate
+        # TMDB: include year to disambiguate (ONLY for Backdrop and Trailer fallback)
         try:
             # Build search query with title and year if present
             search_term = movie['title']
@@ -10114,22 +10207,18 @@ def get_movie_details(movie_id):
                 else:
                     movie['backdrop'] = None
 
-                # Cast
-                credits_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/credits?api_key={TMDB_API_KEY}"
-                credits = requests.get(credits_url, timeout=5).json()
-                cast = credits.get('cast', [])[:5]
-                movie['cast'] = [{'name': c['name'], 'character': c['character'], 'profile': f"https://image.tmdb.org/t/p/w185{c['profile_path']}" if c.get('profile_path') else None} for c in cast]
-
-                # Trailer
-                videos_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={TMDB_API_KEY}"
-                videos = requests.get(videos_url, timeout=5).json()
-                trailer = next((v for v in videos.get('results', []) if v['type'] == 'Trailer' and v['site'] == 'YouTube'), None)
-                if trailer:
-                    movie['trailer_key'] = trailer['key']
+                # Cast - NOW LOADED FROM LOCAL DB (No TMDB Call)
+                # Front-end will split comma separated names into badges.
+                
+                # Trailer Fallback (Only if local DB doesn't have it)
+                if not movie.get('trailer_key'):
+                    videos_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/videos?api_key={TMDB_API_KEY}"
+                    videos = requests.get(videos_url, timeout=5).json()
+                    trailer = next((v for v in videos.get('results', []) if v['type'] == 'Trailer' and v['site'] == 'YouTube'), None)
+                    if trailer:
+                        movie['trailer_key'] = trailer['key']
         except Exception as e:
             logger.warning(f"TMDB fetch failed for {movie['title']}: {e}")
-            movie['cast'] = []
-            movie['trailer_key'] = None
             movie['backdrop'] = None
 
         result = {'status': 'success', 'movie': movie}
@@ -10310,6 +10399,30 @@ def get_suggestions():
         logger.error(f"Suggest API Error: {e}")
         return jsonify([])
 
+@flask_app.route('/api/imdb_id/<int:tmdb_id>', methods=['GET'])
+def get_imdb_id(tmdb_id):
+    """Fetch IMDB ID from TMDB API for the Web Player streamimdb.ru requirement."""
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids?api_key={TMDB_API_KEY}"
+        resp = requests.get(url, timeout=5).json()
+        imdb_id = resp.get('imdb_id')
+        
+        if imdb_id:
+            return jsonify({'status': 'success', 'imdb_id': imdb_id})
+        
+        # Fallback to TV show if movie returns no IMDB ID
+        url_tv = f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids?api_key={TMDB_API_KEY}"
+        resp_tv = requests.get(url_tv, timeout=5).json()
+        imdb_id_tv = resp_tv.get('imdb_id')
+        
+        if imdb_id_tv:
+             return jsonify({'status': 'success', 'imdb_id': imdb_id_tv})
+             
+        return jsonify({'status': 'error', 'message': 'No IMDB ID found'}), 404
+    except Exception as e:
+        logger.error(f"Error fetching IMDB ID for tmdb_{tmdb_id}: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # ==================== MAIN WEB APP PAGE (Premium HTML) ====================
 
 # 🛡️ MIDDLEMAN REDIRECT PAGE (Anti-Bot)
@@ -10427,6 +10540,61 @@ def serve_mini_app():
             font-size: 16px; font-weight: 400;
         }
         .search-box input::placeholder { color: #5a5a5a; }
+        
+        /* AJAX Search Dropdown */
+        .search-dropdown-container { position: relative; width: 100%; z-index: 1000; }
+        .search-dropdown {
+            position: absolute; top: 10px; left: 0; right: 0;
+            background: rgba(20,20,20,0.95); backdrop-filter: blur(20px);
+            border: 1px solid var(--border); border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8); overflow-y: auto;
+            max-height: 400px; display: none; padding: 10px;
+        }
+        .search-dropdown.active { display: block; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .search-item {
+            display: flex; gap: 15px; padding: 12px; border-radius: 12px;
+            transition: background 0.2s; cursor: pointer; align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .search-item:last-child { border-bottom: none; }
+        .search-item:active { background: rgba(229,9,20,0.1); }
+        .search-item img { width: 50px; height: 75px; border-radius: 8px; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .search-item-info { flex: 1; min-width: 0; }
+        .search-item-title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+        .search-item-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+        .search-item-meta span { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
+        .search-actions { display: flex; flex-direction: column; gap: 6px; }
+        .btn-sm { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; border: none; cursor: pointer; transition: transform 0.2s; white-space: nowrap; }
+        .btn-sm-primary { background: var(--primary); color: white; box-shadow: 0 4px 10px var(--primary-glow); }
+        .btn-sm-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        .btn-sm:active { transform: scale(0.95); }
+        
+        /* Web Player Modal */
+        .web-player-modal {
+            display: none; position: fixed; inset: 0; background: black; z-index: 4000;
+            flex-direction: column;
+        }
+        .web-player-modal.active { display: flex; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .wp-header {
+            display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); position: absolute; top: 0; left: 0; right: 0; z-index: 4010; pointer-events: none;
+        }
+        .wp-title { font-weight: 600; font-size: 14px; text-shadow: 0 2px 5px black; pointer-events: auto; }
+        .wp-close { background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; backdrop-filter: blur(10px); }
+        .wp-close:active { background: var(--primary); }
+        .wp-iframe-container { flex: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+        .wp-iframe-container iframe { width: 100%; height: 100%; border: none; }
+        .wp-loader { position: absolute; color: var(--primary); font-size: 14px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+
+        /* Cast Chips */
+        .cast-chip {
+            display: inline-block; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+            color: #ddd; padding: 6px 14px; border-radius: 40px; font-size: 13px; font-weight: 500;
+            margin-right: 8px; margin-bottom: 8px; white-space: nowrap; backdrop-filter: blur(5px);
+        }
+        
         /* Genre pills */
         .genre-scroll {
             display: flex; overflow-x: auto; gap: 12px; padding: 0 24px 20px 24px;
@@ -10731,6 +10899,9 @@ def serve_mini_app():
             <i class="fas fa-search"></i>
             <input type="text" id="searchInput" placeholder="Search movies, web series...">
         </div>
+        <div class="search-dropdown-container">
+            <div id="searchDropdown" class="search-dropdown"></div>
+        </div>
     </div>
     <div class="genre-scroll" id="genreContainer"></div>
 
@@ -10820,6 +10991,17 @@ def serve_mini_app():
             <iframe id="trailerIframe" src="" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
         </div>
         <button class="close-trailer-btn" onclick="closeTrailer()"><i class="fas fa-times"></i> Close</button>
+    </div>
+
+    <!-- Web Player Modal -->
+    <div class="web-player-modal" id="webPlayerModal">
+        <div class="wp-header">
+            <div class="wp-title" id="wpTitle">Loading...</div>
+            <button class="wp-close" onclick="closeWebPlayer()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="wp-iframe-container" id="wpIframeContainer">
+            <!-- Iframe dynamically inserted here -->
+        </div>
     </div>
 
     <div class="toast" id="toast">✅ Done!</div>
@@ -10986,21 +11168,15 @@ let searchTimeout;
 document.getElementById('searchInput').addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
     const q = e.target.value.trim();
-    const main = document.getElementById('mainContent');
-    const searchRes = document.getElementById('searchResultsContent');
-    const genreCont = document.getElementById('genreContainer');
+    const dropdown = document.getElementById('searchDropdown');
     
     if (!q) {
-        main.style.display = 'block';
-        genreCont.style.display = 'flex';
-        searchRes.style.display = 'none';
+        dropdown.classList.remove('active');
         return;
     }
     
-    main.style.display = 'none';
-    genreCont.style.display = 'none';
-    searchRes.style.display = 'block';
-    document.getElementById('searchGrid').innerHTML = '<div class="loader">Searching...</div>';
+    dropdown.innerHTML = '<div class="loader">Searching...</div>';
+    dropdown.classList.add('active');
 
     searchTimeout = setTimeout(async () => {
         try {
@@ -11009,90 +11185,76 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
             
             if (data.status === 'success' && data.results.length > 0) {
                 const results = data.results;
-                const local = results.filter(r => r.source === 'local');
-                const tmdb = results.filter(r => r.source === 'tmdb');
                 
-                // 🔥 FIX: Local Search me aayi movies ko main array me save karo (Taaki unpar click ho sake)
-                local.forEach(l => {
-                    if (!allMovies.find(m => m.id == l.id)) {
-                        allMovies.push(l);
+                // Save to local mapping for details click
+                results.forEach(r => {
+                    if (r.source === 'tmdb') {
+                        tmdbMoviesMap[r.id] = r;
+                    } else if (!allMovies.find(m => m.id == r.id)) {
+                        allMovies.push(r);
                     }
                 });
 
-                tmdb.forEach(t => tmdbMoviesMap[t.id] = t);
-                document.getElementById('searchHeader').innerHTML = `<i class="fas fa-search"></i> Found ${results.length} results`;
-                document.getElementById('searchGrid').innerHTML = renderCards(results, 'grid-card', false);
-            } else {
-                const term = q;
-                const searchHeader = document.getElementById('searchHeader');
-                const searchGrid = document.getElementById('searchGrid');
-                
-                searchHeader.innerHTML = `<i class="fas fa-exclamation-circle" style="color:#ef4444;"></i> Not Found`;
-                searchGrid.innerHTML = '<div class="loader">Checking spelling...</div>';
-                
-                // 🔥 FRONTEND JUGAD: Direct user ke mobile se Google ko call (No Server Block!)
-                const script = document.createElement('script');
-                window.googleSuggestCb = function(data) {
-                    let suggs = data[1] || [];
-                    // 'movie' word hata kar clean title banana
-                    suggs = suggs.map(s => s.replace(/ movie$/i, '').replace(/\b\w/g, c => c.toUpperCase())).slice(0, 6);
+                let html = '';
+                results.forEach(r => {
+                    const isTMDB = r.source === 'tmdb';
+                    const rating = r.rating && r.rating !== 'N/A' ? `<span>⭐ ${r.rating}</span>` : '';
+                    const year = r.year ? `<span>${r.year}</span>` : '';
                     
-                    if(suggs.length > 0) {
-                        let buttonsHtml = suggs.map(s => 
-                            `<div onclick="document.getElementById('searchInput').value='${s}'; document.getElementById('searchInput').dispatchEvent(new Event('input'));" 
-                            style="padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); color: white; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s;"
-                            onmouseover="this.style.background='rgba(229,9,20,0.1)'" onmouseout="this.style.background='transparent'">
-                                <i class="fas fa-search" style="color: var(--text-muted); font-size: 14px;"></i> 
-                                <span style="font-weight: 500;">${s}</span>
-                            </div>`
-                        ).join('');
-                        
-                        searchGrid.innerHTML = `
-                            <div style="grid-column: 1 / -1; padding: 15px; background: var(--surface); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                                <p style="color: var(--primary); margin-bottom: 10px; font-size: 13px; font-weight: bold; padding-left: 10px;">✨ DID YOU MEAN:</p>
-                                <div style="background: rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden;">
-                                    ${buttonsHtml}
+                    if (isTMDB) {
+                        const rawTmdbId = r.id.replace('tmdb_', '');
+                        html += `
+                            <div class="search-item">
+                                <img src="${r.image}" loading="lazy" onerror="this.src='https://via.placeholder.com/50x75?text=No+Poster'">
+                                <div class="search-item-info">
+                                    <div class="search-item-title">${r.title}</div>
+                                    <div class="search-item-meta">${year} ${rating}</div>
                                 </div>
-                                <div style="margin-top: 20px; padding: 0 10px;">
-                                    <button onclick="requestSilent(this.dataset.title)" data-title="${term.replace(/"/g, '&quot;').replace(/'/g, '&apos;')}" class="request-glow-btn">
-                                        <i class="fas fa-paper-plane"></i> Request This Movie (मूवी रिक्वेस्ट करें)
-                                    </button>
+                                <div class="search-actions">
+                                    <button class="btn-sm btn-sm-outline" onclick="requestMovie('${r.title.replace(/'/g, "\\'")}')">Request Now</button>
+                                    <button class="btn-sm btn-sm-primary" onclick="openWebPlayer('${rawTmdbId}')">Watch Online</button>
                                 </div>
                             </div>
                         `;
                     } else {
-                        showFallbackUI(term);
+                        html += `
+                            <div class="search-item" onclick="openDetails('${r.id}', false); document.getElementById('searchDropdown').classList.remove('active');">
+                                <img src="${r.image}" loading="lazy" onerror="this.src='https://via.placeholder.com/50x75?text=No+Poster'">
+                                <div class="search-item-info">
+                                    <div class="search-item-title">${r.title}</div>
+                                    <div class="search-item-meta">${year} ${rating} <span style="color:var(--primary); font-weight:bold;">Available</span></div>
+                                </div>
+                                <div class="search-actions">
+                                    <button class="btn-sm btn-sm-primary">View Now</button>
+                                </div>
+                            </div>
+                        `;
                     }
-                    
-                    // Script ka kaam khatam, safai kar do
-                    document.head.removeChild(script);
-                    delete window.googleSuggestCb;
-                };
-                
-                script.onerror = function() {
-                    showFallbackUI(term);
-                };
-                
-                function showFallbackUI(term) {
-                    const safeTitle = term.replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-                    searchGrid.innerHTML = `
-                        <div style="grid-column: 1 / -1; text-align: center; padding: 30px 20px; background: var(--surface); border-radius: 16px;">
-                            <p style="color: var(--text-muted); margin-bottom: 20px;">We couldn't find "${term}".</p>
-                            <button onclick="requestSilent(this.dataset.title)" data-title="${safeTitle}" class="request-glow-btn">
-                                <i class="fas fa-paper-plane"></i> Request This Movie (मूवी रिक्वेस्ट करें)
-                            </button>
-                        </div>
-                    `;
-                }
-                
-                // Google ki API ko call (Client side)
-                script.src = `https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(term + ' movie')}&callback=googleSuggestCb`;
-                document.head.appendChild(script);
+                });
+                dropdown.innerHTML = html;
+            } else {
+                dropdown.innerHTML = `
+                    <div style="text-align:center; padding: 20px;">
+                        <p style="color: var(--text-muted); margin-bottom: 15px;">We couldn't find "${q}".</p>
+                        <button onclick="requestSilent('${q.replace(/'/g, "\\'")}')" class="request-glow-btn">
+                            <i class="fas fa-paper-plane"></i> Request This Movie
+                        </button>
+                    </div>
+                `;
             }
         } catch (err) {
-            document.getElementById('searchGrid').innerHTML = '<div class="loader">Error</div>';
+            dropdown.innerHTML = '<div class="loader">Error searching</div>';
         }
     }, 500);
+});
+
+// Hide dropdown if clicked outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('searchDropdown');
+    const container = document.querySelector('.search-section');
+    if (!container.contains(e.target)) {
+        dropdown.classList.remove('active');
+    }
 });
         // Details
         window.openDetails = function(id, isTMDB) {
@@ -11129,10 +11291,15 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                         document.getElementById('dpGenre').innerText = m.genre;
                         document.getElementById('dpDesc').innerText = m.description;
                         // Cast
-                        if (m.cast && m.cast.length) {
-                            let castHtml = '<div class="cast-list">';
-                            m.cast.forEach(c => {
-                                castHtml += `<div class="cast-item"><img src="${c.profile || 'https://via.placeholder.com/70'}" alt="${c.name}"><span>${c.name}</span></div>`;
+                        // Cast Chips (Local Fetch)
+                        if (m.cast && m.cast.trim().length > 0) {
+                            const actors = m.cast.split(',');
+                            let castHtml = '<div style="margin-bottom:20px;">';
+                            actors.forEach(actor => {
+                                const cleanName = actor.trim();
+                                if (cleanName) {
+                                    castHtml += `<span class="cast-chip">[ ${cleanName} ]</span>`;
+                                }
                             });
                             castHtml += '</div>';
                             document.getElementById('castSection').innerHTML = castHtml;
@@ -11183,6 +11350,41 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
         window.closeTrailer = function() {
             document.getElementById('trailerIframe').src = '';
             document.getElementById('trailerModal').classList.remove('active');
+        };
+
+        // In-App Web Player Modal Logic
+        window.openWebPlayer = function(tmdbId) {
+            document.getElementById('searchDropdown').classList.remove('active');
+            const modal = document.getElementById('webPlayerModal');
+            const iframeCont = document.getElementById('wpIframeContainer');
+            const titleEl = document.getElementById('wpTitle');
+            
+            modal.classList.add('active');
+            titleEl.innerText = 'Loading Player...';
+            iframeCont.innerHTML = '<div class="wp-loader"><div class="loader"></div>Fetching Secure Stream...</div>';
+            
+            // Background async call to fetch IMDb ID
+            fetch(`/api/imdb_id/${tmdbId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success' && data.imdb_id) {
+                        titleEl.innerText = 'Secure Player · Premium Stream';
+                        // streamimdb.ru requires IMDb ID for playing
+                        iframeCont.innerHTML = `<iframe src="https://streamimdb.ru/embed/movie/${data.imdb_id}" allowfullscreen allow="autoplay"></iframe>`;
+                    } else {
+                        titleEl.innerText = 'Error loading stream';
+                        iframeCont.innerHTML = '<div style="color:white;text-align:center;">❌ Could not find streaming source. Try Requesting the movie instead.</div>';
+                    }
+                })
+                .catch(e => {
+                    titleEl.innerText = 'Network Error';
+                    iframeCont.innerHTML = '<div style="color:white;text-align:center;">❌ Network error while loading player.</div>';
+                });
+        };
+
+        window.closeWebPlayer = function() {
+            document.getElementById('webPlayerModal').classList.remove('active');
+            document.getElementById('wpIframeContainer').innerHTML = ''; // Stop video playback
         };
 
         window.requestMovie = function(title) {
@@ -11373,7 +11575,7 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
         movie_title = context.user_data.get('temp_request_name')
         
         # --- FINAL SAVE TO DATABASE ---
-        stored = store_user_request(
+        stored = await run_async(store_user_request,
             user.id,
             user.username,
             user.first_name,
