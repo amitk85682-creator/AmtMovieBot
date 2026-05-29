@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import traceback
 import time
 import os
@@ -107,7 +107,7 @@ def get_safe_font(text, style=None):
     if not text:
         return ""
     
-    # 1. Bold Italic (ð‘²ð’‚ð’ð’Œð’Š ðŸðŸ–ðŸ—ðŸ– ð‘¨ð‘«)
+    # 1. Bold Italic (𝑲𝒂𝒍𝒌𝒊 𝟐𝟖𝟗𝟖 𝑨𝑫)
     def to_bold_italic(s):
         result = ""
         for char in s:
@@ -175,7 +175,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     conn = get_db_connection()
     if not conn:
-        await update.message.reply_text("âŒ Database connection failed.")
+        await update.message.reply_text("❌ Database connection failed.")
         return
 
     cursor = conn.cursor()
@@ -198,7 +198,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
         )
     else:
         await update.message.reply_text(
-            "âŒ Naam batao!\nExample: `/post Pushpa`",
+            "❌ Naam batao!\nExample: `/post Pushpa`",
             parse_mode='Markdown'
         )
         cursor.close()
@@ -210,7 +210,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
     close_db_connection(conn)
 
     if not movie_data:
-        await update.message.reply_text("âŒ Movie nahi mili database mein.")
+        await update.message.reply_text("❌ Movie nahi mili database mein.")
         return
 
     # --- 2. DATA UNPACK ---
@@ -246,12 +246,12 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     # --- 5. CAPTION ---
     caption = (
-        f"ðŸŽ¬ **{title} ({year})**\n\n"
-        f"â­ï¸ **Rating:** {rating}/10\n"
-        f"ðŸŽ­ **Genre:** {genre}\n"
-        f"ðŸ· **Category:** {category}\n\n"
-        f"ðŸ“œ **Story:** {short_desc}\n\n"
-        f"ðŸ‘‡ **Click Below to Download** ðŸ‘‡"
+        f"🎬 **{title} ({year})**\n\n"
+        f"⭐️ **Rating:** {rating}/10\n"
+        f"🎭 **Genre:** {genre}\n"
+        f"🏷 **Category:** {category}\n\n"
+        f"📜 **Story:** {short_desc}\n\n"
+        f"👇 **Click Below to Download** 👇"
     )
 
     # --- 6. DEEP LINKS (NEW SECURE LINKS) ---
@@ -261,22 +261,22 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard_data = {
         "inline_keyboard": [
             [
-                {"text": "ðŸ“¥ Download Now", "url": secure_url},
-                {"text": "ðŸ“¥ Download Now", "url": secure_url}
+                {"text": "📥 Download Now", "url": secure_url},
+                {"text": "📥 Download Now", "url": secure_url}
             ],
             [
-                {"text": "âš¡ Download Now", "url": secure_url}
+                {"text": "⚡ Download Now", "url": secure_url}
             ]
         ]
     }
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("ðŸ“¥ Download Now", url=secure_url),
-            InlineKeyboardButton("ðŸ“¥ Download Now", url=secure_url)
+            InlineKeyboardButton("📥 Download Now", url=secure_url),
+            InlineKeyboardButton("📥 Download Now", url=secure_url)
         ],
         [
-            InlineKeyboardButton("âš¡ Download Now", url=secure_url)
+            InlineKeyboardButton("⚡ Download Now", url=secure_url)
         ]
     ])
 
@@ -317,26 +317,26 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
                     "movies"
                 )
             )
-            save_status = "ðŸ’¾ DB mein save hua âœ…"
+            save_status = "💾 DB mein save hua ✅"
         except Exception as save_err:
             logger.warning(f"Post DB save failed (non-critical): {save_err}")
-            save_status = "âš ï¸ DB save nahi hua"
+            save_status = "⚠️ DB save nahi hua"
 
         await update.message.reply_text(
-            f"âœ… **{title}** posted in Topic `{topic_id}`\n"
+            f"✅ **{title}** posted in Topic `{topic_id}`\n"
             f"{save_status}",
             parse_mode='Markdown'
         )
 
     except Exception as e:
         logger.error(f"Post failed: {e}")
-        await update.message.reply_text(f"âŒ Post Error: {e}")
+        await update.message.reply_text(f"❌ Post Error: {e}")
 
 # ==================== ENVIRONMENT VARIABLES ====================
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 DATABASE_URL = os.environ.get('DATABASE_URL')
-    # ðŸ‘‡ðŸ‘‡ðŸ‘‡ START COPY HERE ðŸ‘‡ðŸ‘‡ðŸ‘‡
+    # 👇👇👇 START COPY HERE 👇👇👇
 db_pool = None
 try:
     # Pool create kar rahe hain taki baar baar connection na banana pade
@@ -346,17 +346,17 @@ try:
             2, 8,  # Supabase Free Tier (60 connections) ke liye optimized
             dsn=pool_url
         )
-        logger.info("âœ… Database Connection Pool Created (Thread-Safe)!")
+        logger.info("✅ Database Connection Pool Created (Thread-Safe)!")
 except Exception as e:
-    logger.error(f"âŒ Error creating pool: {e}")
-# ðŸ‘†ðŸ‘†ðŸ‘† END COPY HERE ðŸ‘†ðŸ‘†ðŸ‘†
+    logger.error(f"❌ Error creating pool: {e}")
+# 👆👆👆 END COPY HERE 👆👆👆
 BLOGGER_API_KEY = os.environ.get('BLOGGER_API_KEY')
 BLOG_ID = os.environ.get('BLOG_ID')
 UPDATE_SECRET_CODE = os.environ.get('UPDATE_SECRET_CODE', 'default_secret_123')
 _admin_id = os.environ.get('ADMIN_USER_ID', '0')
 ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 0
 
-# Dono accounts â€” main bot owner + userbot â€” dono ko full admin access
+# Dono accounts — main bot owner + userbot — dono ko full admin access
 ADMIN_IDS = [ADMIN_USER_ID, 8438574164]
 
 def is_admin(user_id: int) -> bool:
@@ -377,7 +377,7 @@ BACKUP_FSUB_LIST = [
 ]
 # =============================================================
 
-# ðŸ‘‡ðŸ‘‡ YAHAN YE EK LINE PASTE KAR DO ðŸ‘‡ðŸ‘‡
+# 👇👇 YAHAN YE EK LINE PASTE KAR DO 👇👇
 FILMFYBOX_CHANNEL_URL = ACTIVE_FSUB['url']
 
 REQUIRED_GROUP_ID = os.environ.get('REQUIRED_GROUP_ID', '-1003930961567')
@@ -386,9 +386,9 @@ REQUEST_CHANNEL_ID = os.environ.get('REQUEST_CHANNEL_ID', '-1003078990647')
 DUMP_CHANNEL_ID = os.environ.get('DUMP_CHANNEL_ID', '-1003893346701')
 FORCE_JOIN_ENABLED = False
 
-# âœ… NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
-CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # âœ… NEW: Claude API Key
-STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # âœ… NEW: Backup Channels List
+# ✅ NEW ENVIRONMENT VARIABLES FOR MULTI-CHANNEL & AI
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")  # ✅ NEW: Claude API Key
+STORAGE_CHANNELS = os.environ.get("STORAGE_CHANNELS", "-1003823464401")  # ✅ NEW: Backup Channels List
 
 # Verified users cache (Taaki baar baar API call na ho)
 verified_users = {}
@@ -416,7 +416,7 @@ MAX_REQUESTS_PER_MINUTE = int(os.environ.get('MAX_REQUESTS_PER_MINUTE', '10'))
 # Auto-delete tracking
 messages_to_auto_delete = defaultdict(list)
 
-# âœ… NEW GLOBAL VARIABLES FOR BATCH SESSION
+# ✅ NEW GLOBAL VARIABLES FOR BATCH SESSION
 BATCH_SESSION = {'active': False, 'movie_id': None, 'movie_title': None, 'file_count': 0, 'admin_id': None}
 SUPER_BATCH_SESSION = {'active': False, 'admin_id': None, 'files': []}
 
@@ -430,7 +430,7 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set.")
 
 
-# ðŸ‘‡ðŸ‘‡ðŸ‘‡ START COPY HERE (Line 290 ke aas-paas paste karein) ðŸ‘‡ðŸ‘‡ðŸ‘‡
+# 👇👇👇 START COPY HERE (Line 290 ke aas-paas paste karein) 👇👇👇
 import functools
 
 async def run_async(func, *args, **kwargs):
@@ -440,19 +440,19 @@ async def run_async(func, *args, **kwargs):
     """
     func_partial = functools.partial(func, *args, **kwargs)
     return await asyncio.get_running_loop().run_in_executor(None, func_partial)
-# ðŸ‘†ðŸ‘†ðŸ‘† END COPY HERE ðŸ‘†ðŸ‘†ðŸ‘†
+# 👆👆👆 END COPY HERE 👆👆👆
 
 
-# ==================== ðŸ›¡ï¸ SAFE_SEND â€” Global Anti-FloodWait Wrapper ====================
+# ==================== 🛡️ SAFE_SEND — Global Anti-FloodWait Wrapper ====================
 _send_semaphore = asyncio.Semaphore(25)  # Max 25 concurrent outgoing messages
 _last_send_time = 0
 
 async def safe_send(coro, max_retries=3):
     """
-    ðŸ›¡ï¸ Global Anti-FloodWait Shield.
+    🛡️ Global Anti-FloodWait Shield.
     Har high-risk outgoing message isse guzrega.
     - Semaphore se max 25 concurrent sends
-    - Min 40ms gap (â‰ˆ25 msg/sec)
+    - Min 40ms gap (≈25 msg/sec)
     - RetryAfter auto-catch + wait + retry
     """
     global _last_send_time
@@ -467,11 +467,11 @@ async def safe_send(coro, max_retries=3):
                 return await coro
             except RetryAfter as e:
                 wait = e.retry_after + 1
-                logger.warning(f"â³ FloodWait! Waiting {wait}s (attempt {attempt+1}/{max_retries})")
+                logger.warning(f"⏳ FloodWait! Waiting {wait}s (attempt {attempt+1}/{max_retries})")
                 await asyncio.sleep(wait)
             except (TelegramError, Exception) as e:
                 if 'flood' in str(e).lower():
-                    logger.warning(f"â³ Possible flood error, waiting 5s: {e}")
+                    logger.warning(f"⏳ Possible flood error, waiting 5s: {e}")
                     await asyncio.sleep(5)
                 else:
                     logger.error(f"safe_send error: {e}")
@@ -480,7 +480,7 @@ async def safe_send(coro, max_retries=3):
     return None
 
 
-# ==================== ðŸ§¹ STRIP_CAPTION_JUNK â€” Caption Cleaner ====================
+# ==================== 🧹 STRIP_CAPTION_JUNK — Caption Cleaner ====================
 def strip_caption_junk(text):
     """
     File caption se third-party promotions, links, usernames strip karta hai.
@@ -596,10 +596,10 @@ def clean_telegram_text(text):
     """Removes emojis and converts fancy fonts to normal text"""
     if not text: return ""
     
-    # ðŸ‘‡ NAYA FIX: Sabse pehle ye faltu text hatao (taaki fancy font normal hone se pehle hi cut jaye)
-    text = text.replace("@BuLMoviee ð—ð—¼ð—¶ð—» ð—¨ð˜€ ð—¢ð—» ð—§ð—²ð—¹ð—²ð—´ð—¿ð—®ð—º", "")
+    # 👇 NAYA FIX: Sabse pehle ye faltu text hatao (taaki fancy font normal hone se pehle hi cut jaye)
+    text = text.replace("@BuLMoviee 𝗝𝗼𝗶𝗻 𝗨𝘀 𝗢𝗻 𝗧𝗲𝗹𝗲𝗴𝗿𝗮𝗺", "")
     
-    fancy = {'á´€':'a','Ê™':'b','á´„':'c','á´…':'d','á´‡':'e','Ò“':'f','É¢':'g','Êœ':'h','Éª':'i','á´Š':'j','á´‹':'k','ÊŸ':'l','á´':'m','É´':'n','á´':'o','á´˜':'p','Ç«':'q','Ê€':'r','s':'s','á´›':'t','á´œ':'u','á´ ':'v','á´¡':'w','x':'x','Ê':'y','á´¢':'z'}
+    fancy = {'ᴀ':'a','ʙ':'b','ᴄ':'c','ᴅ':'d','ᴇ':'e','ғ':'f','ɢ':'g','ʜ':'h','ɪ':'i','ᴊ':'j','ᴋ':'k','ʟ':'l','ᴍ':'m','ɴ':'n','ᴏ':'o','ᴘ':'p','ǫ':'q','ʀ':'r','s':'s','ᴛ':'t','ᴜ':'u','ᴠ':'v','ᴡ':'w','x':'x','ʏ':'y','ᴢ':'z'}
     for k, v in fancy.items(): 
         text = text.replace(k, v)
     
@@ -613,13 +613,13 @@ def clean_telegram_text(text):
     # "Name:", "Title:", "File Name:" jaise words ko shuruat se hata dega
     text = re.sub(r'(?i)^(name|title|file\s*name|movie)\s*:\s*', '', text).strip()
     
-    # ðŸ‘‡ Ek aur safety check: Agar normalize hone ke baad simple text me bach gaya ho toh wo bhi hata dega
+    # 👇 Ek aur safety check: Agar normalize hone ke baad simple text me bach gaya ho toh wo bhi hata dega
     text = text.replace("@BuLMoviee Join Us On Telegram", "").strip()
     
     return text
 def _process_poster_sync(image_data):
     """
-    ðŸŽ¨ PIL Image Processing (Background Thread me chalega)
+    🎨 PIL Image Processing (Background Thread me chalega)
     Portrait poster ko Square 1:1 format me convert karta hai.
     """
     from PIL import Image, ImageFilter
@@ -671,11 +671,11 @@ async def make_landscape_poster(url_or_bytes):
         if not image_data:
             return url_or_bytes
 
-        # ðŸš€ PIL ops background thread me â€” event loop free!
+        # 🚀 PIL ops background thread me — event loop free!
         return await run_async(_process_poster_sync, image_data)
 
     except Exception as e:
-        logger.error(f"âŒ Cinematic Conversion Error: {e}")
+        logger.error(f"❌ Cinematic Conversion Error: {e}")
         return url_or_bytes
 
 
@@ -708,10 +708,10 @@ async def upload_image_to_telegraph(bot, file_id):
                     return f"https://telegra.ph{res[0]['src']}"
         return None
     except Exception as e:
-        logger.error(f"âŒ Telegraph upload failed: {e}")
+        logger.error(f"❌ Telegraph upload failed: {e}")
         return None
 
-# ðŸ‘‡ NAYA HELPER FUNCTION: Yeh aapki saari keys .env se nikal lega
+# 👇 NAYA HELPER FUNCTION: Yeh aapki saari keys .env se nikal lega
 def get_gemini_keys():
     keys = []
     # Purani standard key check karein
@@ -726,16 +726,16 @@ def get_gemini_keys():
     return keys
 
 
-# ðŸ‘‡ UPDATED FUNCTION 1: Name Extraction (With Multi-Key Rotation)
+# 👇 UPDATED FUNCTION 1: Name Extraction (With Multi-Key Rotation)
 async def get_movie_name_from_caption(caption_text, image_bytes=None):
     """
-    ðŸŽ¯ FULLY AI-POWERED EXTRACTION (MULTIMODAL WITH AUTO-KEY ROTATION)
+    🎯 FULLY AI-POWERED EXTRACTION (MULTIMODAL WITH AUTO-KEY ROTATION)
     """
     if not caption_text or len(caption_text.strip()) < 2:
         return {"title": "UNKNOWN", "year": "", "language": "", "extra_info": "", "category": ""}
     
     first_line = clean_telegram_text(caption_text.split('\n')[0].strip())
-    logger.info(f"ðŸ“ Processing caption: {first_line[:100]}...")
+    logger.info(f"📝 Processing caption: {first_line[:100]}...")
 
     gemini_keys = get_gemini_keys()
 
@@ -750,7 +750,7 @@ Rules:
 - category: 'Web Series' if season/episode found, else 'Movies'
 
 Example:
-Input: "A Gatherer's Adventure In Isekai S01 [E01-12] COMBiNED 720p AMZN WEB-DL HEVC Multi DDP2.0 MSub KEÐ˜ !! Shubham.mkv"
+Input: "A Gatherer's Adventure In Isekai S01 [E01-12] COMBiNED 720p AMZN WEB-DL HEVC Multi DDP2.0 MSub KEИ !! Shubham.mkv"
 Output: {{"title": "A Gatherer's Adventure In Isekai", "year": "", "language": "Multi Audio", "extra_info": "S01 E01-12 COMBINED", "category": "Web Series"}}
 JSON:"""
 
@@ -758,7 +758,7 @@ JSON:"""
         if image_bytes:
             contents.append({"mime_type": "image/jpeg", "data": image_bytes})
 
-        # ðŸš€ KEY ROTATION LOOP
+        # 🚀 KEY ROTATION LOOP
         for key in gemini_keys:
             try:
                 genai.configure(api_key=key)
@@ -772,40 +772,40 @@ JSON:"""
                     if json_match:
                         data = json.loads(json_match.group())
                         if data.get("title") and len(data["title"]) > 2:
-                            logger.info(f"âœ… Gemini Success (Key used: {key[:5]}...): {data['title']}")
+                            logger.info(f"✅ Gemini Success (Key used: {key[:5]}...): {data['title']}")
                             return data
                 break # Agar response mila par JSON galat hai, toh aage wali key waste mat karo
                 
             except Exception as e:
                 error_msg = str(e).lower()
-                # ðŸ‘‡ Yahan ek print statement add karo taaki actual error log me dikhe
-                logger.error(f"ðŸ›‘ Asli Gemini Error Key {key[:5]} par: {str(e)}")
+                # 👇 Yahan ek print statement add karo taaki actual error log me dikhe
+                logger.error(f"🛑 Asli Gemini Error Key {key[:5]} par: {str(e)}")
                 
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
-                    logger.warning(f"âš ï¸ Key {key[:5]}... limit reached. Shifting to next key...")
+                    logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
                     continue
                 else:
-                    logger.error(f"âŒ Gemini Error on key {key[:5]}...: {e}")
+                    logger.error(f"❌ Gemini Error on key {key[:5]}...: {e}")
                     break
 
     # FALLBACK: Improved version
-    logger.info("âš ï¸ Keys exhausted or failed. Using fallback extraction...")
+    logger.info("⚠️ Keys exhausted or failed. Using fallback extraction...")
     return await fallback_extraction(first_line)
 
 
-# ðŸ‘‡ UPDATED FUNCTION 2: Alias Generation (With Multi-Key Rotation)
+# 👇 UPDATED FUNCTION 2: Alias Generation (With Multi-Key Rotation)
 def generate_aliases_gemini(movie_title, year="", category=""):
     """
-    ðŸŽ¯ AI se 50 search aliases generate karta hai (WITH AUTO-KEY ROTATION)
+    🎯 AI se 50 search aliases generate karta hai (WITH AUTO-KEY ROTATION)
     """
-    logger.info(f"ðŸš€ Generating aliases for: '{movie_title}' ({year}) [{category}]")
+    logger.info(f"🚀 Generating aliases for: '{movie_title}' ({year}) [{category}]")
     
     if not movie_title or movie_title == "UNKNOWN":
         return []
     
     gemini_keys = get_gemini_keys()
     if not gemini_keys:
-        logger.error("âŒ No GEMINI_API_KEY found!")
+        logger.error("❌ No GEMINI_API_KEY found!")
         return generate_basic_aliases(movie_title, year)
 
     prompt = f"""Generate 50 search aliases for the movie/show: "{movie_title}"
@@ -831,7 +831,7 @@ Example format: alias1, alias2, alias3, alias4"""
         genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
     }
 
-    # ðŸš€ KEY ROTATION LOOP
+    # 🚀 KEY ROTATION LOOP
     for key in gemini_keys:
         try:
             genai.configure(api_key=key)
@@ -845,7 +845,7 @@ Example format: alias1, alias2, alias3, alias4"""
             ai_text = response.text.strip()
             aliases = []
             
-            # ðŸ‘‡ FIX 1: Ab bot comma (,) aur New Line (\n) dono ko split kar lega
+            # 👇 FIX 1: Ab bot comma (,) aur New Line (\n) dono ko split kar lega
             raw_items = re.split(r',|\n', ai_text)
             
             for item in raw_items:
@@ -857,24 +857,24 @@ Example format: alias1, alias2, alias3, alias4"""
             
             aliases = list(dict.fromkeys(aliases))[:50]
             
-            # ðŸ‘‡ FIX 2: Agar AI ne ajeeb format diya aur 0 alias bache, toh Basic aliases (Fallback) use kar lo
+            # 👇 FIX 2: Agar AI ne ajeeb format diya aur 0 alias bache, toh Basic aliases (Fallback) use kar lo
             if not aliases:
                 logger.warning("AI returned bad format. Using fallback aliases.")
                 return generate_basic_aliases(movie_title, year)
                 
-            logger.info(f"âœ… Generated {len(aliases)} aliases (Key used: {key[:5]}...)")
+            logger.info(f"✅ Generated {len(aliases)} aliases (Key used: {key[:5]}...)")
             return aliases
 
         except Exception as e:
             error_msg = str(e).lower()
-            # ðŸ‘‡ Yahan ek print statement add karo taaki actual error log me dikhe
-            logger.error(f"ðŸ›‘ Asli Gemini Error Key {key[:5]} par: {str(e)}")
+            # 👇 Yahan ek print statement add karo taaki actual error log me dikhe
+            logger.error(f"🛑 Asli Gemini Error Key {key[:5]} par: {str(e)}")
             
             if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
-                logger.warning(f"âš ï¸ Key {key[:5]}... limit reached. Shifting to next key...")
+                logger.warning(f"⚠️ Key {key[:5]}... limit reached. Shifting to next key...")
                 continue
             else:
-                logger.warning(f"âŒ Alias Gemini error on key {key[:5]}...: {e}")
+                logger.warning(f"❌ Alias Gemini error on key {key[:5]}...: {e}")
                 break
 
     return generate_basic_aliases(movie_title, year)
@@ -1007,9 +1007,9 @@ async def fallback_extraction(caption_text):
         # 4. Language extraction (same as original)
         languages = []
         lang_map = {
-            'japanese|æ—¥æœ¬èªž': 'Japanese', 'english': 'English',
-            'hindi|à¤¹à¤¿à¤¨à¥à¤¦à¥€': 'Hindi', 'tamil|à®¤à®®à®¿à®´à¯': 'Tamil',
-            'telugu|à°¤à±†à°²à±à°—à±': 'Telugu', 'malayalam': 'Malayalam',
+            'japanese|日本語': 'Japanese', 'english': 'English',
+            'hindi|हिन्दी': 'Hindi', 'tamil|தமிழ்': 'Tamil',
+            'telugu|తెలుగు': 'Telugu', 'malayalam': 'Malayalam',
             'korean': 'Korean', 'dual.*audio': 'Dual Audio',
             'multi.*audio': 'Multi Audio'
         }
@@ -1027,7 +1027,7 @@ async def fallback_extraction(caption_text):
         # 6. Category
         category = "Movies"
 
-        logger.info(f"âœ… Movie Fallback: '{title}' | Year: {year_clean} | Lang: {language} | Extra: {extra_info} | Cat: {category}")
+        logger.info(f"✅ Movie Fallback: '{title}' | Year: {year_clean} | Lang: {language} | Extra: {extra_info} | Cat: {category}")
 
         return {
             "title": title,
@@ -1038,7 +1038,7 @@ async def fallback_extraction(caption_text):
         }
 
     except Exception as e:
-        logger.error(f"âŒ Fallback error: {e}")
+        logger.error(f"❌ Fallback error: {e}")
         return {"title": "UNKNOWN", "year": "", "language": "", "extra_info": "", "category": ""}
 
 
@@ -1048,7 +1048,7 @@ async def _extract_web_series(text, original):
         text = normalize_episodes(text)
         
         # 2. Remove language indicators line if present
-        text = re.sub(r'ðŸ”Š.*?(?:\n|$)', '', text, flags=re.DOTALL)
+        text = re.sub(r'🔊.*?(?:\n|$)', '', text, flags=re.DOTALL)
 
         # 2. Find season/episode/part position to split title
         split_pos = None
@@ -1071,7 +1071,7 @@ async def _extract_web_series(text, original):
             title = text
 
         # 4. Clean title (similar to movie cleaning)
-        title = re.sub(r'[A-ZÐ-Ð¯]{2,}\s*!+\s*\w+$', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'[A-ZА-Я]{2,}\s*!+\s*\w+$', '', title, flags=re.IGNORECASE)
         title = re.sub(r'\[.*?\]', '', title)
         title = re.sub(r'\(.*?\)', '', title)
         title = re.sub(r'by\s+\w+$', '', title, flags=re.IGNORECASE)
@@ -1097,9 +1097,9 @@ async def _extract_web_series(text, original):
         # Languages
         languages = []
         lang_map = {
-            'japanese|æ—¥æœ¬èªž': 'Japanese', 'english': 'English',
-            'hindi|à¤¹à¤¿à¤¨à¥à¤¦à¥€': 'Hindi', 'tamil|à®¤à®®à®¿à®´à¯': 'Tamil',
-            'telugu|à°¤à±†à°²à±à°—à±': 'Telugu', 'malayalam': 'Malayalam',
+            'japanese|日本語': 'Japanese', 'english': 'English',
+            'hindi|हिन्दी': 'Hindi', 'tamil|தமிழ்': 'Tamil',
+            'telugu|తెలుగు': 'Telugu', 'malayalam': 'Malayalam',
             'korean': 'Korean', 'dual.*audio': 'Dual Audio',
             'multi.*audio': 'Multi Audio'
         }
@@ -1138,7 +1138,7 @@ async def _extract_web_series(text, original):
             title = original.split('.')[0].strip()
             title = re.sub(r'[\[\(].*?[\]\)]', '', title)
 
-        logger.info(f"âœ… Web Series Fallback: '{title}' | Year: {year} | Lang: {language} | Extra: {extra_info} | Cat: {category}")
+        logger.info(f"✅ Web Series Fallback: '{title}' | Year: {year} | Lang: {language} | Extra: {extra_info} | Cat: {category}")
         return {
             "title": title,
             "year": year,
@@ -1147,7 +1147,7 @@ async def _extract_web_series(text, original):
             "category": category
         }
     except Exception as e:
-        logger.error(f"âŒ Web series fallback error: {e}")
+        logger.error(f"❌ Web series fallback error: {e}")
         return {"title": "UNKNOWN", "year": "", "language": "", "extra_info": "", "category": ""}
 # ==================== MEMBERSHIP CHECK LOGIC ====================
 async def is_user_member(context, user_id: int, force_fresh: bool = False):
@@ -1173,8 +1173,8 @@ async def is_user_member(context, user_id: int, force_fresh: bool = False):
             result['channel'] = True
             
     except telegram.error.Forbidden as e:
-        # ðŸš¨ ERROR 1: Bot ko channel se nikal diya gaya hai!
-        logger.error(f"ðŸš¨ Bot banned from channel! Switching FSub...")
+        # 🚨 ERROR 1: Bot ko channel se nikal diya gaya hai!
+        logger.error(f"🚨 Bot banned from channel! Switching FSub...")
         if BACKUP_FSUB_LIST:
             next_backup = BACKUP_FSUB_LIST.pop(0)
             ACTIVE_FSUB['id'] = next_backup['id']
@@ -1184,7 +1184,7 @@ async def is_user_member(context, user_id: int, force_fresh: bool = False):
             try:
                 await context.bot.send_message(
                     chat_id=ADMIN_USER_ID, 
-                    text=f"ðŸš¨ **URGENT ALARM!** ðŸš¨\n\nTumhara Main Channel ban ho gaya hai ya bot ko admin se hata diya gaya hai!\n\nâœ… Maine automatically FSub ko naye channel par shift kar diya hai: {ACTIVE_FSUB['url']}", 
+                    text=f"🚨 **URGENT ALARM!** 🚨\n\nTumhara Main Channel ban ho gaya hai ya bot ko admin se hata diya gaya hai!\n\n✅ Maine automatically FSub ko naye channel par shift kar diya hai: {ACTIVE_FSUB['url']}", 
                     parse_mode='Markdown'
                 )
             except: pass
@@ -1196,8 +1196,8 @@ async def is_user_member(context, user_id: int, force_fresh: bool = False):
             
     except telegram.error.BadRequest as e:
         if "chat not found" in str(e).lower():
-            # ðŸš¨ ERROR 2: Channel Telegram ne uda diya (Delete ho gaya)
-            logger.error(f"ðŸš¨ Channel Deleted! Switching FSub...")
+            # 🚨 ERROR 2: Channel Telegram ne uda diya (Delete ho gaya)
+            logger.error(f"🚨 Channel Deleted! Switching FSub...")
             if BACKUP_FSUB_LIST:
                 next_backup = BACKUP_FSUB_LIST.pop(0)
                 ACTIVE_FSUB['id'] = next_backup['id']
@@ -1206,7 +1206,7 @@ async def is_user_member(context, user_id: int, force_fresh: bool = False):
                 try:
                     await context.bot.send_message(
                         chat_id=ADMIN_USER_ID, 
-                        text=f"ðŸš¨ **URGENT ALARM!** ðŸš¨\n\nMain Channel Telegram dwara Delete/Ban kar diya gaya hai!\n\nâœ… Maine traffic backup par shift kar diya hai: {ACTIVE_FSUB['url']}", 
+                        text=f"🚨 **URGENT ALARM!** 🚨\n\nMain Channel Telegram dwara Delete/Ban kar diya gaya hai!\n\n✅ Maine traffic backup par shift kar diya hai: {ACTIVE_FSUB['url']}", 
                         parse_mode='Markdown'
                     )
                 except: pass
@@ -1242,10 +1242,10 @@ def get_join_keyboard():
     global ACTIVE_FSUB
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("ðŸ“¢ Join Channel", url=ACTIVE_FSUB['url']),
-            InlineKeyboardButton("ðŸ’¬ Join Group", url=FILMFYBOX_GROUP_URL)
+            InlineKeyboardButton("📢 Join Channel", url=ACTIVE_FSUB['url']),
+            InlineKeyboardButton("💬 Join Group", url=FILMFYBOX_GROUP_URL)
         ],
-        [InlineKeyboardButton("âœ… Joined Both - Verify", callback_data="verify")]
+        [InlineKeyboardButton("✅ Joined Both - Verify", callback_data="verify")]
     ])
 
 def get_join_message(channel_status, group_status):
@@ -1258,12 +1258,12 @@ def get_join_message(channel_status, group_status):
         missing = "Group"
     
     return (
-        f"ðŸ“‚ **Your File is Ready!**\n\n"
-        f"ðŸš« **But Access Denied**\n\n"
+        f"📂 **Your File is Ready!**\n\n"
+        f"🚫 **But Access Denied**\n\n"
         f"You haven't joined {missing}!\n\n"
-        f"ðŸ“¢ Channel: {'âœ…' if channel_status else 'âŒ'}\n"
-        f"ðŸ’¬ Group: {'âœ…' if group_status else 'âŒ'}\n\n"
-        f"Join both, then click **Verify** button ðŸ‘‡"
+        f"📢 Channel: {'✅' if channel_status else '❌'}\n"
+        f"💬 Group: {'✅' if group_status else '❌'}\n\n"
+        f"Join both, then click **Verify** button 👇"
     )
 
 def is_valid_url(url):
@@ -1504,7 +1504,7 @@ def setup_database():
             )
         """)
 
-        # ðŸ‘‡ðŸ‘‡ðŸ‘‡ NAYA TABLE: Anti-Bot Temporary Links ke liye ðŸ‘‡ðŸ‘‡ðŸ‘‡
+        # 👇👇👇 NAYA TABLE: Anti-Bot Temporary Links ke liye 👇👇👇
         cur.execute("""
             CREATE TABLE IF NOT EXISTS temp_links (
                 token VARCHAR(50) PRIMARY KEY,
@@ -1513,7 +1513,7 @@ def setup_database():
             )
         """)
         
-        # ðŸ‘‡ðŸ‘‡ðŸ‘‡ NAYA TABLE: Auto-Delete Queue ke liye ðŸ‘‡ðŸ‘‡ðŸ‘‡
+        # 👇👇👇 NAYA TABLE: Auto-Delete Queue ke liye 👇👇👇
         cur.execute("""
             CREATE TABLE IF NOT EXISTS auto_delete_queue (
                 id SERIAL PRIMARY KEY,
@@ -1620,10 +1620,10 @@ def setup_database():
         conn.commit()
         cur.close()
         close_db_connection(conn)
-        logger.info("âœ… Database setup completed successfully")
+        logger.info("✅ Database setup completed successfully")
 
     except Exception as e:
-        logger.error(f"âŒ Error setting up database: {e}", exc_info=True)
+        logger.error(f"❌ Error setting up database: {e}", exc_info=True)
         logger.info("Continuing without database setup...")
 
 
@@ -1677,9 +1677,9 @@ def migrate_content_type_for_restore():
         conn.commit()
         cur.close()
         close_db_connection(conn)
-        print("âœ… content_type column added!")
+        print("✅ content_type column added!")
     except Exception as e:
-        print(f"âŒ Error: {e}")
+        print(f"❌ Error: {e}")
         if conn:
             conn.rollback()
             close_db_connection(conn)
@@ -1699,9 +1699,9 @@ def fix_channel_posts_constraint():
         """)
         conn.commit()
         cur.close()
-        logger.info("âœ… Database UNIQUE Constraint fixed!")
+        logger.info("✅ Database UNIQUE Constraint fixed!")
     except Exception as e:
-        logger.error(f"âŒ DB Constraint Fix Error: {e}")
+        logger.error(f"❌ DB Constraint Fix Error: {e}")
     finally:
         close_db_connection(conn)
 
@@ -1715,9 +1715,9 @@ def fix_movies_title_constraint():
         cur.execute("ALTER TABLE movies ADD CONSTRAINT movies_title_unique UNIQUE (title);")
         conn.commit()
         cur.close()
-        logger.info("âœ… Movies table UNIQUE constraint added!")
+        logger.info("✅ Movies table UNIQUE constraint added!")
     except Exception as e:
-        logger.error(f"âŒ Movies Constraint Error: {e}")
+        logger.error(f"❌ Movies Constraint Error: {e}")
         if conn: conn.rollback()
     finally:
         close_db_connection(conn)
@@ -1739,17 +1739,17 @@ def fix_movies_unique_constraint():
         """)
         conn.commit()
         cur.close()
-        logger.info("âœ… Movies table UNIQUE constraint fixed!")
+        logger.info("✅ Movies table UNIQUE constraint fixed!")
     except Exception as e:
-        logger.error(f"âŒ Movies DB Fix Error: {e}")
+        logger.error(f"❌ Movies DB Fix Error: {e}")
     finally:
         close_db_connection(conn)
 
 def fix_movie_files_table():
     """
     movie_files table mein:
-    1. UNIQUE(movie_id, quality) constraint add karta hai â€” ON CONFLICT ke liye zaroori
-    2. languages aur extra_info columns add karta hai â€” agar missing hoon
+    1. UNIQUE(movie_id, quality) constraint add karta hai — ON CONFLICT ke liye zaroori
+    2. languages aur extra_info columns add karta hai — agar missing hoon
     """
     conn = get_db_connection()
     if not conn: return
@@ -1786,14 +1786,14 @@ def fix_movie_files_table():
 
         conn.commit()
         cur.close()
-        logger.info("âœ… movie_files table fixed: UNIQUE constraint + columns OK!")
+        logger.info("✅ movie_files table fixed: UNIQUE constraint + columns OK!")
     except Exception as e:
-        logger.error(f"âŒ fix_movie_files_table Error: {e}")
+        logger.error(f"❌ fix_movie_files_table Error: {e}")
         if conn: conn.rollback()
     finally:
         close_db_connection(conn)
 
-# ðŸ‘‡ Line 1225 ke baad yahan paste karein
+# 👇 Line 1225 ke baad yahan paste karein
 def migrate_channel_posts_v2():
     """Ye function channel_posts table mein missing columns add karega"""
     conn = get_db_connection()
@@ -1812,9 +1812,9 @@ def migrate_channel_posts_v2():
         
         conn.commit()
         cur.close()
-        logger.info("âœ… channel_posts table migrated to V2 successfully!")
+        logger.info("✅ channel_posts table migrated to V2 successfully!")
     except Exception as e:
-        logger.error(f"âŒ Migration V2 Error: {e}")
+        logger.error(f"❌ Migration V2 Error: {e}")
     finally:
         close_db_connection(conn)
 
@@ -1828,7 +1828,7 @@ def save_post_to_db(
     media_type="photo",
     keyboard_data=None,
     topic_id=None,
-    content_type="movies"    # âœ… NAYA: Default movies
+    content_type="movies"    # ✅ NAYA: Default movies
 ):
     """
     Post ka full data save karo.
@@ -1857,7 +1857,7 @@ def save_post_to_db(
             caption, media_file_id, media_type,
             json.dumps(keyboard_data) if keyboard_data else None,
             topic_id,
-            content_type    # âœ… Save hoga
+            content_type    # ✅ Save hoga
         ))
         conn.commit()
         cur.close()
@@ -1871,7 +1871,7 @@ def save_post_to_db(
         return False
 
 
-# ðŸ‘‡ðŸ‘‡ðŸ‘‡ START COPY HERE (New Function) ðŸ‘‡ðŸ‘‡ðŸ‘‡
+# 👇👇👇 START COPY HERE (New Function) 👇👇👇
 def get_db_connection():
     """Pool se connection lene wala naya function"""
     if not db_pool:
@@ -1891,7 +1891,7 @@ def close_db_connection(conn):
             db_pool.putconn(conn)
         except Exception:
             pass
-# ðŸ‘†ðŸ‘†ðŸ‘† END COPY HERE ðŸ‘†ðŸ‘†ðŸ‘†
+# 👆👆👆 END COPY HERE 👆👆👆
 
 def update_movies_in_db():
     """Update movies from Blogger API"""
@@ -1992,7 +1992,7 @@ def _get_movies_from_db_nocache(user_query, limit=10):
 
         logger.info(f"Searching for: '{user_query}'")
 
-        # âœ… Updated to include new columns
+        # ✅ Updated to include new columns
         cur.execute(
             """SELECT id, title, url, file_id, imdb_id, poster_url, year, genre 
                FROM movies WHERE LOWER(title) LIKE LOWER(%s) ORDER BY title LIMIT %s""",
@@ -2078,7 +2078,7 @@ def _get_movies_fast_sql_nocache(query: str, limit: int = 5):
         
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
         
-        # âœ… Updated to include new columns
+        # ✅ Updated to include new columns
         sql = """
             SELECT m.id, m.title, m.url, m.file_id, m.imdb_id, m.poster_url, m.year, m.genre,
                    SIMILARITY(m.title, %s) as sim_score
@@ -2238,7 +2238,7 @@ def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
                 poster_url=poster_url if poster_url else None,
                 year=year if year else None,
                 genre=genre if genre else None,
-                rating=rating if rating and rating != 'N/A' else None  # Rating add à¤•à¤°à¥‡à¤‚
+                rating=rating if rating and rating != 'N/A' else None  # Rating add करें
             )
             return True
         return False
@@ -2247,7 +2247,7 @@ def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
         return False
 
 # ============================================================================
-# ðŸ” GOOGLE SEARCH METADATA FETCHER (Premium Edition)
+# 🔍 GOOGLE SEARCH METADATA FETCHER (Premium Edition)
 # ============================================================================
 
 async def fetch_metadata_from_google(query: str, search_year: str = ""):
@@ -2305,7 +2305,7 @@ async def fetch_metadata_from_google(query: str, search_year: str = ""):
         # ---------- EXTRA CLEANUPS ----------
         plot = snippet[:300] if snippet else "Premium content available."
         
-        # better genre detection (thoda smart banaya ðŸ˜)
+        # better genre detection (thoda smart banaya 😏)
         q_lower = query.lower()
         if any(x in q_lower for x in ['bhabhi', 'unrated', 'adult', 'hot']):
             genre = "Adult"
@@ -2328,7 +2328,7 @@ async def fetch_metadata_from_google(query: str, search_year: str = ""):
         return None
 
 # ============================================================================
-# ðŸ”§ HELPER FUNCTIONS
+# 🔧 HELPER FUNCTIONS
 # ============================================================================
 
 def clean_google_title(raw_title: str) -> str:
@@ -2435,7 +2435,7 @@ def fetch_cast_from_imdb(imdb_id: str, limit: int = 5) -> str:
 # ==================== NEW METADATA HELPER FUNCTIONS ====================
 
 def get_tmdb_backdrop(query, search_year=""):
-    """TMDB API se HD Original Poster (Vertical with Text) nikalta hai â€” run_async se call karo"""
+    """TMDB API se HD Original Poster (Vertical with Text) nikalta hai — run_async se call karo"""
     api_key = "9fa44f5e9fbd41415df930ce5b81c4d7" 
     try:
         url = f"https://api.themoviedb.org/3/search/multi?api_key={api_key}&query={quote(query)}"
@@ -2447,7 +2447,7 @@ def get_tmdb_backdrop(query, search_year=""):
                 if search_year and str(search_year) != item_year:
                     continue
                 
-                # ðŸ›‘ NAYA: Ab pehle Original Poster (Jisme Text hota hai) dhundega
+                # 🛑 NAYA: Ab pehle Original Poster (Jisme Text hota hai) dhundega
                 if item.get('poster_path'):
                     return f"https://image.tmdb.org/t/p/original{item['poster_path']}"
                 elif item.get('backdrop_path'):
@@ -2464,8 +2464,8 @@ def get_tmdb_backdrop(query, search_year=""):
 
 def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = ""):
     """
-    IMDb à¤¸à¥‡ à¤¡à¥‡à¤Ÿà¤¾ à¤”à¤° TMDb à¤¸à¥‡ à¤¸à¤¿à¤°à¥à¤« Lamba (Portrait) à¤ªà¥‹à¤¸à¥à¤Ÿà¤° à¤¨à¤¿à¤•à¤¾à¤²à¤¨à¥‡ à¤µà¤¾à¤²à¤¾ à¤‡à¤‚à¤œà¤¨
-    adult_mode=True à¤¹à¥‹à¤¨à¥‡ à¤ªà¤° TMDb à¤¸à¤°à¥à¤š à¤®à¥‡à¤‚ include_adult=true à¤­à¥‡à¤œà¥‡à¤—à¤¾ à¤”à¤° OMDb à¤•à¥‹ à¤¬à¤¾à¤¯à¤ªà¤¾à¤¸ à¤•à¤°à¥‡à¤—à¤¾à¥¤
+    IMDb से डेटा और TMDb से सिर्फ Lamba (Portrait) पोस्टर निकालने वाला इंजन
+    adult_mode=True होने पर TMDb सर्च में include_adult=true भेजेगा और OMDb को बायपास करेगा।
     """
     omdb_api_key = os.environ.get("OMDB_API_KEY")
     tmdb_api_key = "9fa44f5e9fbd41415df930ce5b81c4d7"
@@ -2473,9 +2473,9 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
     search_query = query.strip()
     is_imdb_id = bool(re.match(r'^tt\d{7,8}$', search_query))
 
-    # ----- à¤à¤¡à¤²à¥à¤Ÿ à¤®à¥‹à¤¡: OMDb à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤¨ à¤•à¤°à¥‡à¤‚ (à¤•à¥à¤¯à¥‹à¤‚à¤•à¤¿ à¤‰à¤¸à¤®à¥‡à¤‚ à¤à¤¡à¤²à¥à¤Ÿ à¤¡à¥‡à¤Ÿà¤¾ à¤¨à¤¹à¥€à¤‚) -----
+    # ----- एडल्ट मोड: OMDb का उपयोग न करें (क्योंकि उसमें एडल्ट डेटा नहीं) -----
     if adult_mode:
-        # à¤¸à¥€à¤§à¥‡ TMDb à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤•à¤°à¥‡à¤‚
+        # सीधे TMDb का उपयोग करें
         try:
             tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}&include_adult=true"
             if search_year and search_year.strip().isdigit():
@@ -2485,7 +2485,7 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
                 return None
 
             best_match = t_resp['results'][0]
-            # à¤µà¤°à¥à¤· à¤®à¥ˆà¤š à¤•à¤°à¤¨à¥‡ à¤•à¥€ à¤•à¥‹à¤¶à¤¿à¤¶
+            # वर्ष मैच करने की कोशिश
             if search_year and str(search_year).strip().isdigit():
                 for item in t_resp['results']:
                     item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
@@ -2498,8 +2498,8 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
             year = int(year_str) if year_str.isdigit() else 0
             plot = best_match.get('overview', 'No story available.')
             rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
-            category = "Adult"  # à¤œà¤¬à¤°à¤¦à¤¸à¥à¤¤à¥€ Adult
-            genre = "Romance, Drama"  # à¤¡à¤¿à¤«à¤¼à¥‰à¤²à¥à¤Ÿ, TMDb à¤œà¥‰à¤¨à¤° à¤¬à¤¾à¤¦ à¤®à¥‡à¤‚ à¤²à¤¾ à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚
+            category = "Adult"  # जबरदस्ती Adult
+            genre = "Romance, Drama"  # डिफ़ॉल्ट, TMDb जॉनर बाद में ला सकते हैं
 
             path = best_match.get('poster_path')
             poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
@@ -2518,9 +2518,9 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
             logger.error(f"Adult TMDb Fetch Error: {e}")
             return None
 
-    # ----- à¤¨à¥‰à¤°à¥à¤®à¤² à¤®à¥‹à¤¡ (à¤®à¥‚à¤² à¤•à¥‹à¤¡) -----
+    # ----- नॉर्मल मोड (मूल कोड) -----
     if not omdb_api_key:
-        logger.error("âŒ OMDB_API_KEY missing in .env")
+        logger.error("❌ OMDB_API_KEY missing in .env")
         return None
 
     try:
@@ -2536,7 +2536,7 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
         resp = requests.get(url, timeout=10).json()
 
         if resp.get("Response") != "True":
-            # OMDb à¤«à¥‡à¤² à¤¹à¥‹à¤¨à¥‡ à¤ªà¤° TMDb à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤•à¤°à¥‡à¤‚
+            # OMDb फेल होने पर TMDb का उपयोग करें
             if is_series:
                 tmdb_search = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={quote(search_query)}"
             else:
@@ -2576,9 +2576,9 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
 
             return title, year, poster_url, genre, imdb_id, rating, plot, category
 
-        # OMDb à¤¸à¥‡ à¤¡à¥‡à¤Ÿà¤¾ à¤¸à¤«à¤²
+        # OMDb से डेटा सफल
         title = resp.get('Title')
-        year = int(resp.get('Year', '0').split('â€“')[0]) if resp.get('Year') else 0
+        year = int(resp.get('Year', '0').split('–')[0]) if resp.get('Year') else 0
         genre = resp.get('Genre', 'Action, Drama')
         rating = resp.get('imdbRating', 'N/A')
         plot = resp.get('Plot', 'No story available.')
@@ -2600,7 +2600,7 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
         else:
             category = "Hollywood"
 
-        # TMDb à¤¸à¥‡ HD à¤ªà¥‹à¤¸à¥à¤Ÿà¤° à¤²à¤¾à¤¨à¤¾
+        # TMDb से HD पोस्टर लाना
         poster_url = resp.get('Poster')
         if imdb_id and imdb_id != 'N/A':
             tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
@@ -2631,7 +2631,7 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
         return None
 
 # ==================== AI INTENT ANALYSIS ====================
-# ðŸ‘‡ðŸ‘‡ðŸ‘‡ START COPY HERE ðŸ‘‡ðŸ‘‡ðŸ‘‡
+# 👇👇👇 START COPY HERE 👇👇👇
 async def analyze_intent(message_text):
     """
     Bina AI (Gemini) ke message analyze karna.
@@ -2659,7 +2659,7 @@ async def analyze_intent(message_text):
     except Exception as e:
         logger.error(f"Error in intent analysis: {e}")
         return {"is_request": True, "content_title": message_text.strip()}
-# ðŸ‘†ðŸ‘†ðŸ‘† END COPY HERE ðŸ‘†ðŸ‘†ðŸ‘†
+# 👆👆👆 END COPY HERE 👆👆👆
 
 # ==================== NOTIFICATION FUNCTIONS ====================
 async def send_admin_notification(context, user, movie_title, group_info=None):
@@ -2671,20 +2671,20 @@ async def send_admin_notification(context, user, movie_title, group_info=None):
         safe_username = user.username if user.username else 'N/A'
         safe_first_name = (user.first_name or 'Unknown').replace('<', '&lt;').replace('>', '&gt;')
 
-        message = f"ðŸŽ¬ New Movie Request! ðŸŽ¬\n\n"
+        message = f"🎬 New Movie Request! 🎬\n\n"
         message += f"Movie: <b>{safe_movie_title}</b>\n"
         message += f"User: {safe_first_name} (ID: <code>{user.id}</code>)\n"
         if user.username: message += f"Username: @{safe_username}\n"
         message += f"From: {'Group: '+str(group_info) if group_info else 'Private Message'}\n"
         message += f"Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
 
-        # âš¡ LIFETIME BUTTONS LOGIC
+        # ⚡ LIFETIME BUTTONS LOGIC
         # Telegram me button data limit 64 bytes hoti hai, isliye title chota kiya hai
         short_title = safe_movie_title[:15].replace('_', ' ') 
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("âœ… Movie Add Kar Di Gai Hai", callback_data=f"reqA_{user.id}_{short_title}")],
-            [InlineKeyboardButton("âŒ Nahi Mili", callback_data=f"reqN_{user.id}_{short_title}")]
+            [InlineKeyboardButton("✅ Movie Add Kar Di Gai Hai", callback_data=f"reqA_{user.id}_{short_title}")],
+            [InlineKeyboardButton("❌ Nahi Mili", callback_data=f"reqN_{user.id}_{short_title}")]
         ])
 
         await context.bot.send_message(
@@ -2703,13 +2703,13 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
     notified_count = 0
 
     caption_text = (
-        f"ðŸŽ¬ <b>{movie_title}</b>\n\n"
-        "âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-        "ðŸ”¹ <b>Please drop the movie name, and I'll find it for you as soon as possible. ðŸŽ¬âœ¨ðŸ‘‡</b>\n"
-        "âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-        "ðŸ”¹ <b>Support group:</b> https://t.me/+dxaCr_cMmGpkYTFl\n"
+        f"🎬 <b>{movie_title}</b>\n\n"
+        "➖➖➖➖➖➖➖➖➖➖\n"
+        "🔹 <b>Please drop the movie name, and I'll find it for you as soon as possible. 🎬✨👇</b>\n"
+        "➖➖➖➖➖➖➖➖➖➖\n"
+        "🔹 <b>Support group:</b> https://t.me/+dxaCr_cMmGpkYTFl\n"
     )
-    join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("âž¡ï¸ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
+    join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
 
     try:
         conn = get_db_connection()
@@ -2729,7 +2729,7 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
                 try:
                     await safe_send(context.bot.send_message(
                         chat_id=user_id,
-                        text=f"ðŸŽ‰ Hey {first_name or username or 'there'}! Your requested movie '{movie_title}' is now available!"
+                        text=f"🎉 Hey {first_name or username or 'there'}! Your requested movie '{movie_title}' is now available!"
                     ))
                 except Exception:
                     pass
@@ -2860,7 +2860,7 @@ async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
 
         for group_id, users in groups_to_notify.items():
             try:
-                notification_text = "Hey! à¤†à¤ªà¤•à¥€ requested movie à¤…à¤¬ à¤† à¤—à¤ˆ à¤¹à¥ˆ! ðŸ¥³\n\n"
+                notification_text = "Hey! आपकी requested movie अब आ गई है! 🥳\n\n"
                 notified_users_ids = []
                 user_mentions = []
                 for user_id, username, first_name, message_id in users:
@@ -2869,7 +2869,7 @@ async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
                     notified_users_ids.append(user_id)
 
                 notification_text += ", ".join(user_mentions)
-                notification_text += f"\n\nà¤†à¤ªà¤•à¥€ à¤«à¤¿à¤²à¥à¤® '{movie_title}' à¤…à¤¬ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¹à¥ˆ! à¤‡à¤¸à¥‡ à¤ªà¤¾à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤, à¤•à¥ƒà¤ªà¤¯à¤¾ à¤®à¥à¤à¥‡ private [...]"
+                notification_text += f"\n\nआपकी फिल्म '{movie_title}' अब उपलब्ध है! इसे पाने के लिए, कृपया मुझे private [...]"
 
                 await context.bot.send_message(
                     chat_id=group_id,
@@ -2935,14 +2935,14 @@ def create_genre_selection_keyboard():
     genres = get_all_genres_from_db()
     
     if not genres:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("âŒ No Genres Found", callback_data="cancel_genre")]])
+        return InlineKeyboardMarkup([[InlineKeyboardButton("❌ No Genres Found", callback_data="cancel_genre")]])
     
     keyboard = []
     row = []
     
     for idx, genre in enumerate(genres):
         row.append(InlineKeyboardButton(
-            f"ðŸ“‚ {genre}",
+            f"📂 {genre}",
             callback_data=f"genre_{genre}"
         ))
         
@@ -2955,7 +2955,7 @@ def create_genre_selection_keyboard():
     if row:
         keyboard.append(row)
     
-    keyboard.append([InlineKeyboardButton("âŒ Cancel", callback_data="cancel_genre")])
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_genre")])
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -3009,7 +3009,7 @@ async def show_genre_selection(update: Update, context: ContextTypes.DEFAULT_TYP
         # Show genre selection
         keyboard = create_genre_selection_keyboard()
         msg = await update.message.reply_text(
-            "ðŸ“‚ **Select a genre to browse movies:**",
+            "📂 **Select a genre to browse movies:**",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
@@ -3024,7 +3024,7 @@ async def handle_genre_selection(update: Update, context:  ContextTypes.DEFAULT_
     data = query. data
     
     if data == "cancel_genre":
-        await query.edit_message_text("âŒ Genre browsing cancelled.")
+        await query.edit_message_text("❌ Genre browsing cancelled.")
         return
     
     if data.startswith("genre_"):
@@ -3035,8 +3035,8 @@ async def handle_genre_selection(update: Update, context:  ContextTypes.DEFAULT_
         
         if not movies:
             await query.edit_message_text(
-                f"ðŸ˜• No movies found for genre: **{genre}**\n\n"
-                "Try another genre or use ðŸ” Search.",
+                f"😕 No movies found for genre: **{genre}**\n\n"
+                "Try another genre or use 🔍 Search.",
                 parse_mode='Markdown'
             )
             return
@@ -3045,20 +3045,20 @@ async def handle_genre_selection(update: Update, context:  ContextTypes.DEFAULT_
         context.user_data['search_results'] = movies
         context.user_data['search_query'] = genre
         
-        keyboard = create_movie_selection_keyboard(movies, page=0)  # âœ… Now handles 6-tuple
+        keyboard = create_movie_selection_keyboard(movies, page=0)  # ✅ Now handles 6-tuple
         
         await query.edit_message_text(
-            f"ðŸŽ¬ **Found {len(movies)} movies in '{genre}' genre**\n\n"
-            "ðŸ‘‡ Select a movie:",
+            f"🎬 **Found {len(movies)} movies in '{genre}' genre**\n\n"
+            "👇 Select a movie:",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
 # ==================== KEYBOARD MARKUPS ====================
 def get_main_keyboard():
     keyboard = [
-        ['ðŸ” Search Movies'],
-        ['ðŸ“‚ Browse by Genre', 'ðŸ™‹ Request Movie'],
-        ['ðŸ“Š My Stats', 'â“ Help']
+        ['🔍 Search Movies'],
+        ['📂 Browse by Genre', '🙋 Request Movie'],
+        ['📊 My Stats', '❓ Help']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
@@ -3067,8 +3067,8 @@ def get_admin_request_keyboard(user_id, movie_title):
     sanitized_title = movie_title[:30]
 
     keyboard = [
-        [InlineKeyboardButton("âœ… FULFILL MOVIE", callback_data=f"admin_fulfill_{user_id}_{sanitized_title}")],
-        [InlineKeyboardButton("âŒ IGNORE/DELETE", callback_data=f"admin_delete_{user_id}_{sanitized_title}")]
+        [InlineKeyboardButton("✅ FULFILL MOVIE", callback_data=f"admin_fulfill_{user_id}_{sanitized_title}")],
+        [InlineKeyboardButton("❌ IGNORE/DELETE", callback_data=f"admin_delete_{user_id}_{sanitized_title}")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -3077,13 +3077,13 @@ def get_movie_options_keyboard(movie_title, url, movie_id=None, file_info=None):
 
     # Scan info only if movie_id is available
     if movie_id is not None:
-        keyboard.append([InlineKeyboardButton("â„¹ï¸ SCAN INFO : AUDIO & SUBS", callback_data=f"scan_{movie_id}")])
+        keyboard.append([InlineKeyboardButton("ℹ️ SCAN INFO : AUDIO & SUBS", callback_data=f"scan_{movie_id}")])
 
     if url:
-        keyboard.append([InlineKeyboardButton("ðŸŽ¬ Watch Now", url=url)])
+        keyboard.append([InlineKeyboardButton("🎬 Watch Now", url=url)])
 
-    keyboard.append([InlineKeyboardButton("ðŸ“¥ Download", callback_data=f"download_{movie_title[:50]}")])
-    keyboard.append([InlineKeyboardButton("âž¡ï¸ Join Channel", url=FILMFYBOX_CHANNEL_URL)])
+    keyboard.append([InlineKeyboardButton("📥 Download", callback_data=f"download_{movie_title[:50]}")])
+    keyboard.append([InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -3104,20 +3104,20 @@ def create_movie_selection_keyboard(movies, page=0, movies_per_page=5):
             movie_id, title = movie[0], movie[1]
 
         button_text = title if len(title) <= 40 else title[:37] + "..."
-        keyboard.append([InlineKeyboardButton(f"ðŸŽ¬ {button_text}", callback_data=f"movie_{movie_id}")])
+        keyboard.append([InlineKeyboardButton(f"🎬 {button_text}", callback_data=f"movie_{movie_id}")])
 
     total_pages = (len(movies) + movies_per_page - 1) // movies_per_page
     nav_buttons = []
 
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton("â—€ï¸ Previous", callback_data=f"page_{page-1}"))
+        nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}"))
     if end_idx < len(movies):
-        nav_buttons.append(InlineKeyboardButton("Next â–¶ï¸", callback_data=f"page_{page+1}"))
+        nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}"))
 
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([InlineKeyboardButton("âŒ Cancel", callback_data="cancel_selection")])
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_selection")])
     return InlineKeyboardMarkup(keyboard)
 
 def get_all_movie_qualities(movie_id):
@@ -3154,17 +3154,17 @@ def get_all_movie_qualities(movie_id):
 # create_quality_selection_keyboard function ko isse replace karein ya modify karein:
 
 def create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=1, current_files=None, season_view=False):
-    """à¤¨à¤¯à¤¾ UI: à¤«à¤¾à¤‡à¤²à¥à¤¸ à¤•à¥‡ à¤²à¤¿à¤ à¤¬à¤Ÿà¤¨à¥à¤¸, à¤«à¤¿à¤²à¥à¤Ÿà¤°à¥à¤¸ à¤”à¤° à¤ªà¥‡à¤œà¤¿à¤¨à¥‡à¤¶à¤¨"""
+    """नया UI: फाइल्स के लिए बटन्स, फिल्टर्स और पेजिनेशन"""
     keyboard = []
     
     if view == "main":
 
-        # 2. à¤…à¤—à¤° à¤¸à¥€à¤œà¤¨ à¤•à¥‡ à¤…à¤‚à¤¦à¤° à¤¹à¥ˆà¤‚, à¤¤à¥‹ à¤¬à¥ˆà¤• à¤¬à¤Ÿà¤¨ à¤¦à¤¿à¤–à¤¾à¤“
+        # 2. अगर सीजन के अंदर हैं, तो बैक बटन दिखाओ
         if season_view:
-            keyboard.append([InlineKeyboardButton("ðŸ”™ Back to Seasons", callback_data=f"back_to_seasons_{movie_id}")])
+            keyboard.append([InlineKeyboardButton("🔙 Back to Seasons", callback_data=f"back_to_seasons_{movie_id}")])
 
-        # 3. Send All à¤¬à¤Ÿà¤¨
-        keyboard.append([InlineKeyboardButton("ðŸš€ SEND ALL", callback_data=f"sendall_{movie_id}")])
+        # 3. Send All बटन
+        keyboard.append([InlineKeyboardButton("🚀 SEND ALL", callback_data=f"sendall_{movie_id}")])
         
         # 4. Filters
         keyboard.append([
@@ -3175,34 +3175,34 @@ def create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages
         
         # 5. Pagination
         nav_buttons = []
-        nav_buttons.append(InlineKeyboardButton("â—€ï¸ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
+        nav_buttons.append(InlineKeyboardButton("◀️ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
         nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="ignore"))
-        nav_buttons.append(InlineKeyboardButton("NEXT â–¶ï¸" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
+        nav_buttons.append(InlineKeyboardButton("NEXT ▶️" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
         keyboard.append(nav_buttons)
 
-    # ... (à¤¬à¤¾à¤•à¥€ à¤µà¥à¤¯à¥‚à¤œ à¤œà¥ˆà¤¸à¥‡ language, quality, season à¤ªà¤¹à¤²à¥‡ à¤œà¥ˆà¤¸à¥‡ à¤¹à¥€ à¤°à¤¹à¥‡à¤‚à¤—à¥‡)
+    # ... (बाकी व्यूज जैसे language, quality, season पहले जैसे ही रहेंगे)
     elif view == "language":
                 keyboard.append([InlineKeyboardButton("MALAYALAM", callback_data=f"fl_lang_{movie_id}_Malayalam"), InlineKeyboardButton("TAMIL", callback_data=f"fl_lang_{movie_id}_Tamil")])
                 keyboard.append([InlineKeyboardButton("ENGLISH", callback_data=f"fl_lang_{movie_id}_English"), InlineKeyboardButton("HINDI", callback_data=f"fl_lang_{movie_id}_Hindi")])
                 keyboard.append([InlineKeyboardButton("TELUGU", callback_data=f"fl_lang_{movie_id}_Telugu"), InlineKeyboardButton("KANNADA", callback_data=f"fl_lang_{movie_id}_Kannada")])
-                # âœ… NAYA: Gujarati, Marathi aur Punjabi add ho gaye
+                # ✅ NAYA: Gujarati, Marathi aur Punjabi add ho gaye
                 keyboard.append([InlineKeyboardButton("GUJARATI", callback_data=f"fl_lang_{movie_id}_Gujarati"), InlineKeyboardButton("MARATHI", callback_data=f"fl_lang_{movie_id}_Marathi")])
                 keyboard.append([InlineKeyboardButton("PUNJABI", callback_data=f"fl_lang_{movie_id}_Punjabi")])
-                keyboard.append([InlineKeyboardButton("ðŸ”„ CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
+                keyboard.append([InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
                 keyboard.append([InlineKeyboardButton("<< BACK TO FILES >>", callback_data=f"v_main_{movie_id}")])
 
     elif view == "quality":
                 keyboard.append([InlineKeyboardButton("360P", callback_data=f"fl_qual_{movie_id}_360p"), InlineKeyboardButton("480P", callback_data=f"fl_qual_{movie_id}_480p")])
                 keyboard.append([InlineKeyboardButton("720P", callback_data=f"fl_qual_{movie_id}_720p"), InlineKeyboardButton("1080P", callback_data=f"fl_qual_{movie_id}_1080p")])
-                # âœ… NAYA: 1440P aur 2160P (Premium Quality) add ho gaye
+                # ✅ NAYA: 1440P aur 2160P (Premium Quality) add ho gaye
                 keyboard.append([InlineKeyboardButton("1440P", callback_data=f"fl_qual_{movie_id}_1440p"), InlineKeyboardButton("2160P", callback_data=f"fl_qual_{movie_id}_2160p")])
                 keyboard.append([InlineKeyboardButton("4K", callback_data=f"fl_qual_{movie_id}_4K")])
-                keyboard.append([InlineKeyboardButton("ðŸ”„ CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
+                keyboard.append([InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
                 keyboard.append([InlineKeyboardButton("<< BACK TO FILES >>", callback_data=f"v_main_{movie_id}")])
 
     elif view == "season":
-        # à¤¯à¥‡ à¤¡à¤®à¥€ à¤¹à¥ˆ, à¤…à¤¸à¤²à¥€ à¤¸à¥€à¤œà¤¨à¥à¤¸ à¤¡à¤¾à¤¯à¤¨à¤¾à¤®à¤¿à¤•à¤²à¥€ à¤¬à¤¨à¤¤à¥‡ à¤¹à¥ˆà¤‚
-        keyboard.append([InlineKeyboardButton("ðŸ”„ CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
+        # ये डमी है, असली सीजन्स डायनामिकली बनते हैं
+        keyboard.append([InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all")])
         keyboard.append([InlineKeyboardButton("<< BACK TO FILES >>", callback_data=f"v_main_{movie_id}")])
 
     return InlineKeyboardMarkup(keyboard)
@@ -3218,15 +3218,15 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
     lang_display = ""
     extra_display = "" # NAYA: Info (Ep) dikhane ke liye
 
-    # âœ… OPTIMIZATION: Agar data pehle se diya gaya hai, to DB connect mat karo
+    # ✅ OPTIMIZATION: Agar data pehle se diya gaya hai, to DB connect mat karo
     if pre_fetched_meta:
         db_genre = pre_fetched_meta.get('genre')
         db_year = pre_fetched_meta.get('year')
         db_lang = pre_fetched_meta.get('language')
         
-        if db_genre and db_genre != 'Unknown': genre = f"ðŸŽ­ <b>Genre:</b> {db_genre}\n"
-        if db_year and db_year > 0: year = f"ðŸ“… <b>Year:</b> {db_year}\n"
-        if db_lang and db_lang.strip(): lang_display = f"ðŸ”Š <b>Language:</b> {db_lang}\n"
+        if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
+        if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
+        if db_lang and db_lang.strip(): lang_display = f"🔊 <b>Language:</b> {db_lang}\n"
     
     # Agar data nahi diya gaya, tabhi DB open karo
     else:
@@ -3238,16 +3238,16 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 result = cur.fetchone()
                 if result:
                     db_genre, db_year, db_lang = result
-                    if db_genre and db_genre != 'Unknown': genre = f"ðŸŽ­ <b>Genre:</b> {db_genre}\n"
-                    if db_year and db_year > 0: year = f"ðŸ“… <b>Year:</b> {db_year}\n"
-                    if db_lang and db_lang.strip(): lang_display = f"ðŸ”Š <b>Language:</b> {db_lang}\n"
+                    if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
+                    if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
+                    if db_lang and db_lang.strip(): lang_display = f"🔊 <b>Language:</b> {db_lang}\n"
                 cur.close()
             except Exception as e:
                 logger.error(f"Error fetching movie info: {e}")
             finally:
                 close_db_connection(conn)
 
-    # ðŸ‘‡ NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! ðŸ‘‡
+    # 👇 NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! 👇
     if url or file_id:
         conn = get_db_connection()
         if conn:
@@ -3263,26 +3263,26 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     extra_val = res[0].strip()
                     ext = extra_val.upper()
                     
-                    # ðŸ‘‡ SMART FIX: Check karega ki kya likhna sahi rahega
+                    # 👇 SMART FIX: Check karega ki kya likhna sahi rahega
                     edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
                     
                     if any(word in ext for word in edition_keywords):
-                        extra_display = f"ðŸ“Œ <b>Edition:</b> {extra_val}\n"
+                        extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
                     elif "S" in ext and "E" in ext:
-                        extra_display = f"ðŸ“Œ <b>Season & Episode:</b> {extra_val}\n"
+                        extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
                     elif "S" in ext:
-                        extra_display = f"ðŸ“Œ <b>Season:</b> {extra_val}\n"
+                        extra_display = f"📌 <b>Season:</b> {extra_val}\n"
                     elif "E" in ext:
-                        extra_display = f"ðŸ“Œ <b>Episode:</b> {extra_val}\n"
+                        extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
                     else:
-                        extra_display = f"ðŸ“Œ <b>Info:</b> {extra_val}\n"
+                        extra_display = f"📌 <b>Info:</b> {extra_val}\n"
                         
                 cur.close()
             except Exception:
                 pass
             finally:
                 close_db_connection(conn)
-    # ðŸ‘† ---------------------------------------------------- ðŸ‘†
+    # 👆 ---------------------------------------------------- 👆
 
     # 1. Multi-Quality Check (Agar direct link/file nahi hai)
     if not url and not file_id:
@@ -3296,9 +3296,9 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             total_pages = (len(all_qualities) + limit - 1) // limit if all_qualities else 1
             current_files = all_qualities[0:limit]
             
-            # ðŸ‘‡ YAHAN SE FIX SHURU HOTA HAI (HTML INLINE LINKS KE LIYE) ðŸ‘‡
+            # 👇 YAHAN SE FIX SHURU HOTA HAI (HTML INLINE LINKS KE LIYE) 👇
             bot_username = context.bot.username
-            text = f"ðŸ“ <b>{title}</b>\n\nðŸ‘‡ <b>Your Requested Files Are Here</b>\n\n"
+            text = f"📁 <b>{title}</b>\n\n👇 <b>Your Requested Files Are Here</b>\n\n"
             
             
             for idx, f_data in enumerate(current_files, start=1):
@@ -3322,12 +3322,12 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 
                 ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
                 
-                # âœ… NAYA: HTML wala Neela (Inline) link
+                # ✅ NAYA: HTML wala Neela (Inline) link
                 text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
                 
             keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
             
-            # âœ… NAYA: parse_mode='HTML' kar diya aur link preview off kar diya
+            # ✅ NAYA: parse_mode='HTML' kar diya aur link preview off kar diya
             msg = await context.bot.send_message(
                 chat_id=chat_id, 
                 text=text, 
@@ -3335,7 +3335,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 parse_mode='HTML', 
                 disable_web_page_preview=True
             )
-            # ðŸ‘† FIX KHATAM ðŸ‘†
+            # 👆 FIX KHATAM 👆
             
             track_message_for_deletion(context, chat_id, msg.message_id, 60)
             return
@@ -3354,17 +3354,17 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # --- CAPTION UPDATE WITH EXTRA INFO ---
         caption_text = (
-            f"ðŸŽ¬ <b>{title}</b>\n"
+            f"🎬 <b>{title}</b>\n"
             f"{extra_display}"
             f"{year}"        
             f"{genre}"       
             f"{lang_display}"  
-            f"\nðŸ”— <b>JOIN Â»</b> <a href='{FILMFYBOX_CHANNEL_URL}'>FilmfyBox</a>\n\n"
-            f"ðŸ”¹ <b>Please drop the movie name, and I'll find it for you as soon as possible. ðŸŽ¬âœ¨ðŸ‘‡</b>\n"
-            f"ðŸ”¹ <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>"
+            f"\n🔗 <b>JOIN »</b> <a href='{FILMFYBOX_CHANNEL_URL}'>FilmfyBox</a>\n\n"
+            f"🔹 <b>Please drop the movie name, and I'll find it for you as soon as possible. 🎬✨👇</b>\n"
+            f"🔹 <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>"
         )
         
-        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("âž¡ï¸ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
+        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
 
         sent_msg = None
         if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
@@ -3414,7 +3414,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if not sent_msg and url and "http" in url and "t.me" not in url:
              sent_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"ðŸŽ¬ <b>{title}</b>\n\nðŸ”— <b>Watch/Download:</b> {url}",
+                text=f"🎬 <b>{title}</b>\n\n🔗 <b>Watch/Download:</b> {url}",
                 parse_mode='HTML',
                 reply_markup=join_keyboard
             )
@@ -3430,11 +3430,11 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             if len(messages_to_delete) > 1:
                 track_message_for_deletion(context, chat_id, messages_to_delete[1], 60)
         elif not sent_msg:
-            await context.bot.send_message(chat_id=chat_id, text="âŒ Error: File not found or Bot needs Admin rights in Source Channel.")
+            await context.bot.send_message(chat_id=chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
 
     except Exception as e:
         logger.error(f"Critical Error in send_movie: {e}")
-        try: await context.bot.send_message(chat_id=chat_id, text="âŒ System Error.")
+        try: await context.bot.send_message(chat_id=chat_id, text="❌ System Error.")
         except: pass
 
 # ==================== TELEGRAM BOT HANDLERS ====================
@@ -3480,11 +3480,11 @@ async def background_search_and_send(update: Update, context: ContextTypes.DEFAU
             web_app_url = f"https://flimfybox-bot-yht0.onrender.com/webapp?req={safe_query}"
             
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("ðŸŒ Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
+                [InlineKeyboardButton("🌐 Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
             ])
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"ðŸ˜• Sorry, <b>'{query_text}'</b> not found.\n\nà¤¸à¥à¤ªà¥‡à¤²à¤¿à¤‚à¤— à¤šà¥‡à¤• à¤•à¤°à¤¨à¥‡ à¤”à¤° Request à¤­à¥‡à¤œà¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤¨à¥€à¤šà¥‡ à¤•à¥à¤²à¤¿à¤• à¤•à¤°à¥‡à¤‚ ðŸ‘‡",
+                text=f"😕 Sorry, <b>'{query_text}'</b> not found.\n\nस्पेलिंग चेक करने और Request भेजने के लिए नीचे क्लिक करें 👇",
                 reply_markup=keyboard,
                 parse_mode='HTML'
             )
@@ -3503,7 +3503,7 @@ async def background_search_and_send(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         logger.error(f"Background Search Error: {e}")
         try: 
-            await status_msg.edit_text("âŒ Error fetching movie. Please try again.")
+            await status_msg.edit_text("❌ Error fetching movie. Please try again.")
         except: 
             pass
 
@@ -3518,7 +3518,7 @@ async def deliver_movie_on_start(update: Update, context: ContextTypes.DEFAULT_T
     # 1. Loading Effect
     status_msg = None
     try:
-        status_msg = await context.bot.send_message(chat_id, "â³ <b>Please wait...</b>", parse_mode='HTML')
+        status_msg = await context.bot.send_message(chat_id, "⏳ <b>Please wait...</b>", parse_mode='HTML')
         
         # Backup Auto-delete
         track_message_for_deletion(context, chat_id, status_msg.message_id, 60)
@@ -3556,7 +3556,7 @@ async def deliver_movie_on_start(update: Update, context: ContextTypes.DEFAULT_T
             await send_movie_to_user(update, context, movie_id, title, url, file_id)
         else:
             # Agar movie nahi mili
-            fail_msg = await context.bot.send_message(chat_id, "âŒ <b>Movie not found or deleted.</b>", parse_mode='HTML')
+            fail_msg = await context.bot.send_message(chat_id, "❌ <b>Movie not found or deleted.</b>", parse_mode='HTML')
             track_message_for_deletion(context, chat_id, fail_msg.message_id, 10)
 
     except Exception as e:
@@ -3572,12 +3572,12 @@ async def deliver_movie_on_start(update: Update, context: ContextTypes.DEFAULT_T
         else:
             await context.bot.send_message(
                 chat_id=chat_id, 
-                text="âŒ Movie not found. It may have been removed from our database."
+                text="❌ Movie not found. It may have been removed from our database."
             )
 
     except Exception as e:
         logger.error(f"CRITICAL ERROR in deliver_movie: {e}", exc_info=True)
-        error_msg = "âŒ Failed to retrieve movie. Please try again or use search."
+        error_msg = "❌ Failed to retrieve movie. Please try again or use search."
         if status_msg:
             try:
                 await status_msg.edit_text(error_msg)
@@ -3603,7 +3603,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     
-    # âœ… FIX 1: Message ko safe tarike se nikalein (Button aur Text dono ke liye)
+    # ✅ FIX 1: Message ko safe tarike se nikalein (Button aur Text dono ke liye)
     message = update.effective_message 
 
     # === FSub Check (Smart Logic) ===
@@ -3616,7 +3616,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.args:
             context.user_data['pending_start_args'] = context.args
 
-        # âœ… FIX 2: send_message use karein (reply_text fail ho sakta hai button par)
+        # ✅ FIX 2: send_message use karein (reply_text fail ho sakta hai button par)
         msg = await context.bot.send_message(
             chat_id=chat_id,
             text=get_join_message(check['channel'], check['group']),
@@ -3642,17 +3642,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_processing_locks[user_id].locked():
             await context.bot.send_message(
                 chat_id=chat_id, 
-                text="â³ Please wait! Your previous request is still processing..."
+                text="⏳ Please wait! Your previous request is still processing..."
             )
             return
 
         async with user_processing_locks[user_id]:
             
-            # ðŸ” NAYA: ANTI-BOT TEMPORARY LINK SYSTEM (BURN ON READ)
+            # 🔐 NAYA: ANTI-BOT TEMPORARY LINK SYSTEM (BURN ON READ)
             if payload.startswith("tmp_"):
                 conn = get_db_connection()
                 if not conn:
-                    await context.bot.send_message(chat_id, "âŒ System Error.")
+                    await context.bot.send_message(chat_id, "❌ System Error.")
                     return
 
                 try:
@@ -3666,7 +3666,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     cur.close()
                     
                     if not res:
-                        msg = await context.bot.send_message(chat_id, "âŒ <b>Link Expired ya Invalid hai!</b>\nKripya app par jaakar dobara click karein.", parse_mode='HTML')
+                        msg = await context.bot.send_message(chat_id, "❌ <b>Link Expired ya Invalid hai!</b>\nKripya app par jaakar dobara click karein.", parse_mode='HTML')
                         track_message_for_deletion(context, chat_id, msg.message_id, 15)
                         return
                     
@@ -3674,18 +3674,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     time_diff = (datetime.now() - created_at).total_seconds()
                     
                     if time_diff > 60:
-                        msg = await context.bot.send_message(chat_id, "âŒ <b>Link Expired!</b>\nYeh link sirf 60 seconds ke liye valid tha.", parse_mode='HTML')
+                        msg = await context.bot.send_message(chat_id, "❌ <b>Link Expired!</b>\nYeh link sirf 60 seconds ke liye valid tha.", parse_mode='HTML')
                         track_message_for_deletion(context, chat_id, msg.message_id, 15)
                         return
                     
                     # Sab sahi hai, movie bhej do!
                     await deliver_movie_on_start(update, context, movie_id)
-                    logger.info(f"âœ… Secure token {payload} used successfully for movie {movie_id}")
+                    logger.info(f"✅ Secure token {payload} used successfully for movie {movie_id}")
                     return
 
                 except Exception as e:
                     logger.error(f"Temp Link Error: {e}")
-                    await context.bot.send_message(chat_id, "âŒ Processing error.")
+                    await context.bot.send_message(chat_id, "❌ Processing error.")
                     return
                 finally:
                     close_db_connection(conn)
@@ -3698,7 +3698,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     movie_id = int(parts[1])
                     file_index = int(parts[2])
                     
-                    status_msg = await context.bot.send_message(chat_id=chat_id, text="â³ <b>Fetching file...</b>", parse_mode='HTML')
+                    status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ <b>Fetching file...</b>", parse_mode='HTML')
                     
                     qualities = get_all_movie_qualities(movie_id)
                     if qualities and len(qualities) > file_index:
@@ -3714,16 +3714,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         close_db_connection(conn)
                         title = res[0] if res else "Requested File"
                         
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file â†’ ek GIF
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                         
                         try: await status_msg.delete() 
                         except: pass
                     else:
-                        await status_msg.edit_text("âŒ File not found or expired.")
+                        await status_msg.edit_text("❌ File not found or expired.")
                     return
                 except Exception as e:
                     logger.error(f"File click error: {e}")
-                    await context.bot.send_message(chat_id=chat_id, text="âŒ Invalid File Link")
+                    await context.bot.send_message(chat_id=chat_id, text="❌ Invalid File Link")
                     return
                     
             # --- CASE 1: DIRECT MOVIE ID (movie_123) ---
@@ -3735,7 +3735,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     movie_id = int(parts[1])
                     file_index = int(parts[2])
                     
-                    status_msg = await context.bot.send_message(chat_id=chat_id, text="â³ **Fetching file...**", parse_mode='Markdown')
+                    status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ **Fetching file...**", parse_mode='Markdown')
                     
                     # File ka data nikalo
                     qualities = get_all_movie_qualities(movie_id)
@@ -3754,26 +3754,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title = res[0] if res else "Requested File"
                         
                         # Tera premium thumbnail wala function!
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file â†’ ek GIF
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                         
                         try: await status_msg.delete() 
                         except: pass
                     else:
-                        await status_msg.edit_text("âŒ File not found or expired.")
+                        await status_msg.edit_text("❌ File not found or expired.")
                     return
                 except Exception as e:
                     logger.error(f"File click error: {e}")
-                    await context.bot.send_message(chat_id=chat_id, text="âŒ Invalid File Link")
+                    await context.bot.send_message(chat_id=chat_id, text="❌ Invalid File Link")
                     return
             
             if payload.startswith("movie_"):
                 try:
                     movie_id = int(payload.split('_')[1])
                     
-                    # âœ… FIX 3: send_message use karein
+                    # ✅ FIX 3: send_message use karein
                     status_msg = await context.bot.send_message(
                         chat_id=chat_id,
-                        text=f"ðŸŽ¬ Deep link detected!\nMovie ID: {movie_id}\nFetching... Please wait â³"
+                        text=f"🎬 Deep link detected!\nMovie ID: {movie_id}\nFetching... Please wait ⏳"
                     )
                     
                     try:
@@ -3783,39 +3783,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try: await status_msg.delete() 
                         except: pass
                         
-                        logger.info(f"âœ… Deep link SUCCESS for user {user_id}, movie {movie_id}")
+                        logger.info(f"✅ Deep link SUCCESS for user {user_id}, movie {movie_id}")
                         
                     except Exception as e:
-                        logger.error(f"âŒ Deep link FAILED: {e}")
-                        await status_msg.edit_text(f"âŒ Error fetching movie: {e}")
+                        logger.error(f"❌ Deep link FAILED: {e}")
+                        await status_msg.edit_text(f"❌ Error fetching movie: {e}")
                     
                     return # Movie mil gayi, Welcome msg mat dikhao
 
                 except Exception as e:
                     logger.error(f"Invalid movie link: {e}")
-                    await context.bot.send_message(chat_id=chat_id, text="âŒ Invalid Link Format")
+                    await context.bot.send_message(chat_id=chat_id, text="❌ Invalid Link Format")
                     return
 
             # --- CASE 2: AUTO SEARCH (q_kalki) ---
-            # âœ… RESTORED: Ye logic maine wapas add kar di hai
+            # ✅ RESTORED: Ye logic maine wapas add kar di hai
             elif payload.startswith("q_"):
                 try:
                     query_text = payload[2:].replace("_", " ").strip()
                     
-                    # âœ… FIX 4: send_message use karein
+                    # ✅ FIX 4: send_message use karein
                     status_msg = await context.bot.send_message(
                         chat_id=chat_id,
-                        text=f"ðŸ”Ž Deep link search detected!\nQuery: '{query_text}'\nSearching... Please wait â³"
+                        text=f"🔎 Deep link search detected!\nQuery: '{query_text}'\nSearching... Please wait ⏳"
                     )
                     
                     try:
                         # Background search function call karein
                         await background_search_and_send(update, context, query_text, status_msg)
-                        logger.info(f"âœ… Deep link SEARCH SUCCESS for user {user_id}, query: {query_text}")
+                        logger.info(f"✅ Deep link SEARCH SUCCESS for user {user_id}, query: {query_text}")
                         
                     except Exception as e:
-                        logger.error(f"âŒ Deep link SEARCH FAILED: {e}")
-                        error_text = f"âŒ Search failed for '{query_text}'.\nTry searching manually."
+                        logger.error(f"❌ Deep link SEARCH FAILED: {e}")
+                        error_text = f"❌ Search failed for '{query_text}'.\nTry searching manually."
                         try: await status_msg.edit_text(error_text)
                         except: await context.bot.send_message(chat_id=chat_id, text=error_text)
                     
@@ -3823,13 +3823,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                 except Exception as e:
                     logger.error(f"Deep link search error: {e}")
-                    await context.bot.send_message(chat_id=chat_id, text="âŒ Error processing search link.")
+                    await context.bot.send_message(chat_id=chat_id, text="❌ Error processing search link.")
                     return
 
     # --- NORMAL WELCOME MESSAGE (WITH GIF & DYNAMIC GREETING) ---
     user_name = update.effective_user.first_name
     
-    # ðŸŒŸ NAYA: Bot ka actual naam aur username nikalo
+    # 🌟 NAYA: Bot ka actual naam aur username nikalo
     bot_info = await context.bot.get_me()
     bot_name = bot_info.first_name  # Ye har bot ka apna alag naam uthayega!
     
@@ -3841,28 +3841,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ImportError:
         hour = datetime.now().hour # Fallback agar pytz na ho
         
-    if 5 <= hour < 12: greeting = "Good Morning â˜€ï¸"
-    elif 12 <= hour < 17: greeting = "Good Afternoon ðŸŒ¤ï¸"
-    elif 17 <= hour < 21: greeting = "Good Evening ðŸŒ†"
-    else: greeting = "Good Night ðŸŒ™"
+    if 5 <= hour < 12: greeting = "Good Morning ☀️"
+    elif 12 <= hour < 17: greeting = "Good Afternoon 🌤️"
+    elif 17 <= hour < 21: greeting = "Good Evening 🌆"
+    else: greeting = "Good Night 🌙"
 
     # 2. Premium Caption (Dynamic Bot Name ke sath)
     caption_text = (
-        f"<b>ðŸš© JAI SHRI RAM ðŸš©</b>\n\n"
+        f"<b>🚩 JAI SHRI RAM 🚩</b>\n\n"
         f"Hey <b>{user_name}</b>, {greeting}\n\n"
-        f"ðŸ¤– Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
-        f"<b>âš¡ï¸ My Capabilities:</b>\n"
-        f"â€¢ Fastest auto-filtering\n"
-        f"â€¢ 24/7 uptime\n"
-        f"â€¢ Premium file processing\n\n"
-        f"Tap the buttons below to know more! ðŸ‘‡"
+        f"🤖 Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
+        f"<b>⚡️ My Capabilities:</b>\n"
+        f"• Fastest auto-filtering\n"
+        f"• 24/7 uptime\n"
+        f"• Premium file processing\n\n"
+        f"Tap the buttons below to know more! 👇"
     )
 
     # 3. Inline Buttons
     inline_buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("ðŸ”° ADD ME TO YOUR GROUP ðŸ”°", url=f"https://t.me/{bot_info.username}?startgroup=true")],
-        [InlineKeyboardButton("HELP ðŸ“¢", callback_data="start_help"), InlineKeyboardButton("ABOUT ðŸ“–", callback_data="start_about")],
-        [InlineKeyboardButton("DONATION ðŸ’°", callback_data="start_donate")]
+        [InlineKeyboardButton("🔰 ADD ME TO YOUR GROUP 🔰", url=f"https://t.me/{bot_info.username}?startgroup=true")],
+        [InlineKeyboardButton("HELP 📢", callback_data="start_help"), InlineKeyboardButton("ABOUT 📖", callback_data="start_about")],
+        [InlineKeyboardButton("DONATION 💰", callback_data="start_donate")]
     ])
 
     try:
@@ -3870,12 +3870,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         web_app_url = "https://flimfybox-bot-yht0.onrender.com/webapp"
         await context.bot.set_chat_menu_button(
             chat_id=chat_id,
-            menu_button=MenuButtonWebApp(text="ðŸŽ¬ Web Version", web_app=WebAppInfo(url=web_app_url))
+            menu_button=MenuButtonWebApp(text="🎬 Web Version", web_app=WebAppInfo(url=web_app_url))
         )
         
         # Bottom Keyboard ('Search', 'Request') lane ke liye ek chhota silent message
         # Bottom keyboard bhej kar turant delete kar do (chat clean rahegi)
-        menu_msg = await context.bot.send_message(chat_id=chat_id, text="ðŸ”„ Loading Menu...", reply_markup=get_main_keyboard())
+        menu_msg = await context.bot.send_message(chat_id=chat_id, text="🔄 Loading Menu...", reply_markup=get_main_keyboard())
         try:
             await menu_msg.delete()
         except: 
@@ -3904,17 +3904,17 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.message.text
 
-        if query == 'ðŸ” Search Movies':
+        if query == '🔍 Search Movies':
             msg = await update.message.reply_text("Great! Tell me the name of the movie you want to search for.")
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return SEARCHING
 
-        elif query == 'ðŸ™‹ Request Movie':
+        elif query == '🙋 Request Movie':
             msg = await update.message.reply_text("Okay, you've chosen to request a new movie. Please tell me the name of the movie you want me to add.")
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return REQUESTING
 
-        elif query == 'ðŸ“Š My Stats':
+        elif query == '📊 My Stats':
             user_id = update.effective_user.id
             conn = None
             try:
@@ -3928,7 +3928,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     fulfilled_count = cur.fetchone()
 
                     stats_text = f"""
-ðŸ“Š Your Stats:
+📊 Your Stats:
 - Total Requests: {request_count}
 - Fulfilled Requests: {fulfilled_count}
 """
@@ -3944,13 +3944,13 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return MAIN_MENU
 
-        elif query == 'â“ Help':
+        elif query == '❓ Help':
             help_text = """
-ðŸ¤– How to use FlimfyBox Bot:
+🤖 How to use FlimfyBox Bot:
 
-ðŸ” Search Movies: Find movies in our collection
-ðŸ™‹ Request Movie: Request a new movie to be added
-ðŸ“Š My Stats: View your request statistics
+🔍 Search Movies: Find movies in our collection
+🙋 Request Movie: Request a new movie to be added
+📊 My Stats: View your request statistics
 
 Just use the buttons below to navigate!
             """
@@ -3981,10 +3981,10 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.message.text.strip()
         
         # Safety check
-        if query in ['ðŸ” Search Movies', 'ðŸ“Š My Stats', 'â“ Help']:
+        if query in ['🔍 Search Movies', '📊 My Stats', '❓ Help']:
              return await main_menu_or_search(update, context)
 
-        # ðŸ‘‡ NAYA FIX: Search query se Season/Episode tags hata do taaki main show mil jaye ðŸ‘‡
+        # 👇 NAYA FIX: Search query se Season/Episode tags hata do taaki main show mil jaye 👇
         import re
         clean_query = re.sub(r'(?i)\b(s\d{1,2}|season\s*\d+|ep\s?\d+|e\d{1,2})\b.*', '', query).strip()
         search_term = clean_query if (clean_query and len(clean_query) > 1) else query
@@ -4003,26 +4003,26 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
 
             not_found_text = (
-                "à¤®à¤¾à¤«à¤¼ à¤•à¤°à¥‡à¤‚, à¤®à¥à¤à¥‡ à¤•à¥‹à¤ˆ à¤®à¤¿à¤²à¤¤à¥€-à¤œà¥à¤²à¤¤à¥€ à¤«à¤¼à¤¿à¤²à¥à¤® à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€\n\n"
-                "<b><a href='https://www.google.com/'>ð—šð—¼ð—¼ð—´ð—¹ð—²</a></b> â˜œ à¤¸à¤°à¥à¤š à¤•à¤°à¥‡à¤‚..!!\n\n"
-                "à¤®à¥‚à¤µà¥€ à¤•à¥€ à¤¸à¥à¤ªà¥‡à¤²à¤¿à¤‚à¤— à¤—à¥‚à¤—à¤² à¤ªà¤° à¤¸à¤°à¥à¤š à¤•à¤°à¤•à¥‡, à¤•à¥‰à¤ªà¥€ à¤•à¤°à¥‡, à¤‰à¤¸à¤•à¥‡ à¤¬à¤¾à¤¦ à¤¯à¤¹à¤¾à¤‚ à¤Ÿà¤¾à¤‡à¤ª à¤•à¤°à¥‡à¤‚à¥¤âœ”ï¸\n\n"
-                "à¤¬à¤¸ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® + à¤µà¤°à¥à¤·:::: à¤²à¤¿à¤–à¥‡à¤‚, à¤‰à¤¸à¤•à¥‡ à¤†à¤—à¥‡ à¤ªà¥€à¤›à¥‡ à¤•à¥à¤› à¤­à¥€ à¤¨à¤¾ à¤²à¤¿à¤–à¥‡..à¥¤â™»ï¸\n\n"
-                "âœá°ð—˜ð˜…ð—®ð—ºð—½ð—¹ð—²\n\n"
-                "à¤¸à¤¹à¥€ à¤¹à¥ˆ.!â€¼ï¸    \n"
-                "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n"
-                "ð‘²ð’ˆð’‡ ðŸâœ”ï¸ | ð‘²ð’ˆð’‡ ðŸ ð‘´ð’ð’—ð’Šð’† âŒ\n"
-                "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n"
-                "ð‘¨ð’”ð’–ð’“ ð‘ºðŸŽðŸ ð‘¬ðŸŽðŸ‘âœ”ï¸ | ð‘¨ð’”ð’–ð’“ ð‘ºð’†ð’‚ð’”ð’ð’ðŸ‘âŒ\n"
-                "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n"
-                "ðŸ‘‡ <b>à¤¸à¤¹à¥€ à¤¸à¥à¤ªà¥‡à¤²à¤¿à¤‚à¤— à¤¢à¥‚à¤à¤¢à¤¨à¥‡ à¤”à¤° Request à¤•à¤°à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤¨à¥€à¤šà¥‡ à¤•à¥à¤²à¤¿à¤• à¤•à¤°à¥‡à¤‚:</b>"
+                "माफ़ करें, मुझे कोई मिलती-जुलती फ़िल्म नहीं मिली\n\n"
+                "<b><a href='https://www.google.com/'>𝗚𝗼𝗼𝗴𝗹𝗲</a></b> ☜ सर्च करें..!!\n\n"
+                "मूवी की स्पेलिंग गूगल पर सर्च करके, कॉपी करे, उसके बाद यहां टाइप करें।✔️\n\n"
+                "बस मूवी का नाम + वर्ष:::: लिखें, उसके आगे पीछे कुछ भी ना लिखे..।♻️\n\n"
+                "✐ᝰ𝗘𝘅𝗮𝗺𝗽𝗹𝗲\n\n"
+                "सही है.!‼️    \n"
+                "─────────────────────\n"
+                "𝑲𝒈𝒇 𝟐✔️ | 𝑲𝒈𝒇 𝟐 𝑴𝒐𝒗𝒊𝒆 ❌\n"
+                "─────────────────────\n"
+                "𝑨𝒔𝒖𝒓 𝑺𝟎𝟏 𝑬𝟎𝟑✔️ | 𝑨𝒔𝒖𝒓 𝑺𝒆𝒂𝒔𝒐𝒏𝟑❌\n"
+                "─────────────────────\n\n"
+                "👇 <b>सही स्पेलिंग ढूँढने और Request करने के लिए नीचे क्लिक करें:</b>"
             )
 
-            # ðŸŒ NAYA JUGAD: Web App URL jisme user ki galat spelling (query) attach hogi
+            # 🌐 NAYA JUGAD: Web App URL jisme user ki galat spelling (query) attach hogi
             safe_query = quote(query)
             web_app_url = f"https://flimfybox-bot-yht0.onrender.com/webapp?req={safe_query}"
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("ðŸŒ Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
+                [InlineKeyboardButton("🌐 Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
             ])
             
             msg = await update.message.reply_text(
@@ -4042,8 +4042,8 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = create_movie_selection_keyboard(movies, page=0)
         
         msg = await update.message.reply_text(
-            f"ðŸŽ¬ **Found {len(movies)} results for '{query}'**\n\n"
-            "ðŸ‘‡ Select your movie below:",
+            f"🎬 **Found {len(movies)} results for '{query}'**\n\n"
+            "👇 Select your movie below:",
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
@@ -4063,21 +4063,21 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
 
         if not user_message:
-            await update.message.reply_text("à¤•à¥ƒà¤ªà¤¯à¤¾ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤­à¥‡à¤œà¥‡à¤‚à¥¤")
+            await update.message.reply_text("कृपया मूवी का नाम भेजें।")
             return REQUESTING
 
         burst = user_burst_count(user.id, window_seconds=60)
         if burst >= MAX_REQUESTS_PER_MINUTE:
             msg = await update.message.reply_text(
-                "ðŸ›‘ à¤¤à¥à¤® à¤¬à¤¹à¥à¤¤ à¤œà¤²à¥à¤¦à¥€-à¤œà¤²à¥à¤¦à¥€ requests à¤­à¥‡à¤œ à¤°à¤¹à¥‡ à¤¹à¥‹à¥¤ à¤•à¥à¤› à¤¦à¥‡à¤° à¤°à¥‹à¤•à¥‡à¤‚ (à¤•à¥à¤› à¤®à¤¿à¤¨à¤Ÿ) à¤”à¤° à¤«à¤¿à¤° à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤\n"
-                "à¤¬à¤¾à¤°â€‘à¤¬à¤¾à¤° à¤­à¥‡à¤œà¤¨à¥‡ à¤¸à¥‡ à¤«à¤¼à¤¾à¤¯à¤¦à¤¾ à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹à¤—à¤¾à¥¤"
+                "🛑 तुम बहुत जल्दी-जल्दी requests भेज रहे हो। कुछ देर रोकें (कुछ मिनट) और फिर कोशिश करें।\n"
+                "बार‑बार भेजने से फ़ायदा नहीं होगा।"
             )
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return REQUESTING
 
         intent = await analyze_intent(user_message)
         if not intent["is_request"]:
-            msg = await update.message.reply_text("à¤¯à¤¹ à¤à¤• à¤®à¥‚à¤µà¥€/à¤¸à¥€à¤°à¥€à¤œà¤¼ à¤•à¤¾ à¤¨à¤¾à¤® à¤¨à¤¹à¥€à¤‚ à¤²à¤— à¤°à¤¹à¤¾ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¸à¤¹à¥€ à¤¨à¤¾à¤® à¤­à¥‡à¤œà¥‡à¤‚à¥¤")
+            msg = await update.message.reply_text("यह एक मूवी/सीरीज़ का नाम नहीं लग रहा है। कृपया सही नाम भेजें।")
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return REQUESTING
 
@@ -4091,10 +4091,10 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes_left = max(0, REQUEST_COOLDOWN_MINUTES - minutes_passed)
             if minutes_left > 0:
                 strict_text = (
-                    "ðŸ›‘ Ruk jao! Aapne ye request abhi bheji thi.\n\n"
-                    "Baarâ€‘baar request karne se movie jaldi nahi aayegi.\n\n"
+                    "🛑 Ruk jao! Aapne ye request abhi bheji thi.\n\n"
+                    "Baar‑baar request karne se movie jaldi nahi aayegi.\n\n"
                     f"Similar previous request: \"{similar.get('stored_title')}\" ({similar.get('score')}% match)\n"
-                    f"Kripya {minutes_left} minute baad dobara koshish karein. ðŸ™"
+                    f"Kripya {minutes_left} minute baad dobara koshish karein. 🙏"
                 )
                 msg = await update.message.reply_text(strict_text)
                 track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
@@ -4110,14 +4110,14 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if not stored:
             logger.error("Failed to store user request in DB.")
-            await update.message.reply_text("Sorry, à¤†à¤ªà¤•à¤¾ request store à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹ à¤ªà¤¾à¤¯à¤¾à¥¤ à¤¬à¤¾à¤¦ à¤®à¥‡à¤‚ à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤")
+            await update.message.reply_text("Sorry, आपका request store नहीं हो पाया। बाद में कोशिश करें।")
             return REQUESTING
 
         group_info = update.effective_chat.title if update.effective_chat.type != "private" else None
         await send_admin_notification(context, user, movie_title, group_info)
 
         msg = await update.message.reply_text(
-            f"âœ… Got it! Your request for '{movie_title}' has been sent. I'll let you know when it's available.",
+            f"✅ Got it! Your request for '{movie_title}' has been sent. I'll let you know when it's available.",
             reply_markup=get_main_keyboard()
         )
         track_message_for_deletion(update.effective_chat.id, msg.message_id, 180)
@@ -4135,7 +4135,7 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
         user_message = (update.message.text or "").strip()
         
         # Check for Main Menu Buttons (Emergency Exit)
-        menu_buttons = ['ðŸ” Search Movies', 'ðŸ™‹ Request Movie', 'ðŸ“Š My Stats', 'â“ Help', '/start']
+        menu_buttons = ['🔍 Search Movies', '🙋 Request Movie', '📊 My Stats', '❓ Help', '/start']
         if user_message in menu_buttons:
             if 'awaiting_request' in context.user_data:
                 del context.user_data['awaiting_request']
@@ -4144,20 +4144,20 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
             return await main_menu(update, context)
 
         if not user_message:
-            await update.message.reply_text("à¤•à¥ƒà¤ªà¤¯à¤¾ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤­à¥‡à¤œà¥‡à¤‚à¥¤")
+            await update.message.reply_text("कृपया मूवी का नाम भेजें।")
             return REQUESTING_FROM_BUTTON
 
         # Store movie name
         context.user_data['pending_request'] = user_message
         
         confirm_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ðŸ“½ï¸ Confirm ðŸŽ¬", callback_data=f"confirm_request_{user_message[:40]}")]
+            [InlineKeyboardButton("📽️ Confirm 🎬", callback_data=f"confirm_request_{user_message[:40]}")]
         ])
         
         msg = await update.message.reply_text(
-            f"âœ… à¤†à¤ªà¤¨à¥‡ '<b>{user_message}</b>' à¤•à¥‹ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?\n\n"
-            f"<b>ðŸ’« à¤…à¤¬ à¤¬à¤¸ à¤…à¤ªà¤¨à¥€ à¤®à¥‚à¤µà¥€ à¤¯à¤¾ à¤µà¥‡à¤¬-à¤¸à¥€à¤°à¥€à¤œà¤¼ à¤•à¤¾ à¤®à¥‚à¤² à¤¨à¤¾à¤® à¤­à¥‡à¤œà¥‡à¤‚ à¤”à¤° à¤•à¤¨à¥à¤«à¤°à¥à¤® à¤¬à¤Ÿà¤¨ à¤ªà¤° à¤•à¥à¤²à¤¿à¤• à¤•à¤°à¥‡à¤‚!</b>\n\n"
-            f"à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¨à¥à¤«à¤°à¥à¤® à¤¬à¤Ÿà¤¨ à¤ªà¤° à¤•à¥à¤²à¤¿à¤• à¤•à¤°à¥‡à¤‚ ðŸ‘‡",
+            f"✅ आपने '<b>{user_message}</b>' को रिक्वेस्ट करना चाहते हैं?\n\n"
+            f"<b>💫 अब बस अपनी मूवी या वेब-सीरीज़ का मूल नाम भेजें और कन्फर्म बटन पर क्लिक करें!</b>\n\n"
+            f"कृपया कन्फर्म बटन पर क्लिक करें 👇",
             reply_markup=confirm_keyboard,
             parse_mode='HTML'
         )
@@ -4175,18 +4175,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat.id
     data = query.data
 
-    # âœ… NAYA: Video wala Pages Button Popup
+    # ✅ NAYA: Video wala Pages Button Popup
     if data == "ignore":
-        await query.answer("THIS IS PAGES BUTTON ðŸ”´", show_alert=False)
+        await query.answer("THIS IS PAGES BUTTON 🔴", show_alert=False)
         return
 
     if data.startswith("fl_") or data.startswith("v_"):
         parts = query.data.split('_')
         view_type = parts[1] if parts[0] == "v" else "main" 
         
-        # âœ… NAYA: Video wale cool popups!
+        # ✅ NAYA: Video wale cool popups!
         if view_type in ["lang", "qual", "seas"]:
-             await query.answer("Share & Support Us â¤ï¸", show_alert=False)
+             await query.answer("Share & Support Us ❤️", show_alert=False)
 
     # ==================== NAYA: SINGLE FILE SEND ====================
     if data.startswith("send_single_"):
@@ -4200,7 +4200,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = movie_data['title'] if movie_data else "Requested Movie"
 
         try:
-            # ðŸš€ NAYA: Ab simple text ki jagah tera Premium function use hoga!
+            # 🚀 NAYA: Ab simple text ki jagah tera Premium function use hoga!
             await send_movie_to_user(
                 update=update, 
                 context=context, 
@@ -4208,11 +4208,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title=title, 
                 url=None, 
                 file_id=file_id_to_send, 
-                send_warning=True  # Single file click â†’ ek baar GIF bhejna zaroori hai
+                send_warning=True  # Single file click → ek baar GIF bhejna zaroori hai
             )
-            await query.answer("âœ… File Sent!", show_alert=False)
+            await query.answer("✅ File Sent!", show_alert=False)
         except Exception as e:
-            await query.answer("âŒ Error sending file.", show_alert=True)
+            await query.answer("❌ Error sending file.", show_alert=True)
             logger.error(f"Single file send error: {e}")
         return
 
@@ -4222,7 +4222,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop('selected_season', None)
         movie_data = context.user_data.get('selected_movie_data')
         if not movie_data:
-            await query.answer("âŒ Session expired.", show_alert=True)
+            await query.answer("❌ Session expired.", show_alert=True)
             return
         title = movie_data['title']
         qualities = movie_data['qualities']
@@ -4234,12 +4234,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if s_name != "Extra Files": seasons.add(s_name)
         
         keyboard = []
-        keyboard.append([InlineKeyboardButton("ðŸŽ¬ Movie", callback_data=f"showseason_{movie_id}_Extra Files")])
+        keyboard.append([InlineKeyboardButton("🎬 Movie", callback_data=f"showseason_{movie_id}_Extra Files")])
         for s in sorted(list(seasons)):
-            keyboard.append([InlineKeyboardButton(f"ðŸ“ {s}", callback_data=f"showseason_{movie_id}_{s}")])
-        keyboard.append([InlineKeyboardButton("âŒ Cancel", callback_data="cancel_selection")])
+            keyboard.append([InlineKeyboardButton(f"📁 {s}", callback_data=f"showseason_{movie_id}_{s}")])
+        keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_selection")])
         
-        await query.edit_message_text(f"ðŸ“º **{title}**\n\nðŸ‘‡ **Select Option:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(f"📺 **{title}**\n\n👇 **Select Option:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return
 
     
@@ -4249,8 +4249,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
         if data == "start_help":
-            text = "<b>ðŸ›  HELP MENU</b>\n\nMujhe apne group me add karke Admin bana do. Main automatically files filter karna shuru kar dunga!"
-            back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("ðŸ”™ BACK", callback_data="start_back")]])
+            text = "<b>🛠 HELP MENU</b>\n\nMujhe apne group me add karke Admin bana do. Main automatically files filter karna shuru kar dunga!"
+            back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="start_back")]])
             # Purani GIF delete karke naya message bhejenge (sabse safe tareeka)
             try: await query.message.delete()
             except: pass
@@ -4259,8 +4259,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         elif data == "start_about":
-            text = f"<b>ðŸ“– ABOUT ME</b>\n\nâ€¢ <b>Developer:</b> @{ADMIN_USERNAME}\nâ€¢ <b>Language:</b> Python 3\nâ€¢ <b>Library:</b> python-telegram-bot"
-            back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("ðŸ”™ BACK", callback_data="start_back")]])
+            text = f"<b>📖 ABOUT ME</b>\n\n• <b>Developer:</b> @{ADMIN_USERNAME}\n• <b>Language:</b> Python 3\n• <b>Library:</b> python-telegram-bot"
+            back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="start_back")]])
             try: await query.message.delete()
             except: pass
             msg = await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='HTML', reply_markup=back_btn)
@@ -4292,13 +4292,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bio.seek(0)
                 
                 text = (
-                    f"ðŸ’Ž <b>VIP DONATION - â‚¹{amount}</b>\n\n"
-                    f"ðŸ“± <b>Scan QR Code</b> from any UPI app (GPay/PhonePe/Paytm)\n"
-                    f"ðŸ’³ <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
-                    f"âœ… Payment ke baad:\n"
-                    f"1ï¸âƒ£ <b>Screenshot</b> bhejo yahan\n"
-                    f"2ï¸âƒ£ Phir <b>UTR Number</b> type karke bhejo\n\n"
-                    f"ðŸ“¸ <i>Intezaar hai aapke screenshot ka...</i>"
+                    f"💎 <b>VIP DONATION - ₹{amount}</b>\n\n"
+                    f"📱 <b>Scan QR Code</b> from any UPI app (GPay/PhonePe/Paytm)\n"
+                    f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n\n"
+                    f"✅ Payment ke baad:\n"
+                    f"1️⃣ <b>Screenshot</b> bhejo yahan\n"
+                    f"2️⃣ Phir <b>UTR Number</b> type karke bhejo\n\n"
+                    f"📸 <i>Intezaar hai aapke screenshot ka...</i>"
                 )
                 
                 # Bot ko batana ki user ab screenshot bhejega
@@ -4311,12 +4311,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     photo=bio,
                     caption=text,
                     parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("âŒ Cancel", callback_data="start_back")]])
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="start_back")]])
                 )
             except Exception as e:
                 # Agar qrcode install nahi hai toh normal text bhejega
-                text = f"<b>ðŸ’° DONATION</b>\n\nAgar aapko mera kaam pasand aaya, toh aap UPI pe support kar sakte hain: <code>{upi_id}</code>"
-                back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("ðŸ”™ BACK", callback_data="start_back")]])
+                text = f"<b>💰 DONATION</b>\n\nAgar aapko mera kaam pasand aaya, toh aap UPI pe support kar sakte hain: <code>{upi_id}</code>"
+                back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="start_back")]])
                 await query.edit_message_caption(caption=text, parse_mode='HTML', reply_markup=back_btn)
             return
 
@@ -4341,26 +4341,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ImportError:
             hour = datetime.now().hour
             
-        if 5 <= hour < 12: greeting = "Good Morning â˜€ï¸"
-        elif 12 <= hour < 17: greeting = "Good Afternoon ðŸŒ¤ï¸"
-        elif 17 <= hour < 21: greeting = "Good Evening ðŸŒ†"
-        else: greeting = "Good Night ðŸŒ™"
+        if 5 <= hour < 12: greeting = "Good Morning ☀️"
+        elif 12 <= hour < 17: greeting = "Good Afternoon 🌤️"
+        elif 17 <= hour < 21: greeting = "Good Evening 🌆"
+        else: greeting = "Good Night 🌙"
 
         caption_text = (
-            f"<b>ðŸš© JAI SHRI RAM ðŸš©</b>\n\n"
+            f"<b>🚩 JAI SHRI RAM 🚩</b>\n\n"
             f"Hey <b>{user_name}</b>, {greeting}\n\n"
-            f"ðŸ¤– Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
-            f"<b>âš¡ï¸ My Capabilities:</b>\n"
-            f"â€¢ Fastest auto-filtering\n"
-            f"â€¢ 24/7 uptime\n"
-            f"â€¢ Premium file processing\n\n"
-            f"Tap the buttons below to know more! ðŸ‘‡"
+            f"🤖 Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
+            f"<b>⚡️ My Capabilities:</b>\n"
+            f"• Fastest auto-filtering\n"
+            f"• 24/7 uptime\n"
+            f"• Premium file processing\n\n"
+            f"Tap the buttons below to know more! 👇"
         )
 
         inline_buttons = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ðŸ”° ADD ME TO YOUR GROUP ðŸ”°", url=f"https://t.me/{bot_info.username}?startgroup=true")],
-            [InlineKeyboardButton("HELP ðŸ“¢", callback_data="start_help"), InlineKeyboardButton("ABOUT ðŸ“–", callback_data="start_about")],
-            [InlineKeyboardButton("DONATION ðŸ’°", callback_data="start_donate")]
+            [InlineKeyboardButton("🔰 ADD ME TO YOUR GROUP 🔰", url=f"https://t.me/{bot_info.username}?startgroup=true")],
+            [InlineKeyboardButton("HELP 📢", callback_data="start_help"), InlineKeyboardButton("ABOUT 📖", callback_data="start_about")],
+            [InlineKeyboardButton("DONATION 💰", callback_data="start_donate")]
         ])
 
         # Original GIF wapas send karo
@@ -4376,7 +4376,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     # === ADMIN REQUEST BUTTONS (Add/Not Found) ===
     if data.startswith("reqA_") or data.startswith("reqN_"):
-        await query.answer("ðŸ”„ Sending message to user...", show_alert=False)
+        await query.answer("🔄 Sending message to user...", show_alert=False)
         parts = data.split('_', 2)
         action = parts[0]  # Yahan '_' hat jata hai, sirf 'reqA' ya 'reqN' bachta hai
         target_user_id = int(parts[1])
@@ -4394,44 +4394,44 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
             finally: close_db_connection(conn)
 
-        # âœ… FIXED: "reqA_" ki jagah "reqA" use karna hai
+        # ✅ FIXED: "reqA_" ki jagah "reqA" use karna hai
         if action == "reqA":
             user_msg = (
-                f"ðŸŽ‰ <b>Good News!</b> ðŸ‘‹\n\n"
-                f"Hello <b>{first_name}!</b> à¤†à¤ªà¤•à¥€ Requested Movie à¤…à¤¬ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¹à¥ˆà¥¤\n\n"
-                f"ðŸŽ¬ File: <b>{movie_title}</b>\n\n"
-                f"à¤‡à¤¸à¥‡ à¤ªà¤¾à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤…à¤­à¥€ à¤¬à¥‰à¤Ÿ à¤®à¥‡à¤‚ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤Ÿà¤¾à¤‡à¤ª à¤•à¤°à¥‡à¤‚ à¤”à¤° à¤à¤¨à¥à¤œà¥‰à¤¯ à¤•à¤°à¥‡à¤‚! ðŸ˜Š\n\n"
-                f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nRegards, <b>@Ownermahi</b>"
+                f"🎉 <b>Good News!</b> 👋\n\n"
+                f"Hello <b>{first_name}!</b> आपकी Requested Movie अब उपलब्ध है।\n\n"
+                f"🎬 File: <b>{movie_title}</b>\n\n"
+                f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
-            btn_status = "âœ… User Notified: Added"
+            btn_status = "✅ User Notified: Added"
         else:
             user_msg = (
-                f"ðŸ˜” <b>Update!</b> ðŸ‘‹\n\n"
-                f"Hello <b>{first_name}!</b> à¤†à¤ªà¤•à¥€ Requested File (<b>{movie_title}</b>) à¤…à¤­à¥€ à¤¹à¤®à¥‡à¤‚ à¤•à¤¹à¥€à¤‚ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤² à¤ªà¤¾à¤ˆ à¤¹à¥ˆà¥¤\n\n"
-                f"à¤œà¥ˆà¤¸à¥‡ à¤¹à¥€ à¤¯à¤¹ à¤…à¤µà¥‡à¤²à¥‡à¤¬à¤² à¤¹à¥‹à¤—à¥€, à¤¹à¤® à¤†à¤ªà¤•à¥‹ à¤œà¤°à¥‚à¤° à¤¬à¤¤à¤¾à¤à¤‚à¤—à¥‡à¥¤\n\n"
-                f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nRegards, <b>@Ownermahi</b>"
+                f"😔 <b>Update!</b> 👋\n\n"
+                f"Hello <b>{first_name}!</b> आपकी Requested File (<b>{movie_title}</b>) अभी हमें कहीं नहीं मिल पाई है।\n\n"
+                f"जैसे ही यह अवेलेबल होगी, हम आपको जरूर बताएंगे।\n\n"
+                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
             )
-            btn_status = "âŒ User Notified: Not Found"
+            btn_status = "❌ User Notified: Not Found"
 
-        # âœ… FIXED: Yahan user ko message send karna hai, taaki request block sahi se band ho jaye!
+        # ✅ FIXED: Yahan user ko message send karna hai, taaki request block sahi se band ho jaye!
         success = await send_multi_bot_message(target_user_id, user_msg)
         
         if success:
             # Button hata do aur Admin ko updated status dikhao
-            await query.edit_message_text(f"{query.message.text}\n\n{btn_status} ðŸ“©", parse_mode='HTML')
+            await query.edit_message_text(f"{query.message.text}\n\n{btn_status} 📩", parse_mode='HTML')
         else:
-            await query.answer("âŒ Failed! User ne sabhi bots block kar diye hain.", show_alert=True)
+            await query.answer("❌ Failed! User ne sabhi bots block kar diye hain.", show_alert=True)
             
         return # Yahan is block ka kaam khatam!
 
     
 
     # =======================================================
-    # ðŸ–¼ï¸ NEW: ASK POSTER LOGIC (Semi-Auto Post)
+    # 🖼️ NEW: ASK POSTER LOGIC (Semi-Auto Post)
     # =======================================================
     if data.startswith("askposter_"):
         if update.effective_user.id not in ADMIN_IDS:
-            await query.answer("âŒ Admin only!", show_alert=True)
+            await query.answer("❌ Admin only!", show_alert=True)
             return
 
         movie_id = int(data.split("_")[1])
@@ -4441,8 +4441,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.answer()
         await query.message.reply_text(
-            "ðŸ–¼ï¸ **Please send the Landscape Poster (Image) for this movie now.**\n\n"
-            "*(à¤¸à¤¿à¤°à¥à¤«à¤¼ à¤«à¥‹à¤Ÿà¥‹ à¤­à¥‡à¤œà¥‡à¤‚, à¤•à¥‹à¤ˆ à¤•à¥ˆà¤ªà¥à¤¶à¤¨ à¤²à¤¿à¤–à¤¨à¥‡ à¤•à¥€ à¤œà¤¼à¤°à¥‚à¤°à¤¤ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆ)*",
+            "🖼️ **Please send the Landscape Poster (Image) for this movie now.**\n\n"
+            "*(सिर्फ़ फोटो भेजें, कोई कैप्शन लिखने की ज़रूरत नहीं है)*",
             parse_mode='Markdown'
         )
         return
@@ -4450,21 +4450,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Iske niche aapke baki ke callback conditions waise hi rahenge (autopost_, cancel_genre aadi...)
     
     # =======================================================
-    # ðŸ¤– NEW: AUTO POST LOGIC (Premium Cinematic & Random Styles)
+    # 🤖 NEW: AUTO POST LOGIC (Premium Cinematic & Random Styles)
     # =======================================================
     if query.data.startswith("autopost_"):
-        await query.answer("â³ Premium Post Generate ho rahi hai...")
+        await query.answer("⏳ Premium Post Generate ho rahi hai...")
         movie_id = int(query.data.split("_")[1])
         
         # --- 1. DATABASE SE DATA NIKALNA ---
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # à¤•à¥à¤µà¤¾à¤²à¤¿à¤Ÿà¥€ à¤¨à¤¿à¤•à¤¾à¤²à¥‡à¤‚
+        # क्वालिटी निकालें
         cur.execute("SELECT quality FROM movie_files WHERE movie_id = %s", (movie_id,))
         rows = cur.fetchall()
         
-        # à¤®à¥‚à¤µà¥€ à¤•à¥€ à¤¡à¤¿à¤Ÿà¥‡à¤²à¥à¤¸ à¤¨à¤¿à¤•à¤¾à¤²à¥‡à¤‚ (ðŸš€ NAYA: Ab poster_url bhi nikalega)
+        # मूवी की डिटेल्स निकालें (🚀 NAYA: Ab poster_url bhi nikalega)
         cur.execute("SELECT title, genre, language, poster_url FROM movies WHERE id = %s", (movie_id,))
         m_data = cur.fetchone()
         cur.close()
@@ -4474,10 +4474,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: db_pool.putconn(conn) 
 
         if not m_data:
-            await query.edit_message_text("âŒ Error: Movie DB mein nahi mili!")
+            await query.edit_message_text("❌ Error: Movie DB mein nahi mili!")
             return
 
-        # à¤•à¥à¤µà¤¾à¤²à¤¿à¤Ÿà¥€ à¤«à¥‰à¤°à¥à¤®à¥‡à¤Ÿà¤¿à¤‚à¤—
+        # क्वालिटी फॉर्मेटिंग
         res_list = []
         for r in rows:
             if r and r[0]:
@@ -4492,7 +4492,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m_poster = m_data[3] if len(m_data) > 3 and m_data[3] else None
 
         # --- 2. POSTER PROCESSING (Cinematic Square Effect) ---
-        # ðŸš€ NAYA FIX: Pehle TMDB ka link uthao. Agar TMDB poster nahi hai, tabhi Thumbnail use karo.
+        # 🚀 NAYA FIX: Pehle TMDB ka link uthao. Agar TMDB poster nahi hai, tabhi Thumbnail use karo.
         raw_photo = m_poster if (m_poster and m_poster != 'N/A' and m_poster.startswith('http')) else None
         
         if not raw_photo:
@@ -4512,33 +4512,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Default poster agar kuch na mile
             photo_to_send = "https://i.imgur.com/6XK4F6K.png"
 
-        # --- 3. ðŸŽ² RANDOM PREMIUM STYLES ðŸŽ² ---
+        # --- 3. 🎲 RANDOM PREMIUM STYLES 🎲 ---
         safe_title = m_title.replace('<', '').replace('>', '')
         unicode_title = get_safe_font(safe_title)
         
-        # ðŸ‘ˆ Ab sirf 2 styles bache hain (Box wala hata diya)
+        # 👈 Ab sirf 2 styles bache hain (Box wala hata diya)
         style_choice = random.choice([1, 2])
 
         if style_choice == 1:
             channel_caption = (
-                f"ðŸŽ¬ <b>{safe_title}</b>\n"
-                f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-                f"âœ¨ <b>Genre:</b> {m_genre}\n"
-                f"ðŸ”Š <b>Language:</b> {m_lang}\n"
-                f"ðŸ’¿ <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
-                f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-                f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-                f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+                f"🎬 <b>{safe_title}</b>\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
+                f"✨ <b>Genre:</b> {m_genre}\n"
+                f"🔊 <b>Language:</b> {m_lang}\n"
+                f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+                f"👇 <b>Download Below</b> 👇"
             )
         else:
             channel_caption = (
-                f"ðŸ”¥ <b>{unicode_title}</b>\n"
-                f" â”œ âœ¨ Genre: {m_genre}\n"
-                f" â”œ ðŸ”Š Language: {m_lang}\n"
-                f" â”” ðŸ’¿ Quality: V2 HQ-HDTC {dynamic_res}\n"
-                f"â” â” â” â” â” â” â” â” â” â” â”\n"
-                f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-                f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+                f"🔥 <b>{unicode_title}</b>\n"
+                f" ├ ✨ Genre: {m_genre}\n"
+                f" ├ 🔊 Language: {m_lang}\n"
+                f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
+                f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+                f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+                f"👇 <b>Download Below</b> 👇"
             )
 
         # --- 4. SECURE LINK & BUTTONS ---
@@ -4547,8 +4547,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         post_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Download Now", url=secure_url), InlineKeyboardButton("Download Now", url=secure_url)],
-            [InlineKeyboardButton("âš¡ Download Now", url=secure_url)],
-            [InlineKeyboardButton("ðŸ“¢ Join Channel", url=channel_link)]
+            [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+            [InlineKeyboardButton("📢 Join Channel", url=channel_link)]
         ])
 
         # --- 5. BROADCASTING TO CHANNELS ---
@@ -4556,7 +4556,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
         if not target_channels:
-            await query.edit_message_text(f"{query.message.text}\n\nâŒ Error: No BROADCAST_CHANNELS found in env.")
+            await query.edit_message_text(f"{query.message.text}\n\n❌ Error: No BROADCAST_CHANNELS found in env.")
             return
 
         sent_count = 0
@@ -4607,9 +4607,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 last_error = str(e)
 
         # --- 6. SUCCESS MESSAGE ---
-        result_msg = f"âœ… <b>Auto-Posted (VIP Square Poster) to {sent_count} channels!</b>"
+        result_msg = f"✅ <b>Auto-Posted (VIP Square Poster) to {sent_count} channels!</b>"
         if sent_count == 0 and last_error: 
-            result_msg += f"\nâŒ <b>Failed Reason:</b> <code>{last_error}</code>"
+            result_msg += f"\n❌ <b>Failed Reason:</b> <code>{last_error}</code>"
 
         await query.edit_message_text(result_msg, parse_mode='HTML')
         
@@ -4627,7 +4627,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie_id = int(query.data.split("_")[1])
         chat_id = update.effective_chat.id
 
-        # âœ… FAST FETCH: Ek hi bar mein sab nikal lo
+        # ✅ FAST FETCH: Ek hi bar mein sab nikal lo
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT title, genre, year, language FROM movies WHERE id = %s", (movie_id,))
@@ -4660,15 +4660,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             qualities = temp_list
 
         if not qualities:
-            await query.answer("âŒ No files found!", show_alert=True)
+            await query.answer("❌ No files found!", show_alert=True)
             return
 
-        await query.answer(f"ðŸš€ Sending {len(qualities)} files...")
-        status_msg = await query.message.reply_text(f"ðŸš€ **Sending {len(qualities)} files...**", parse_mode='Markdown')
+        await query.answer(f"🚀 Sending {len(qualities)} files...")
+        status_msg = await query.message.reply_text(f"🚀 **Sending {len(qualities)} files...**", parse_mode='Markdown')
         
         # 1. LOOP: FILES BHEJO
         count = 0
-        # ðŸ‘‡ NAYA BULLETPROOF CODE ðŸ‘‡
+        # 👇 NAYA BULLETPROOF CODE 👇
         for file_data in qualities:
             url = file_data[1]
             file_id = file_data[2]
@@ -4695,7 +4695,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Failed to send final warning file: {e}")
 
-        await status_msg.edit_text(f"âœ… **Sent {count} Files!**", parse_mode='Markdown')
+        await status_msg.edit_text(f"✅ **Sent {count} Files!**", parse_mode='Markdown')
         track_message_for_deletion(context, chat_id, status_msg.message_id, 30)
         return
     
@@ -4716,25 +4716,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title, year, genre = res
             # Ye wo text hai jo Popup mein dikhega
             popup_text = (
-                f"ðŸ“‚ File Info:\n"
-                f"ðŸŽ¬ Movie: {title}\n"
-                f"ðŸ“… Year: {year}\n"
-                f"ðŸŽ­ Genre: {genre}\n"
-                f"ðŸ”Š Audio: Hindi, English (Dual)\n" # Ise DB se dynamic bana sakte ho
-                f"ðŸ“ Subs: English, Hindi"
+                f"📂 File Info:\n"
+                f"🎬 Movie: {title}\n"
+                f"📅 Year: {year}\n"
+                f"🎭 Genre: {genre}\n"
+                f"🔊 Audio: Hindi, English (Dual)\n" # Ise DB se dynamic bana sakte ho
+                f"📝 Subs: English, Hindi"
             )
             # show_alert=True ka matlab hai Screen par bada popup aayega!
             await query.answer(popup_text, show_alert=True)
         else:
-            await query.answer("âŒ Info not found", show_alert=True)
+            await query.answer("❌ Info not found", show_alert=True)
         return
     
     # ===================================
     
-    # ðŸ‘‡ðŸ‘‡ðŸ‘‡ YE NAYA CODE ADD KARO ðŸ‘‡ðŸ‘‡ðŸ‘‡
+    # 👇👇👇 YE NAYA CODE ADD KARO 👇👇👇
     if query.data.startswith("clearfiles_"):
         if update.effective_user.id not in ADMIN_IDS:
-            await query.answer("âŒ Sirf Admin ke liye!", show_alert=True)
+            await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
         movie_id = int(query.data.split("_")[1])
@@ -4749,31 +4749,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cur.close()
                 close_db_connection(conn)
                 
-                # ðŸ‘‡ NAYA: BATCH_SESSION ke counter ko bhi zero (0) kar do
+                # 👇 NAYA: BATCH_SESSION ke counter ko bhi zero (0) kar do
                 if BATCH_SESSION.get('movie_id') == movie_id:
                     BATCH_SESSION['file_count'] = 0
                 
-                await query.answer(f"âœ… {deleted_count} purani files delete ho gayi!", show_alert=True)
+                await query.answer(f"✅ {deleted_count} purani files delete ho gayi!", show_alert=True)
                 await query.edit_message_text(
-                    f"ðŸ—‘ï¸ **Deleted {deleted_count} old files.**\n\n"
-                    f"âœ… **Clean Slate!** Ab nayi files upload karo.",
+                    f"🗑️ **Deleted {deleted_count} old files.**\n\n"
+                    f"✅ **Clean Slate!** Ab nayi files upload karo.",
                     parse_mode='Markdown'
                 )
             except Exception as e:
                 logger.error(f"Delete Error: {e}")
-                await query.answer("âŒ Error deleting files", show_alert=True)
+                await query.answer("❌ Error deleting files", show_alert=True)
         return
     
     
     # === CANCEL BATCH LOGIC ===
     if query.data == "cancel_batch":
         if update.effective_user.id not in ADMIN_IDS:
-            await query.answer("âŒ Sirf Admin ke liye!", show_alert=True)
+            await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
         movie_id = BATCH_SESSION.get('movie_id')
 
-        # ðŸ‘‡ NAYA LOGIC: Agar koi file save nahi hui thi, toh galat naam DB se uda do
+        # 👇 NAYA LOGIC: Agar koi file save nahi hui thi, toh galat naam DB se uda do
         if movie_id:
             conn = get_db_connection()
             if conn:
@@ -4798,9 +4798,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'file_count': 0, 'admin_id': None, 'year': '', 'category': ''
         })
 
-        await query.answer("ðŸ›‘ Batch Stopped & Cleaned!", show_alert=True)
+        await query.answer("🛑 Batch Stopped & Cleaned!", show_alert=True)
         await query.edit_message_text(
-            "âŒ **Batch Cancelled & Junk Data Removed.**\n\n"
+            "❌ **Batch Cancelled & Junk Data Removed.**\n\n"
             "Aap chaho to manually sahi naam dekar naya batch start kar sakte ho:\n"
             "`/batch Sahi Movie Name, 2024`",
             parse_mode='Markdown'
@@ -4810,12 +4810,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === CANCEL 18+ BATCH LOGIC ===
     if query.data == "cancel_batch18":
         if update.effective_user.id not in ADMIN_IDS:
-            await query.answer("âŒ Sirf Admin ke liye!", show_alert=True)
+            await query.answer("❌ Sirf Admin ke liye!", show_alert=True)
             return
 
         movie_id = BATCH_18_SESSION.get('movie_id')
 
-        # ðŸ‘‡ NAYA LOGIC: 18+ wale kachre ko bhi uda do
+        # 👇 NAYA LOGIC: 18+ wale kachre ko bhi uda do
         if movie_id:
             conn = get_db_connection()
             if conn:
@@ -4836,9 +4836,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'file_count': 0, 'admin_id': None, 'year': '', 'category': ''
         })
 
-        await query.answer("ðŸ›‘ 18+ Batch Stopped!", show_alert=True)
+        await query.answer("🛑 18+ Batch Stopped!", show_alert=True)
         await query.edit_message_text(
-            "âŒ **18+ Batch Stopped & Junk Removed.**\n\n"
+            "❌ **18+ Batch Stopped & Junk Removed.**\n\n"
             "Aap chaho to manually naya batch start kar sakte ho.",
             parse_mode='Markdown'
         )
@@ -4846,13 +4846,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # === 1. VERIFY BUTTON LOGIC (UPDATED) ===
     if data == "verify":
-        await query.answer("ðŸ” Checking membership...", show_alert=False) # Alert False rakha taki user disturb na ho
+        await query.answer("🔍 Checking membership...", show_alert=False) # Alert False rakha taki user disturb na ho
         
         # Force Fresh Check
         check = await is_user_member(context, user_id, force_fresh=True)
         
         if check['is_member']:
-            # âœ… SCENARIO 1: Agar koi Deep Link pending tha (e.g. start=movie_123)
+            # ✅ SCENARIO 1: Agar koi Deep Link pending tha (e.g. start=movie_123)
             if 'pending_start_args' in context.user_data:
                 saved_args = context.user_data.pop('pending_start_args')
                 
@@ -4865,7 +4865,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await start(update, context)
                 return
 
-            # âœ… SCENARIO 2: Agar koi Text Search pending tha (e.g. "Kalki")
+            # ✅ SCENARIO 2: Agar koi Text Search pending tha (e.g. "Kalki")
             elif 'pending_search_query' in context.user_data:
                 saved_query = context.user_data.pop('pending_search_query')
                 
@@ -4882,11 +4882,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await search_movies(update, context)
                 return
 
-            # âœ… SCENARIO 3: Agar koi pending request nahi thi (Normal Verify)
+            # ✅ SCENARIO 3: Agar koi pending request nahi thi (Normal Verify)
             else:
                 await query.edit_message_text(
-                    "âœ… **Verified Successfully!**\n\n"
-                    "You can now use the bot! ðŸŽ¬\n"
+                    "✅ **Verified Successfully!**\n\n"
+                    "You can now use the bot! 🎬\n"
                     "Click /start or search any movie.",
                     parse_mode='Markdown'
                 )
@@ -4900,7 +4900,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode='Markdown'
                 )
             except telegram.error.BadRequest:
-                await query.answer("âŒ You haven't joined yet!", show_alert=True)
+                await query.answer("❌ You haven't joined yet!", show_alert=True)
         return
     # ==============================
 
@@ -4909,7 +4909,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith(("movie_", "download_", "quality_", "request_")):
         check = await is_user_member(context, user_id) # Cache use karega
         if not check['is_member']:
-            await query.answer("âŒ Please join channels first!", show_alert=True)
+            await query.answer("❌ Please join channels first!", show_alert=True)
             await query.edit_message_text(
                 get_join_message(check['channel'], check['group']),
                 reply_markup=get_join_keyboard(),
@@ -4925,21 +4925,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             conn = get_db_connection()
             cur = conn.cursor()
-            # ðŸš€ FIX: Yahan 'category' bhi nikal rahe hain taaki pata chale Web Series hai ya nahi
+            # 🚀 FIX: Yahan 'category' bhi nikal rahe hain taaki pata chale Web Series hai ya nahi
             cur.execute("SELECT id, title, category FROM movies WHERE id = %s", (movie_id,))
             movie = cur.fetchone()
             cur.close()
             close_db_connection(conn)
 
             if not movie:
-                await query.edit_message_text("âŒ Movie not found in database.")
+                await query.edit_message_text("❌ Movie not found in database.")
                 return
 
             movie_id, title, category = movie
             qualities = get_all_movie_qualities(movie_id)
 
             if not qualities:
-                await query.answer("âŒ No files found!", show_alert=True)
+                await query.answer("❌ No files found!", show_alert=True)
                 return
 
             # Data context mein save karo aage ke liye
@@ -4953,7 +4953,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Agar normal Movie hai (ya Series ka season logic fail hua), toh direct qualities dikhao
             bot_username = context.bot.username
-            file_list_text = f"ðŸ“ <b>{title}</b>\n\nðŸ‘‡ <b>Your Requested Files Are Here</b>\n\n"
+            file_list_text = f"📁 <b>{title}</b>\n\n👇 <b>Your Requested Files Are Here</b>\n\n"
             
             for idx, file_data in enumerate(qualities[:10], start=1):
                 quality = file_data[0]
@@ -4961,7 +4961,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 extra_info = file_data[5] if len(file_data) > 5 else ""
                 
                 ep_tag = f"[{extra_info}] " if extra_info else ""
-                # âœ… CLEAN HTML LINK: Naruto bot jaisa neela text!
+                # ✅ CLEAN HTML LINK: Naruto bot jaisa neela text!
                 file_list_text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {ep_tag}{quality}</a></b>\n\n"
 
             selection_text = file_list_text
@@ -4973,7 +4973,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # CLEAR PREVIOUS FILTERS
             context.user_data['active_filter'] = None
             
-            # âœ… NAYA: Function ko call karo taaki 1, 2, 3 wale buttons aa jayein!
+            # ✅ NAYA: Function ko call karo taaki 1, 2, 3 wale buttons aa jayein!
             current_files = qualities[:limit]
             keyboard_markup = create_quality_selection_keyboard(
                 movie_id=movie_id, 
@@ -5007,7 +5007,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['selected_season'] = selected_season
             context.user_data['active_filter'] = None
             
-            # ðŸš€ FIX: `query.data` read-only hai, usko badalna allowed nahi hai. 
+            # 🚀 FIX: `query.data` read-only hai, usko badalna allowed nahi hai. 
             # Iski jagah sidha update.callback_query_data object modify nahi karke
             # manually call karte hain ya redirect code yahi execute karte hain.
             
@@ -5042,12 +5042,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     filtered_qualities.append(file_data)
                     
             if not filtered_qualities:
-                await query.answer("âŒ No files found for this season!", show_alert=True)
+                await query.answer("❌ No files found for this season!", show_alert=True)
                 return
                 
             # Ab sirf is Season ki files list karo
             # Video jaisa Text List format banana
-            file_list_text = f"ðŸ“º **{title} - {selected_season}**\n\nðŸ‘‡ **Your Requested Files Are Here**\n\n"
+            file_list_text = f"📺 **{title} - {selected_season}**\n\n👇 **Your Requested Files Are Here**\n\n"
             
             for idx, file_data in enumerate(filtered_qualities[:10], start=1):
                 quality = file_data[0]
@@ -5055,7 +5055,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 extra_info = file_data[5] if len(file_data) > 5 else ""
                 
                 ep_tag = f"[{extra_info}] " if extra_info else ""
-                file_list_text += f"**{idx}.** ðŸ’¾ {file_size} | {title} {ep_tag}{quality}\n\n"
+                file_list_text += f"**{idx}.** 💾 {file_size} | {title} {ep_tag}{quality}\n\n"
 
             selection_text = file_list_text
             keyboard_markup = create_quality_selection_keyboard(movie_id, title, filtered_qualities, page=0, season=selected_season, view="main")
@@ -5063,11 +5063,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Hum wahi purana keyboard function use kar rahe hain, bas list chhoti bhej rahe hain
             keyboard_markup = create_quality_selection_keyboard(movie_id, title, filtered_qualities, page=0, season=selected_season)
             
-            # âœ… FIX: InlineKeyboardMarkup ke andar list 'inline_keyboard' ek tuple ki tarah return hoti hai naye python-telegram-bot versions me.
+            # ✅ FIX: InlineKeyboardMarkup ke andar list 'inline_keyboard' ek tuple ki tarah return hoti hai naye python-telegram-bot versions me.
             # Isliye humein pehle usko list mein badalna padega, tab usme Naya button daalna hoga.
             
             keyboard_list = list(keyboard_markup.inline_keyboard)
-            keyboard_list.insert(0, [InlineKeyboardButton("ðŸ”™ Back to Seasons", callback_data=f"movie_{movie_id}")])
+            keyboard_list.insert(0, [InlineKeyboardButton("🔙 Back to Seasons", callback_data=f"movie_{movie_id}")])
             
             new_keyboard = InlineKeyboardMarkup(keyboard_list)
             
@@ -5086,7 +5086,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif query.data.startswith("v_") or query.data.startswith("fl_") or query.data.startswith("vpage_"):
             movie_data = context.user_data.get('selected_movie_data')
             if not movie_data:
-                await query.answer("âŒ Session expired. Search again.", show_alert=True)
+                await query.answer("❌ Session expired. Search again.", show_alert=True)
                 return
 
             movie_id = movie_data['id']
@@ -5102,11 +5102,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f_type = parts[1]
                 if f_type == "clear":
                     context.user_data['active_filter'] = None
-                    await query.answer("âœ… Filters Cleared!")
+                    await query.answer("✅ Filters Cleared!")
                 else:
                     f_val = parts[3]
                     context.user_data['active_filter'] = {'type': f_type, 'value': f_val}
-                    await query.answer(f"âœ… Filter Applied: {f_val}")
+                    await query.answer(f"✅ Filter Applied: {f_val}")
                 view_type = "main"
                 page = 1
                 
@@ -5122,12 +5122,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 view_type = parts[1]
                 page = 1 
                 
-                # âœ… NAYA: Video wale cool popups!
+                # ✅ NAYA: Video wale cool popups!
                 if view_type in ["lang", "qual", "seas"]:
-                    await query.answer("Share & Support Us â¤ï¸", show_alert=False)
+                    await query.answer("Share & Support Us ❤️", show_alert=False)
 
             # ==========================================
-            # ðŸš€ SMART FILTER LOGIC (Seasons + Lang + Qual)
+            # 🚀 SMART FILTER LOGIC (Seasons + Lang + Qual)
             # ==========================================
             filtered_qualities = all_qualities
             active_filter = context.user_data.get('active_filter')
@@ -5157,10 +5157,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if f_val in combined_text:
                             temp_list.append(f)
                             
-                # âœ… NAYA POP-UP LOGIC: Agar is filter ki koi file nahi mili
+                # ✅ NAYA POP-UP LOGIC: Agar is filter ki koi file nahi mili
                 if not temp_list:
                     # 1. Telegram ka in-built Popup dikhao
-                    await query.answer(f"âŒ {active_filter['value'].upper()} format me file abhi available nahi hai!", show_alert=True)
+                    await query.answer(f"❌ {active_filter['value'].upper()} format me file abhi available nahi hai!", show_alert=True)
                     # 2. Galat filter ko history se uda do taaki bot aage na atke
                     context.user_data['active_filter'] = None 
                     # 3. Yahi se waapis bhej do (UI change nahi hoga, waisa hi rahega)
@@ -5182,32 +5182,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # UI Text Banana
             if view_type == "main" or view_type == "seas":
-                text = f"ðŸ“ <b>{title}</b>\n"
+                text = f"📁 <b>{title}</b>\n"
                 
-                # ðŸš€ NAYA FIX: Season ko alag se bada aur highlight dikhane ke liye
+                # 🚀 NAYA FIX: Season ko alag se bada aur highlight dikhane ke liye
                 if 'selected_season' in context.user_data and context.user_data['selected_season']:
                     s_name = context.user_data['selected_season'].upper()
-                    text += f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n"
+                    text += f"━━━━━━━━━━━━━━━━━━━━\n"
                     text += f" <b>[ {s_name} ]</b> \n"
-                    text += f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\n"
+                    text += f"━━━━━━━━━━━━━━━━━━━━\n"
                     
                 if active_filter:
-                    text += f"ðŸ” Filter: <b>{active_filter['value']}</b>\n"
-                text += f"\nðŸ‘‡ <b>Your Requested Files Are Here</b>\n\n"
+                    text += f"🔍 Filter: <b>{active_filter['value']}</b>\n"
+                text += f"\n👇 <b>Your Requested Files Are Here</b>\n\n"
                 
                 if not filtered_qualities:
-                    text += "âŒ No files found for this filter.\n"
+                    text += "❌ No files found for this filter.\n"
                 else:
                     bot_username = context.bot.username
                     
                     for idx, file_data in enumerate(current_page_files, start=start_idx + 1):
                         quality = str(file_data[0])
                         
-                        # ðŸš€ NAYA FIX: Doosre Bot (Manvi Bot) ke links ko hamesha ke liye uda do
+                        # 🚀 NAYA FIX: Doosre Bot (Manvi Bot) ke links ko hamesha ke liye uda do
                         quality = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', quality)
                         quality = re.sub(r'\(https?://[^\)]+\)', '', quality)
                         quality = re.sub(r'https?://[^\s]+', '', quality)
-                        # ðŸ‘‡ Ye 2 lines nayi add karni hain: t.me aur @usernames udane ke liye
+                        # 👇 Ye 2 lines nayi add karni hain: t.me aur @usernames udane ke liye
                         quality = re.sub(r'(?i)t\.me/[^\s]+', '', quality)
                         quality = re.sub(r'@[a-zA-Z0-9_]+', '', quality)
                         
@@ -5218,7 +5218,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         extra_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', extra_info)
                         extra_info = re.sub(r'\(https?://[^\)]+\)', '', extra_info)
                         extra_info = re.sub(r'https?://[^\s]+', '', extra_info)
-                        # ðŸ‘‡ Ye 2 lines yahan bhi add karni hain
+                        # 👇 Ye 2 lines yahan bhi add karni hain
                         extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
                         extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
                         
@@ -5227,7 +5227,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {ep_tag}{quality.strip()}</a></b>\n\n"
 
             elif view_type in ["lang", "qual"]:
-                text = f"ðŸ“ <b>{title}</b>\n\nðŸ‘‡ <b>Select {view_type.upper()} Filter:</b>\n\n"
+                text = f"📁 <b>{title}</b>\n\n👇 <b>Select {view_type.upper()} Filter:</b>\n\n"
 
             # Keyboard Banana
             keyboard = []
@@ -5235,7 +5235,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 1. MAIN MENU: Yahan normal buttons dikhenge
             if view_type == "main":
                 if filtered_qualities:
-                    keyboard.append([InlineKeyboardButton("ðŸš€ SEND ALL", callback_data=f"sendall_{movie_id}")])
+                    keyboard.append([InlineKeyboardButton("🚀 SEND ALL", callback_data=f"sendall_{movie_id}")])
                 
                 keyboard.append([
                     InlineKeyboardButton("QUALITY", callback_data=f"v_qual_{movie_id}"),
@@ -5244,14 +5244,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
                 
                 nav_buttons = []
-                nav_buttons.append(InlineKeyboardButton("â—€ï¸ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
+                nav_buttons.append(InlineKeyboardButton("◀️ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
                 nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="ignore"))
-                nav_buttons.append(InlineKeyboardButton("NEXT â–¶ï¸" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
+                nav_buttons.append(InlineKeyboardButton("NEXT ▶️" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
                 keyboard.append(nav_buttons)
 
-            # 2. SEASON MENU: ðŸš€ NAYA FIX - Yahan baaki kachra gayab, sirf Seasons!
+            # 2. SEASON MENU: 🚀 NAYA FIX - Yahan baaki kachra gayab, sirf Seasons!
             elif view_type == "seas":
-                keyboard.append([InlineKeyboardButton("â¬‡ SELECT SEASON â¬‡", callback_data="ignore")])
+                keyboard.append([InlineKeyboardButton("⬇ SELECT SEASON ⬇", callback_data="ignore")])
                 
                 seasons = set()
                 for f in all_qualities:
@@ -5274,8 +5274,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if row: keyboard.append(row)
                 
                 keyboard.append([
-                    InlineKeyboardButton("ðŸ”„ CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all"),
-                    InlineKeyboardButton("ðŸ”¼ BACK TO MENU", callback_data=f"v_main_{movie_id}")
+                    InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all"),
+                    InlineKeyboardButton("🔼 BACK TO MENU", callback_data=f"v_main_{movie_id}")
                 ])
 
             # 3. LANGUAGE MENU
@@ -5295,7 +5295,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append([InlineKeyboardButton("4K", callback_data=f"fl_qual_{movie_id}_4K")])
                 keyboard.append([InlineKeyboardButton("<< BACK TO MENU >>", callback_data=f"v_main_{movie_id}")])
 
-            # ðŸ‘‡ YAHAN disable_web_page_preview=True ADD KAR DIYA HAI ðŸ‘‡
+            # 👇 YAHAN disable_web_page_preview=True ADD KAR DIYA HAI 👇
             await query.edit_message_text(
                 text=text, 
                 reply_markup=InlineKeyboardMarkup(keyboard), 
@@ -5337,7 +5337,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title = movie_data['title']
                 qualities = movie_data['qualities']
 
-            # ðŸ‘‡ FIX: Agar Season select kiya tha, toh pehle wapas files filter karo page badalne se pehle
+            # 👇 FIX: Agar Season select kiya tha, toh pehle wapas files filter karo page badalne se pehle
             if selected_season:
                 filtered_qualities = []
                 for file_data in qualities:
@@ -5349,7 +5349,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Season wale Next/Back mein bhi Upar "Back to Seasons" daalna zaroori hai
                 keyboard_list = list(keyboard_markup.inline_keyboard)
-                keyboard_list.insert(0, [InlineKeyboardButton("ðŸ”™ Back to Seasons", callback_data=f"movie_{movie_id}")])
+                keyboard_list.insert(0, [InlineKeyboardButton("🔙 Back to Seasons", callback_data=f"movie_{movie_id}")])
                 keyboard = InlineKeyboardMarkup(keyboard_list)
             else:
                 # Normal Movie Pagination
@@ -5376,16 +5376,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     num_notified = await notify_users_for_movie(context, movie_title, value_to_send)
 
                     await query.edit_message_text(
-                        f"âœ… FULFILLED: Movie '{movie_title}' updated and user (ID: {user_id}) notified ({num_notified} total users).",
+                        f"✅ FULFILLED: Movie '{movie_title}' updated and user (ID: {user_id}) notified ({num_notified} total users).",
                         parse_mode='Markdown'
                     )
                 else:
-                    await query.edit_message_text(f"âŒ ERROR: Movie '{movie_title}' not found in the `movies` table. Please add it first.", parse_mode='Markdown')
+                    await query.edit_message_text(f"❌ ERROR: Movie '{movie_title}' not found in the `movies` table. Please add it first.", parse_mode='Markdown')
 
                 cur.close()
                 close_db_connection(conn)
             else:
-                await query.edit_message_text("âŒ Database error during fulfillment.")
+                await query.edit_message_text("❌ Database error during fulfillment.")
 
         elif query.data.startswith("admin_delete_"):
             parts = query.data.split('_', 3)
@@ -5399,9 +5399,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
                 cur.close()
                 close_db_connection(conn)
-                await query.edit_message_text(f"âŒ DELETED: Request for '{movie_title}' from User ID {user_id} removed.", parse_mode='Markdown')
+                await query.edit_message_text(f"❌ DELETED: Request for '{movie_title}' from User ID {user_id} removed.", parse_mode='Markdown')
             else:
-                await query.edit_message_text("âŒ Database error during deletion.")
+                await query.edit_message_text("❌ Database error during deletion.")
 
         # ==================== QUALITY SELECTION ====================
         # ==================== QUALITY SELECTION ====================
@@ -5417,12 +5417,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 movie_data = {'id': movie_id, 'title': 'Movie', 'qualities': qualities}
 
             if not movie_data or 'qualities' not in movie_data:
-                await query.edit_message_text("âŒ Error: Could not retrieve movie data. Please search again.")
+                await query.edit_message_text("❌ Error: Could not retrieve movie data. Please search again.")
                 return
 
             chosen_file = None
             
-            # ðŸ‘‡ NAYA BULLETPROOF CODE ðŸ‘‡
+            # 👇 NAYA BULLETPROOF CODE 👇
             for file_data in movie_data['qualities']:
                 quality = file_data[0]
                 url = file_data[1]
@@ -5433,7 +5433,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     break
 
             if not chosen_file:
-                await query.edit_message_text("âŒ Error fetching the file for that quality.")
+                await query.edit_message_text("❌ Error fetching the file for that quality.")
                 return
 
             title = movie_data['title']
@@ -5456,13 +5456,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             page = int(query.data.replace("page_", ""))
 
             if 'search_results' not in context.user_data:
-                await query.edit_message_text("âŒ Search results expired. Please search again.")
+                await query.edit_message_text("❌ Search results expired. Please search again.")
                 return
 
             movies = context.user_data['search_results']
             search_query = context.user_data.get('search_query', 'your search')
 
-            selection_text = f"ðŸŽ¬ **Found {len(movies)} movies matching '{search_query}'**\n\nPlease select the movie you want:"
+            selection_text = f"🎬 **Found {len(movies)} movies matching '{search_query}'**\n\nPlease select the movie you want:"
             keyboard = create_movie_selection_keyboard(movies, page=page)
 
             await query.edit_message_text(
@@ -5472,7 +5472,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         elif query.data == "cancel_selection":
-            await query.edit_message_text("âŒ Selection cancelled.")
+            await query.edit_message_text("❌ Selection cancelled.")
             keys_to_clear = ['search_results', 'search_query', 'selected_movie_data', 'awaiting_request', 'pending_request']
             for key in keys_to_clear:
                 if key in context.user_data:
@@ -5485,7 +5485,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             conn = get_db_connection()
             if not conn:
-                await query.answer("âŒ Database connection failed.", show_alert=True)
+                await query.answer("❌ Database connection failed.", show_alert=True)
                 return
 
             cur = conn.cursor()
@@ -5498,12 +5498,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 movie_id, title, url, file_id = movie
                 await send_movie_to_user(update, context, movie_id, title, url, file_id)
             else:
-                await query.answer("âŒ Movie not found.", show_alert=True)
+                await query.answer("❌ Movie not found.", show_alert=True)
 
     except Exception as e:
         logger.error(f"Error in button callback: {e}")
         try:
-            await query.answer(f"âŒ Error: {str(e)}", show_alert=True)
+            await query.answer(f"❌ Error: {str(e)}", show_alert=True)
         except:
             pass
 
@@ -5520,24 +5520,24 @@ def get_storage_channels():
     channels_str = os.environ.get('STORAGE_CHANNELS', '')
     return [int(c.strip()) for c in channels_str.split(',') if c.strip()]
 
-# ==================== ðŸ”„ THEATER PRINT AUTO-UPGRADE SYSTEM ====================
+# ==================== 🔄 THEATER PRINT AUTO-UPGRADE SYSTEM ====================
 
 # 4-Level Hierarchy: Higher level aane par lower level auto-delete ho jayega
 _SOURCE_LEVELS = {
-    # Level 1 â€” Camera Prints (à¤¸à¤¬à¤¸à¥‡ à¤˜à¤Ÿà¤¿à¤¯à¤¾)
+    # Level 1 — Camera Prints (सबसे घटिया)
     1: ['cam', 'camrip', 'hdcam', 'hd-cam', 'hqcam', 'hq-cam',
         'telecine', 'tc', 'telesync', 'ts'],
-    # Level 2 â€” Theater Prints with Better Audio
+    # Level 2 — Theater Prints with Better Audio
     2: ['hdts', 'hd-ts', 'predvd', 'pre-dvd', 'dvdscr', 'dvdscreener',
         'scr', 'screener', 'line', 'line audio', 'hdtc', 'hd-tc', 'hq-hdtc'],
-    # Level 3 â€” Good Digital but Compressed/TV
+    # Level 3 — Good Digital but Compressed/TV
     3: ['hdrip', 'webrip', 'web-rip', 'hc-webrip', 'hdtv'],
-    # Level 4 â€” Ultimate OTT / Disc Quality
+    # Level 4 — Ultimate OTT / Disc Quality
     4: ['web-dl', 'webdl', 'bluray', 'blu-ray', 'bdrip', 'brrip',
         'ds4k', 'remux'],
 }
 
-# Reverse lookup: keyword â†’ level (for fast detection)
+# Reverse lookup: keyword → level (for fast detection)
 _KEYWORD_TO_LEVEL = {}
 for _lvl, _keywords in _SOURCE_LEVELS.items():
     for _kw in _keywords:
@@ -5547,8 +5547,8 @@ for _lvl, _keywords in _SOURCE_LEVELS.items():
 def get_source_level(text):
     """
     File name ya quality label se source level detect karta hai.
-    Level 1 = CamRip (à¤¸à¤¬à¤¸à¥‡ à¤˜à¤Ÿà¤¿à¤¯à¤¾)
-    Level 2 = HDTS/PreDVD (à¤¥à¥‹à¤¡à¤¼à¤¾ à¤…à¤šà¥à¤›à¤¾ theater print)
+    Level 1 = CamRip (सबसे घटिया)
+    Level 2 = HDTS/PreDVD (थोड़ा अच्छा theater print)
     Level 3 = HDRip/WEBRip (Good digital, compressed)
     Level 4 = WEB-DL/BluRay (Ultimate OTT/Disc)
     Returns: 0 (unknown), 1, 2, 3, or 4
@@ -5589,13 +5589,13 @@ def get_resolution(text):
 
 def is_downgrade(movie_id, new_quality_label, conn):
     """
-    ðŸ›¡ï¸ Anti-Downgrade Shield
+    🛡️ Anti-Downgrade Shield
     Check karo ki kya DB mein SAME resolution ki koi HIGHER level file maujud hai.
     Agar haan, toh nayi (lower level) file ko REJECT karo (save mat karo).
 
     Returns:
-        (True, existing_label)  â†’ REJECT: DB mein better file hai
-        (False, None)           â†’ ALLOW: File save karo
+        (True, existing_label)  → REJECT: DB mein better file hai
+        (False, None)           → ALLOW: File save karo
     """
     new_level = get_source_level(new_quality_label)
     new_res = get_resolution(new_quality_label)
@@ -5618,10 +5618,10 @@ def is_downgrade(movie_id, new_quality_label, conn):
             old_level = get_source_level(old_label)
             old_res = get_resolution(old_label)
 
-            # Same resolution + DB mein higher level already hai â†’ REJECT
+            # Same resolution + DB mein higher level already hai → REJECT
             if old_res == new_res and old_level > new_level:
                 logger.info(
-                    f"ðŸ›¡ï¸ Anti-Downgrade BLOCKED: movie_id={movie_id} | "
+                    f"🛡️ Anti-Downgrade BLOCKED: movie_id={movie_id} | "
                     f"Tried='{new_quality_label}' (L{new_level}) | "
                     f"DB has='{old_label}' (L{old_level}) | "
                     f"Same res={new_res}"
@@ -5631,13 +5631,13 @@ def is_downgrade(movie_id, new_quality_label, conn):
         return False, None
 
     except Exception as e:
-        logger.error(f"âŒ Anti-Downgrade check error: {e}")
+        logger.error(f"❌ Anti-Downgrade check error: {e}")
         return False, None  # Error par allow kar do (safe side)
 
 
 def auto_upgrade_delete(movie_id, new_quality_label, conn):
     """
-    ðŸ”„ Resolution-Locked Auto-Upgrade System
+    🔄 Resolution-Locked Auto-Upgrade System
     Nayi file ka source level + resolution check karo.
     Sirf SAME resolution ki lower level files DELETE karo.
     Different resolution ki files SAFE rahein.
@@ -5664,7 +5664,7 @@ def auto_upgrade_delete(movie_id, new_quality_label, conn):
             old_level = get_source_level(old_label)
             old_res = get_resolution(old_label)
 
-            # âœ… Resolution-Locked: Sirf SAME resolution + lower level = DELETE
+            # ✅ Resolution-Locked: Sirf SAME resolution + lower level = DELETE
             if old_level > 0 and old_level < new_level and old_res == new_res:
                 labels_to_delete.append(old_label)
 
@@ -5678,7 +5678,7 @@ def auto_upgrade_delete(movie_id, new_quality_label, conn):
             deleted_count = cur.rowcount
             conn.commit()
             logger.info(
-                f"ðŸ”„ Auto-Upgrade: movie_id={movie_id} | "
+                f"🔄 Auto-Upgrade: movie_id={movie_id} | "
                 f"New='{new_quality_label}' (L{new_level}, {new_res}) | "
                 f"Deleted {deleted_count} lower prints (same res): {labels_to_delete}"
             )
@@ -5687,7 +5687,7 @@ def auto_upgrade_delete(movie_id, new_quality_label, conn):
         return deleted_count, labels_to_delete
 
     except Exception as e:
-        logger.error(f"âŒ Auto-Upgrade Error for movie_id={movie_id}: {e}")
+        logger.error(f"❌ Auto-Upgrade Error for movie_id={movie_id}: {e}")
         return 0, []
 
 
@@ -5700,7 +5700,7 @@ def generate_quality_label(file_name, file_size_str, ai_language=""):
     if "4k" in name_lower or "2160p" in name_lower: quality = "4K"
     elif "1080p" in name_lower: quality = "1080p"
     elif "720p" in name_lower:  quality = "720p"
-    elif "576p" in name_lower:  quality = "576p"   # â† NEW
+    elif "576p" in name_lower:  quality = "576p"   # ← NEW
     elif "480p" in name_lower:  quality = "480p"
     elif "360p" in name_lower:  quality = "360p"
     elif "cam" in name_lower or "rip" in name_lower: quality = "CamRip"
@@ -5728,7 +5728,7 @@ def generate_quality_label(file_name, file_size_str, ai_language=""):
 
     if season_match:
         episode_tag = season_match.group(0).upper().replace("P", "E").strip()
-        # âœ… Season + Resolution + Source + Language â€” sab sath mein
+        # ✅ Season + Resolution + Source + Language — sab sath mein
         return f"{episode_tag} {quality}{source_tag}{lang_tag} [{file_size_str}]"
 
     return f"{quality}{source_tag}{lang_tag} [{file_size_str}]"
@@ -5747,35 +5747,35 @@ def get_readable_file_size(size_in_bytes):
     return "Unknown"
 
 # ============================================================================
-# ðŸŽ¬ BATCH ID COMMAND (Fully Automatic via TMDB/IMDb)
+# 🎬 BATCH ID COMMAND (Fully Automatic via TMDB/IMDb)
 # ============================================================================
 async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS: return
     if not context.args:
-        await update.message.reply_text("âŒ Usage: `/batchid tt1234567`")
+        await update.message.reply_text("❌ Usage: `/batchid tt1234567`")
         return
         
     imdb_id = context.args[0].strip()
-    status_msg = await update.message.reply_text(f"â³ Extracting all details for {imdb_id}...")
+    status_msg = await update.message.reply_text(f"⏳ Extracting all details for {imdb_id}...")
     
     try:
         # 1. Metadata + Poster
         data = await run_async(fetch_movie_metadata, imdb_id)
         if not data:
-            await status_msg.edit_text("âŒ IMDb à¤¸à¥‡ à¤¡à¥‡à¤Ÿà¤¾ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¤¾à¥¤ API Key à¤šà¥‡à¤• à¤•à¤°à¥‡à¤‚à¥¤")
+            await status_msg.edit_text("❌ IMDb से डेटा नहीं मिला। API Key चेक करें।")
             return
         
         title, year, poster, genre, imdb_id_f, rating, plot, category = data
         
-        # 2. Cast/Stars à¤²à¤¾à¤¨à¤¾
+        # 2. Cast/Stars लाना
         cast_str = await run_async(fetch_cast_from_imdb, imdb_id_f, 5)
         
         # 3. DB Insertion (All Fields)
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # ðŸ›‘ "cast" quoted and year is integer
-        # ðŸŽ¯ NAYA LOGIC: Title ki jagah IMDb ID par conflict check karega
+        # 🛑 "cast" quoted and year is integer
+        # 🎯 NAYA LOGIC: Title ki jagah IMDb ID par conflict check karega
         cur.execute("""
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
             VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
@@ -5793,7 +5793,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         movie_id = cur.fetchone()[0]
         
-        # ðŸ‘‡ NAYA: Database se check karein ki kya pehle se files hain
+        # 👇 NAYA: Database se check karein ki kya pehle se files hain
         cur.execute("SELECT COUNT(*) FROM movie_files WHERE movie_id = %s", (movie_id,))
         file_count = cur.fetchone()[0]
         
@@ -5810,37 +5810,37 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 5. Success Message with Details
         success_msg = (
-            f"âœ… **Dada! Metadata Fetched Successfully**\n\n"
-            f"ðŸŽ¬ **Title:** `{title}`\n"
-            f"ðŸ“… **Year:** {year}\n"
-            f"ðŸŽ­ **Genre:** {genre}\n"
-            f"â­ï¸ **Rating:** {rating}\n"
-            f"ðŸ·ï¸ **Category:** {category}\n"
-            f"ðŸ‘¥ **Cast:** {cast_str}\n\n"
+            f"✅ **Dada! Metadata Fetched Successfully**\n\n"
+            f"🎬 **Title:** `{title}`\n"
+            f"📅 **Year:** {year}\n"
+            f"🎭 **Genre:** {genre}\n"
+            f"⭐️ **Rating:** {rating}\n"
+            f"🏷️ **Category:** {category}\n"
+            f"👥 **Cast:** {cast_str}\n\n"
         )
         
         if file_count > 0:
-            success_msg += f"âš ï¸ **Old Files Found:** {file_count} (Aap inhe delete kar sakte hain ya nayi add kar sakte hain)\n\n"
+            success_msg += f"⚠️ **Old Files Found:** {file_count} (Aap inhe delete kar sakte hain ya nayi add kar sakte hain)\n\n"
             
-        success_msg += f"ðŸš€ **à¤…à¤¬ à¤«à¤¾à¤‡à¤²à¥à¤¸ à¤­à¥‡à¤œà¥‡à¤‚, à¤«à¤¿à¤° /done à¤²à¤¿à¤–à¥‡à¤‚à¥¤**"
+        success_msg += f"🚀 **अब फाइल्स भेजें, फिर /done लिखें।**"
         
-        # ðŸ‘‡ NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
-        # ðŸ‘‡ NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
+        # 👇 NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
+        # 👇 NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
         keyboard = []
         if file_count > 0:
-            keyboard.append([InlineKeyboardButton("ðŸ—‘ï¸ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
-        keyboard.append([InlineKeyboardButton("âŒ Cancel Batch", callback_data="cancel_batch")])
+            keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
+        keyboard.append([InlineKeyboardButton("❌ Cancel Batch", callback_data="cancel_batch")])
         
         await status_msg.edit_text(success_msg, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
-    # âœ… BAS YE 3 LINES YAHAN ADD KARNI HAIN ðŸ‘‡
+    # ✅ BAS YE 3 LINES YAHAN ADD KARNI HAIN 👇
     except Exception as e:
         print(f"Error in batch_id_command: {e}")
-        await status_msg.edit_text(f"âŒ Kuch galat ho gaya: {e}")
+        await status_msg.edit_text(f"❌ Kuch galat ho gaya: {e}")
 
 
 # ============================================================================
-# âœï¸ BATCH MANUAL COMMAND (For Custom Names & Details)
+# ✍️ BATCH MANUAL COMMAND (For Custom Names & Details)
 # ============================================================================
 
 async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5849,7 +5849,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args: 
         await update.message.reply_text(
-            "âŒ **Galat Format!** Aise use karein:\n\n"
+            "❌ **Galat Format!** Aise use karein:\n\n"
             "`/batch Movie Name, Year, Language, Genre, Category`\n\n"
             "**Example:**\n"
             "`/batch Pink Bra, 2023, Hindi, Adult, Web Series`", 
@@ -5875,7 +5875,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     imdb_id = context.user_data.pop('batch_imdb_id', None)
     cast_str = context.user_data.pop('batch_cast', None)
 
-    status_msg = await update.message.reply_text(f"â³ Saving '{title}' to Database...", parse_mode='Markdown')
+    status_msg = await update.message.reply_text(f"⏳ Saving '{title}' to Database...", parse_mode='Markdown')
 
     conn = get_db_connection()
     if not conn: return
@@ -5883,7 +5883,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cur = conn.cursor()
         
-        # âœ… FIXED: Quote "cast" because it's a reserved keyword
+        # ✅ FIXED: Quote "cast" because it's a reserved keyword
         cur.execute(
             """
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
@@ -5916,35 +5916,35 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
 
         # Show cast in confirmation message (if any)
-        cast_display = f"ðŸ‘¥ **Cast:** {cast_str}\n" if cast_str else ""
+        cast_display = f"👥 **Cast:** {cast_str}\n" if cast_str else ""
         msg_text = (
-            f"âœ… **Batch Custom Mode Started!**\n\n"
-            f"ðŸŽ¬ **Title:** {title}\n"
-            f"ðŸ“… **Year:** {year}\n"
-            f"ðŸŽ­ **Genre:** {genre}\n"
-            f"ðŸ—£ï¸ **Language:** {language}\n"
-            f"ðŸ·ï¸ **Category:** {category}\n"
+            f"✅ **Batch Custom Mode Started!**\n\n"
+            f"🎬 **Title:** {title}\n"
+            f"📅 **Year:** {year}\n"
+            f"🎭 **Genre:** {genre}\n"
+            f"🗣️ **Language:** {language}\n"
+            f"🏷️ **Category:** {category}\n"
             f"{cast_display}"
-            f"ðŸš€ **Step 1:** Ab movie/series ki Files (Video/Doc) bhejo.\n"
-            f"ðŸ–¼ï¸ **Step 2:** Poster ke liye koi bhi ek Image bhej do.\n"
-            f"âœ… **Step 3:** Jab sab ho jaye to `/done` bhejo."
+            f"🚀 **Step 1:** Ab movie/series ki Files (Video/Doc) bhejo.\n"
+            f"🖼️ **Step 2:** Poster ke liye koi bhi ek Image bhej do.\n"
+            f"✅ **Step 3:** Jab sab ho jaye to `/done` bhejo."
         )
 
         keyboard = []
         if file_count > 0:
-            keyboard.append([InlineKeyboardButton("ðŸ—‘ï¸ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
-        keyboard.append([InlineKeyboardButton("âŒ Cancel Batch", callback_data="cancel_batch")])
+            keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
+        keyboard.append([InlineKeyboardButton("❌ Cancel Batch", callback_data="cancel_batch")])
         
         await status_msg.edit_text(msg_text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
     except Exception as e:
         logger.error(f"Batch Error: {e}")
-        await status_msg.edit_text(f"âŒ DB Error: {e}")
+        await status_msg.edit_text(f"❌ DB Error: {e}")
     finally:
         if conn: close_db_connection(conn)
 
 # ============================================================================
-# ðŸš€ SUPER BATCH SYSTEM (Smart Grouping + Auto Post)
+# 🚀 SUPER BATCH SYSTEM (Smart Grouping + Auto Post)
 # ============================================================================
 
 async def superbatch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5956,10 +5956,10 @@ async def superbatch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     SUPER_BATCH_SESSION['files'] = []
     
     await update.message.reply_text(
-        "ðŸš€ **SUPER BATCH MODE ON!**\n\n"
-        "ðŸ‘‰ Ab aap ek sath 50-100 files (alag-alag movies ki) yahan forward kar dein.\n"
-        "ðŸ‘‰ Bot khud unhe movies ke hisaab se group karega.\n"
-        "ðŸ‘‰ Jab sab bhej dein, to type karein: `/superdone`",
+        "🚀 **SUPER BATCH MODE ON!**\n\n"
+        "👉 Ab aap ek sath 50-100 files (alag-alag movies ki) yahan forward kar dein.\n"
+        "👉 Bot khud unhe movies ke hisaab se group karega.\n"
+        "👉 Jab sab bhej dein, to type karein: `/superdone`",
         parse_mode='Markdown'
     )
 
@@ -6000,14 +6000,14 @@ async def superbatch_listener(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     count = len(SUPER_BATCH_SESSION['files'])
     if count % 10 == 0:
-        await message.reply_text(f"ðŸ“¥ Received {count} files so far...")
+        await message.reply_text(f"📥 Received {count} files so far...")
 
 async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Superbatch ka kaam:
       1. Files ko movie ke hisaab se group karo
-      2. Har movie ke liye _core_movie_processor (Phase 1) â†’ BATCH_SESSION set karo
-      3. Har file ke liye _pm_save_file (Phase 2) â€” pm_file_listener ka exact same code
+      2. Har movie ke liye _core_movie_processor (Phase 1) → BATCH_SESSION set karo
+      3. Har file ke liye _pm_save_file (Phase 2) — pm_file_listener ka exact same code
       4. Post karo channel pe
     """
     if not SUPER_BATCH_SESSION['active'] or update.effective_user.id != SUPER_BATCH_SESSION['admin_id']:
@@ -6018,37 +6018,37 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     SUPER_BATCH_SESSION['files'] = []
 
     if not files:
-        await update.message.reply_text("âŒ Koi file nahi mili!")
+        await update.message.reply_text("❌ Koi file nahi mili!")
         return
 
     status_msg = await update.message.reply_text(
-        f"ðŸ”„ **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
+        f"🔄 **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
     )
 
-    # â”€â”€ STEP 1: GROUPING (Ab sirf Regex use hoga, Gemini nahi) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── STEP 1: GROUPING (Ab sirf Regex use hoga, Gemini nahi) ────────────────
     grouped_movies = defaultdict(list)
     for f in files:
         raw_text = f['caption'] if f['caption'] else f['file_name']
         
-        # AI function (get_movie_name_from_caption) à¤•à¥‹ à¤¹à¤Ÿà¤¾à¤•à¤° 
-        # fallback_extraction à¤•à¤¾ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤°à¥‡à¤‚
+        # AI function (get_movie_name_from_caption) को हटाकर 
+        # fallback_extraction का इस्तेमाल करें
         basic_data = await fallback_extraction(raw_text) 
         
         temp_title = basic_data.get('title', 'Unknown_Movie').lower().strip()
         grouped_movies[temp_title].append(f)
 
     total_movies = len(grouped_movies)
-    await status_msg.edit_text(f"âœ… **Files grouped into {total_movies} unique movies!**\n\nðŸš€ Auto-Processing & Posting starts now...", parse_mode='Markdown')
+    await status_msg.edit_text(f"✅ **Files grouped into {total_movies} unique movies!**\n\n🚀 Auto-Processing & Posting starts now...", parse_mode='Markdown')
 
     success_movies = 0
-    total_files_saved = 0           # ðŸ‘ˆ NAYA: Kitni files save hui uski ginti
-    movies_posted_list = []         # ðŸ‘ˆ NAYA: Jo movies post hui unki list
+    total_files_saved = 0           # 👈 NAYA: Kitni files save hui uski ginti
+    movies_posted_list = []         # 👈 NAYA: Jo movies post hui unki list
     channels = get_storage_channels()
     target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
 
     for i, (temp_title, movie_files) in enumerate(grouped_movies.items(), 1):
         try:
-            await status_msg.edit_text(f"âš™ï¸ Processing Movie {i}/{total_movies}...\nðŸŽ¬ Name: `{temp_title}`")
+            await status_msg.edit_text(f"⚙️ Processing Movie {i}/{total_movies}...\n🎬 Name: `{temp_title}`")
             
             first_file = movie_files[0]
             image_bytes = None
@@ -6056,12 +6056,12 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     # tg_file = await context.bot.get_file(first_file['thumb_id'])
                     # image_bytes = bytes(await tg_file.download_as_bytearray())
-                    # ðŸ›‘ TEMPORARY BYPASS: API bachane ke liye Gemini ko image nahi de rahe
+                    # 🛑 TEMPORARY BYPASS: API bachane ke liye Gemini ko image nahi de rahe
                     image_bytes = None
                 except Exception: pass
             
-            # ðŸŽ¯ CORE ENGINE â€” pm_file_listener ka WAHI powerful pipeline!
-            # Duplicate code nahi, ek hi engine â€” same accuracy, same DB logic
+            # 🎯 CORE ENGINE — pm_file_listener ka WAHI powerful pipeline!
+            # Duplicate code nahi, ek hi engine — same accuracy, same DB logic
             result = await _core_movie_processor(
                 first_file['caption'] or first_file['file_name'],
                 image_bytes
@@ -6082,7 +6082,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             poster_url = result['poster_url']
             imdb_id    = result['imdb_id']
 
-            # â”€â”€ STEP 2: BATCH_SESSION set karo (Phase 1 jaisa) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # ── STEP 2: BATCH_SESSION set karo (Phase 1 jaisa) ──────────────────
             BATCH_SESSION.update({
                 'active':      True,
                 'movie_id':    movie_id,
@@ -6094,7 +6094,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'language':    movie_lang,
             })
 
-            # â”€â”€ STEP 3: Har file ke liye _pm_save_file (pm_file_listener Phase 2) â”€
+            # ── STEP 3: Har file ke liye _pm_save_file (pm_file_listener Phase 2) ─
             saved_labels = []
             for f in movie_files:
                 label = await _pm_save_file(f['message_obj'], context)
@@ -6108,12 +6108,12 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                   'category': '', 'language': ''})
 
             if not saved_labels:
-                logger.warning(f"Superbatch: '{temp_title}' â€” koi file save nahi ho paya")
+                logger.warning(f"Superbatch: '{temp_title}' — koi file save nahi ho paya")
                 continue
             total_files_saved += len(saved_labels)
 
-            # ðŸš« AI Alias Generation OFF â€” Flask Web App mein Google Suggest + pg_trgm handles typos
-            # generate_basic_aliases() bhi hata diya â€” DB clean rahega
+            # 🚫 AI Alias Generation OFF — Flask Web App mein Google Suggest + pg_trgm handles typos
+            # generate_basic_aliases() bhi hata diya — DB clean rahega
             aliases = []
             alias_count = 0
             
@@ -6123,15 +6123,15 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not raw_photo and image_bytes:
                 raw_photo = image_bytes
                 
-            # ðŸ‘‡ NAYA LOGIC: à¤…à¤—à¤° à¤“à¤°à¤¿à¤œà¤¿à¤¨à¤² à¤‡à¤®à¥‡à¤œ (poster) à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€, à¤¤à¥‹ à¤‡à¤¸ à¤®à¥‚à¤µà¥€ à¤•à¥‹ à¤ªà¥‹à¤¸à¥à¤Ÿ à¤®à¤¤ à¤•à¤°à¥‹
+            # 👇 NAYA LOGIC: अगर ओरिजिनल इमेज (poster) नहीं मिली, तो इस मूवी को पोस्ट मत करो
             if not raw_photo:
-                logger.warning(f"âš ï¸ Post Skipped: '{title}' à¤•à¥‡ à¤²à¤¿à¤ à¤•à¥‹à¤ˆ à¤‡à¤®à¥‡à¤œ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤")
-                continue  # 'continue' à¤•à¤¾ à¤®à¤¤à¤²à¤¬ à¤¹à¥ˆ à¤¯à¥‡ à¤šà¥ˆà¤¨à¤²/à¤«à¥‹à¤°à¤® à¤®à¥‡à¤‚ à¤ªà¥‹à¤¸à¥à¤Ÿ à¤•à¤¿à¤ à¤¬à¤¿à¤¨à¤¾ à¤…à¤—à¤²à¥€ à¤®à¥‚à¤µà¥€ à¤ªà¤° à¤šà¤²à¤¾ à¤œà¤¾à¤¯à¥‡à¤—à¤¾
+                logger.warning(f"⚠️ Post Skipped: '{title}' के लिए कोई इमेज नहीं मिली।")
+                continue  # 'continue' का मतलब है ये चैनल/फोरम में पोस्ट किए बिना अगली मूवी पर चला जायेगा
                 
-            # à¤…à¤—à¤° à¤…à¤¸à¤²à¥€ à¤‡à¤®à¥‡à¤œ à¤¹à¥ˆ, à¤¤à¤­à¥€ à¤²à¥ˆà¤‚à¤¡à¤¸à¥à¤•à¥‡à¤ª à¤ªà¥‹à¤¸à¥à¤Ÿà¤° à¤¬à¤¨à¤¾à¤“
+            # अगर असली इमेज है, तभी लैंडस्केप पोस्टर बनाओ
             photo_to_send = await make_landscape_poster(raw_photo)
 
-            # ðŸ›‘ 100% SAFE HTML CAPTION + RANDOM STYLES
+            # 🛑 100% SAFE HTML CAPTION + RANDOM STYLES
             safe_rating = rating if rating else "N/A"
             safe_genre = genre if genre else "Unknown"
 
@@ -6152,31 +6152,31 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             safe_title = title.replace('<', '').replace('>', '')
             unicode_title = get_safe_font(safe_title)
 
-            # ðŸŽ² 2 RANDOM STYLES ðŸŽ² (Box wala hat gaya)
+            # 🎲 2 RANDOM STYLES 🎲 (Box wala hat gaya)
             style_choice = random.choice([1, 2])
 
             if style_choice == 1:
-                # ðŸŒŸ Style 1: Clean Minimalist Divider (Mobile & PC Friendly)
+                # 🌟 Style 1: Clean Minimalist Divider (Mobile & PC Friendly)
                 caption = (
-                    f"ðŸŽ¬ <b>{safe_title}</b>\n"
-                    f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-                    f"âœ¨ <b>Genre:</b> {safe_genre}\n"
-                    f"ðŸ”Š <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
-                    f"ðŸ’¿ <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
-                    f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-                    f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-                    f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+                    f"🎬 <b>{safe_title}</b>\n"
+                    f"➖➖➖➖➖➖➖➖➖➖\n"
+                    f"✨ <b>Genre:</b> {safe_genre}\n"
+                    f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
+                    f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+                    f"➖➖➖➖➖➖➖➖➖➖\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+                    f"👇 <b>Download Below</b> 👇"
                 )
             else:
                 # Style 2: Tree Line + Premium Font (Pehle ye Style 3 tha)
                 caption = (
-                    f"ðŸ”¥ <b>{unicode_title}</b>\n"
-                    f" â”œ âœ¨ Genre: {safe_genre}\n"
-                    f" â”œ ðŸ”Š Language: {movie_lang if movie_lang else 'Hindi'}\n"
-                    f" â”” ðŸ’¿ Quality: V2 HQ-HDTC {dynamic_res}\n"
-                    f"â” â” â” â” â” â” â” â” â” â” â”\n"
-                    f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-                    f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+                    f"🔥 <b>{unicode_title}</b>\n"
+                    f" ├ ✨ Genre: {safe_genre}\n"
+                    f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
+                    f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
+                    f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+                    f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+                    f"👇 <b>Download Below</b> 👇"
                 )
 
             # --- SECURE LINK & BUTTONS (As it was) ---
@@ -6184,8 +6184,8 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             post_keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("Download Now", url=secure_url), InlineKeyboardButton("Download Now", url=secure_url)],
-                [InlineKeyboardButton("âš¡ Download Now", url=secure_url)],
-                [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+                [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+                [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
             ])
 
             topic_id = 1
@@ -6210,7 +6210,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"SuperBatch Forum Post Error: {e}")
 
-            # ðŸ‘‡ YAHAN SE MAIN CHANNEL PAR BHEJNE KA ASLI LOGIC SHURU HOTA HAI ðŸ‘‡
+            # 👇 YAHAN SE MAIN CHANNEL PAR BHEJNE KA ASLI LOGIC SHURU HOTA HAI 👇
             
             # --- THE "NINJA FIX" --- 
             # Pehle decide karte hain ki photo kya bhejna hai
@@ -6229,7 +6229,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if uploaded_file_id:
                             sent_msg = await context.bot.send_photo(
                                 chat_id=chat_id,
-                                photo=uploaded_file_id, # ðŸ‘ˆ Direct ID
+                                photo=uploaded_file_id, # 👈 Direct ID
                                 caption=caption,
                                 parse_mode='HTML',
                                 reply_markup=post_keyboard
@@ -6241,7 +6241,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 
                             sent_msg = await context.bot.send_photo(
                                 chat_id=chat_id,
-                                photo=current_media, # ðŸ‘ˆ Actual bytes
+                                photo=current_media, # 👈 Actual bytes
                                 caption=caption,
                                 parse_mode='HTML',
                                 reply_markup=post_keyboard
@@ -6250,34 +6250,34 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             if sent_msg and sent_msg.photo:
                                 uploaded_file_id = sent_msg.photo[-1].file_id 
                                 
-                        # âœ… DB me save karna zaroori hai taaki baad me /restore kaam kare
+                        # ✅ DB me save karna zaroori hai taaki baad me /restore kaam kare
                         if sent_msg:
                             save_post_to_db(movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot", caption, uploaded_file_id or poster_url, "photo", post_keyboard.to_dict(), None, "movies")
                             await asyncio.sleep(1.5)
                             
                     except Exception as e:
-                        logger.error(f"âŒ Failed to post in channel {chat_id_str}: {e}")
+                        logger.error(f"❌ Failed to post in channel {chat_id_str}: {e}")
 
             success_movies += 1
-            movies_posted_list.append(title) # ðŸ‘ˆ NAYA: List me Title add kiya
+            movies_posted_list.append(title) # 👈 NAYA: List me Title add kiya
             await asyncio.sleep(2) # Flood limit se bachne ke liye delay
 
         except Exception as e:
             logger.error(f"SuperBatch Movie Error: {e}")
             continue
 
-    # ðŸ“ NAYA: List format banana
+    # 📝 NAYA: List format banana
     if movies_posted_list:
-        posted_names = "\n".join([f"ðŸ”¹ {name}" for name in movies_posted_list])
+        posted_names = "\n".join([f"🔹 {name}" for name in movies_posted_list])
     else:
         posted_names = "Koyi nayi movie post nahi hui."
 
-    # ðŸŽ‰ NAYA: Final Message (HTML format me)
+    # 🎉 NAYA: Final Message (HTML format me)
     final_text = (
-        f"ðŸŽ‰ <b>SUPER BATCH COMPLETED!</b>\n\n"
-        f"ðŸ’¾ <b>Total Files Saved in DB:</b> {total_files_saved}\n"
-        f"ðŸš€ <b>Movies/Series Auto-Posted:</b> {len(movies_posted_list)}/{total_movies}\n\n"
-        f"<b>ðŸ“‘ Posted List:</b>\n{posted_names}"
+        f"🎉 <b>SUPER BATCH COMPLETED!</b>\n\n"
+        f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
+        f"🚀 <b>Movies/Series Auto-Posted:</b> {len(movies_posted_list)}/{total_movies}\n\n"
+        f"<b>📑 Posted List:</b>\n{posted_names}"
     )
 
     await status_msg.edit_text(final_text, parse_mode='HTML')
@@ -6286,18 +6286,18 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==============================================================================
-# ðŸŽ¯ CORE MOVIE PROCESSOR â€” PM FILE LISTENER KA DIL
+# 🎯 CORE MOVIE PROCESSOR — PM FILE LISTENER KA DIL
 # ==============================================================================
 # Yeh function ek "engine" hai.
 # pm_file_listener aur superbatch_done DONO isko call karte hain.
 # Iska matlab: superbatch ko wahi accuracy milegi jo pm_file_listener ko milti hai.
 #
 # Flow: raw_text + image_bytes
-#         â†’ Gemini AI  (title, year, language, category extract)
-#         â†’ TMDB       (HD poster, genre, rating, plot)
-#         â†’ IMDb       (cast)
-#         â†’ DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
-#         â†’ Returns dict with movie_id aur saari details
+#         → Gemini AI  (title, year, language, category extract)
+#         → TMDB       (HD poster, genre, rating, plot)
+#         → IMDb       (cast)
+#         → DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
+#         → Returns dict with movie_id aur saari details
 # ==============================================================================
 async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dict:
     """
@@ -6333,7 +6333,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
 
     # --- STEP 4: DB INSERT (pm_file_listener ka EXACT ON CONFLICT logic) ---
-    # imdb_id bhi update hota hai â€” superbatch mein pehle yeh missing tha!
+    # imdb_id bhi update hota hai — superbatch mein pehle yeh missing tha!
     conn = get_db_connection()
     if not conn:
         return None
@@ -6385,8 +6385,8 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 
 
 # ==============================================================================
-# ðŸ“¤ _pm_save_file â€” pm_file_listener ka Phase 2 (ek jagah, sab use karein)
-# superbatch_done bhi isko call karta hai â€” alag/duplicate code nahi
+# 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
+# superbatch_done bhi isko call karta hai — alag/duplicate code nahi
 # ==============================================================================
 async def _pm_save_file(message, context) -> str | None:
     """
@@ -6433,11 +6433,11 @@ async def _pm_save_file(message, context) -> str | None:
     file_size_str = get_readable_file_size(file_size)
     current_lang  = BATCH_SESSION.get('language', '')
 
-    # ðŸ§¹ Caption Clean: Links, @usernames, promotions hatao before quality detection
+    # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
     text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
-    # âœ… FIXED: Sirf regex/fallback use karo baaki files ke liye taaki AI Key bache!
+    # ✅ FIXED: Sirf regex/fallback use karo baaki files ke liye taaki AI Key bache!
     ai_data = await fallback_extraction(text_for_detection)
     f_lang = ai_data.get('language', '')
     f_extra = ai_data.get('extra_info', '')
@@ -6446,10 +6446,10 @@ async def _pm_save_file(message, context) -> str | None:
     if not conn:
         return None
     try:
-        # ðŸ›¡ï¸ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+        # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
         rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
         if rejected:
-            logger.info(f"ðŸ›¡ï¸ _pm_save_file: REJECTED '{label}' â€” DB already has better '{existing}'")
+            logger.info(f"🛡️ _pm_save_file: REJECTED '{label}' — DB already has better '{existing}'")
             close_db_connection(conn)
             return None  # File save nahi hogi, skip karo
 
@@ -6468,14 +6468,14 @@ async def _pm_save_file(message, context) -> str | None:
         conn.commit()
         cur.close()
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
-        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} â€” {label}")
+        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
 
-        # ðŸ”„ Auto-Upgrade: à¤ªà¥à¤°à¤¾à¤¨à¥€ à¤˜à¤Ÿà¤¿à¤¯à¤¾ prints delete à¤•à¤°à¥‹
+        # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
         try:
             deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
             if deleted > 0:
                 BATCH_SESSION['file_count'] = max(0, BATCH_SESSION.get('file_count', 0) - deleted)
-                logger.info(f"ðŸ”„ _pm_save_file: {deleted} à¤ªà¥à¤°à¤¾à¤¨à¥€ print(s) auto-deleted: {deleted_labels}")
+                logger.info(f"🔄 _pm_save_file: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
         except Exception as ue:
             logger.error(f"Auto-Upgrade error in _pm_save_file: {ue}")
     except Exception as e:
@@ -6489,14 +6489,14 @@ async def _pm_save_file(message, context) -> str | None:
 
 
 async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ðŸ›‘ 18+ Batch active hai toh yahan kuch nahi karna
+    # 🛑 18+ Batch active hai toh yahan kuch nahi karna
     if BATCH_18_SESSION.get('active'):
         return
 
     # ==========================================
-    # ðŸš€ SUPERBATCH: PM FILE LISTENER HI MUH HAI
+    # 🚀 SUPERBATCH: PM FILE LISTENER HI MUH HAI
     # Jab Superbatch active ho, files yahan se hi andar jayengi
-    # Alag superbatch_listener ki zaroorat nahi â€” ek hi entry point
+    # Alag superbatch_listener ki zaroorat nahi — ek hi entry point
     # ==========================================
     if SUPER_BATCH_SESSION.get('active'):
         if not (update.effective_user and update.effective_user.id == SUPER_BATCH_SESSION.get('admin_id')):
@@ -6539,7 +6539,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             count = len(SUPER_BATCH_SESSION['files'])
             if count % 10 == 0:
                 await message.reply_text(
-                    f"ðŸ“¥ **{count} files mil gayi hain!**\nJab sab bhej do, `/superdone` karo.",
+                    f"📥 **{count} files mil gayi hain!**\nJab sab bhej do, `/superdone` karo.",
                     parse_mode='Markdown'
                 )
         return  # Superbatch mode mein normal processing nahi karni
@@ -6559,7 +6559,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ==========================================
-    # ðŸ–¼ï¸ CUSTOM POSTER UPLOAD LOGIC (Photo & URL Both Supported)
+    # 🖼️ CUSTOM POSTER UPLOAD LOGIC (Photo & URL Both Supported)
     # Sirf PM se poster update hoga
     # ==========================================
     if BATCH_SESSION.get('active'):
@@ -6569,14 +6569,14 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Agar Admin ne Photo bheji hai
         if message.photo:
             is_poster_update = True
-            status_msg = await message.reply_text("ðŸ–¼ï¸ Image received! Uploading poster to cloud...")
+            status_msg = await message.reply_text("🖼️ Image received! Uploading poster to cloud...")
             photo_file_id = message.photo[-1].file_id
             public_url = await upload_image_to_telegraph(context.bot, photo_file_id)
             
         # 2. Agar Admin ne direct Image URL bheja hai (http/https se shuru hone wala)
         elif message.text and message.text.strip().startswith("http"):
             is_poster_update = True
-            status_msg = await message.reply_text("ðŸ”— Image URL received! Linking poster directly...")
+            status_msg = await message.reply_text("🔗 Image URL received! Linking poster directly...")
             public_url = message.text.strip()
 
         # Agar dono mein se koi bhi step trigger hua hai (Photo ya URL)
@@ -6595,9 +6595,9 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     finally:
                         close_db_connection(conn)
 
-                await status_msg.edit_text("âœ… **Poster Successfully Updated!**\nAb aap files bhej sakte hain ya `/done` kar sakte hain.", parse_mode='Markdown')
+                await status_msg.edit_text("✅ **Poster Successfully Updated!**\nAb aap files bhej sakte hain ya `/done` kar sakte hain.", parse_mode='Markdown')
             else:
-                await status_msg.edit_text("âŒ Poster upload fail ho gaya. Kripya image ya URL dobara bhejein.")
+                await status_msg.edit_text("❌ Poster upload fail ho gaya. Kripya image ya URL dobara bhejein.")
             
             return # Yahan ruk jao taaki image/url aage file ki tarah save na ho
         
@@ -6612,7 +6612,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if caption.startswith('/post_query'):
         return
 
-    # ðŸš€ THE MAIN FIX: Agar sirf Photo aayi hai (bina caption ke) aur Batch OFF hai,
+    # 🚀 THE MAIN FIX: Agar sirf Photo aayi hai (bina caption ke) aur Batch OFF hai,
     # toh isko Poster maan lo aur koi Error message mat do (Takrav khatam).
     if message.photo and not caption and not BATCH_SESSION.get('active'):
         return 
@@ -6620,16 +6620,16 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with auto_batch_lock:
         
         # ==========================================
-        # ðŸ¤– PHASE 1: START BATCH â€” _core_movie_processor se power lelo
+        # 🤖 PHASE 1: START BATCH — _core_movie_processor se power lelo
         # ==========================================
         if not BATCH_SESSION.get('active'):
 
             raw_caption = message.caption or message.text
             if not raw_caption:
-                await message.reply_text("âŒ **Batch Off!**\nFile ke sath CAPTION mein movie naam likho.", parse_mode='Markdown')
+                await message.reply_text("❌ **Batch Off!**\nFile ke sath CAPTION mein movie naam likho.", parse_mode='Markdown')
                 return
 
-            status_msg = await message.reply_text("ðŸ§  Gemini â†’ TMDB â†’ IMDb pipeline chal raha hai...", quote=True)
+            status_msg = await message.reply_text("🧠 Gemini → TMDB → IMDb pipeline chal raha hai...", quote=True)
 
             # Thumbnail extract karo BATCH_SESSION ke liye (poster backup)
             image_bytes = None
@@ -6648,11 +6648,11 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Thumbnail extract error: {e}")
 
-            # ðŸŽ¯ CORE ENGINE â€” ek hi jagah se Gemini+TMDB+IMDb+DB
+            # 🎯 CORE ENGINE — ek hi jagah se Gemini+TMDB+IMDb+DB
             result = await _core_movie_processor(raw_caption, image_bytes)
 
             if not result:
-                await status_msg.edit_text("âŒ Movie naam extract nahi ho paya.\n\n`/batch Movie Name` use karein.")
+                await status_msg.edit_text("❌ Movie naam extract nahi ho paya.\n\n`/batch Movie Name` use karein.")
                 return
 
             movie_id   = result['movie_id']
@@ -6683,29 +6683,29 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             keyboard = []
             if file_count > 0:
-                keyboard.append([InlineKeyboardButton("ðŸ—‘ï¸ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
-            keyboard.append([InlineKeyboardButton("âŒ Cancel Batch", callback_data="cancel_batch")])
+                keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
+            keyboard.append([InlineKeyboardButton("❌ Cancel Batch", callback_data="cancel_batch")])
 
             await status_msg.edit_text(
-                f"âœ… **Batch Started!**\n\nðŸŽ¬ Movie: **{title}**\nðŸ“… Year: {year if year else 'N/A'}\nðŸ·ï¸ Category: {category}\n\nðŸš€ **Ab apni files bhejna shuru karo!**\nJab ho jaye: `/done`",
+                f"✅ **Batch Started!**\n\n🎬 Movie: **{title}**\n📅 Year: {year if year else 'N/A'}\n🏷️ Category: {category}\n\n🚀 **Ab apni files bhejna shuru karo!**\nJab ho jaye: `/done`",
                 parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
 
         # ==========================================
-        # ðŸ“¤ PHASE 2: SAVE FILES (Jab Batch ON ho)
+        # 📤 PHASE 2: SAVE FILES (Jab Batch ON ho)
         # ==========================================
-        upload_status = await message.reply_text("â³ Uploading file...", quote=True)
+        upload_status = await message.reply_text("⏳ Uploading file...", quote=True)
         # ... (Baaki ka Phase 2 ka code aapka same rahega)
 
         channels = get_storage_channels()
         if not channels:
-            await upload_status.edit_text("âŒ No STORAGE_CHANNELS found")
+            await upload_status.edit_text("❌ No STORAGE_CHANNELS found")
             return
 
         backup_map = {}
 
-        # PM se aayi file â€” storage channels mein copy karo (normal flow)
+        # PM se aayi file — storage channels mein copy karo (normal flow)
         success_uploads = 0
         for chat_id in channels:
             try:
@@ -6716,7 +6716,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Upload failed: {e}")
 
         if success_uploads == 0:
-            await upload_status.edit_text("âŒ Upload fail ho gaya.")
+            await upload_status.edit_text("❌ Upload fail ho gaya.")
             return
 
         main_channel_id = channels[0]
@@ -6725,18 +6725,18 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_name = message.document.file_name if message.document else (message.video.file_name if message.video else "File")
         file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
         
-        # ðŸ‘‡ðŸ‘‡ðŸ‘‡ NAYA CODE: File/Video se Poster (Thumbnail) nikalna ðŸ‘‡ðŸ‘‡ðŸ‘‡
+        # 👇👇👇 NAYA CODE: File/Video se Poster (Thumbnail) nikalna 👇👇👇
         if message.video and message.video.thumbnail:
             BATCH_SESSION['extracted_thumb'] = message.video.thumbnail.file_id
         elif message.document and message.document.thumbnail:
             BATCH_SESSION['extracted_thumb'] = message.document.thumbnail.file_id
-        # ðŸ‘†ðŸ‘†ðŸ‘† ---------------------------------------------------- ðŸ‘†ðŸ‘†ðŸ‘†
+        # 👆👆👆 ---------------------------------------------------- 👆👆👆
 
         file_size_str = get_readable_file_size(file_size)
         current_lang = BATCH_SESSION.get('language', '')
         
-        # ðŸ‘‡ NAYA FIX: Telegram file name cut kar deta hai, isliye Caption check karenge ðŸ‘‡
-        # ðŸ§¹ Caption Clean: Links, @usernames, promotions hatao before quality detection
+        # 👇 NAYA FIX: Telegram file name cut kar deta hai, isliye Caption check karenge 👇
+        # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
         text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
         
         label = generate_quality_label(text_for_detection, file_size_str, current_lang)
@@ -6744,7 +6744,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         main_channel_id = channels[0]
         main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
 
-        # ðŸš€ FIX: Same Gemini AI jo Phase 1 mein use hua (consistent extraction)
+        # 🚀 FIX: Same Gemini AI jo Phase 1 mein use hua (consistent extraction)
         ai_data = await fallback_extraction(text_for_detection)
         f_lang = ai_data.get('language', '')
         f_extra = ai_data.get('extra_info', '')
@@ -6752,14 +6752,14 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = get_db_connection()
         if conn:
             try:
-                # ðŸ›¡ï¸ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+                # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
                 rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
                 if rejected:
-                    logger.info(f"ðŸ›¡ï¸ Phase2: REJECTED '{label}' â€” DB already has better '{existing}'")
+                    logger.info(f"🛡️ Phase2: REJECTED '{label}' — DB already has better '{existing}'")
                     await upload_status.edit_text(
-                        f"ðŸ›¡ï¸ **Downgrade Blocked!**\n"
-                        f"âŒ `{label}` save nahi hua\n"
-                        f"âœ… DB mein pehle se better print hai: `{existing}`",
+                        f"🛡️ **Downgrade Blocked!**\n"
+                        f"❌ `{label}` save nahi hua\n"
+                        f"✅ DB mein pehle se better print hai: `{existing}`",
                         parse_mode='Markdown'
                     )
                     close_db_connection(conn)
@@ -6780,30 +6780,30 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cur.close()
                 BATCH_SESSION['file_count'] += 1
 
-                # ðŸ”„ Auto-Upgrade: à¤ªà¥à¤°à¤¾à¤¨à¥€ à¤˜à¤Ÿà¤¿à¤¯à¤¾ prints delete à¤•à¤°à¥‹
+                # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
                 upgrade_msg = ""
                 try:
                     deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
                     if deleted > 0:
                         BATCH_SESSION['file_count'] = max(0, BATCH_SESSION['file_count'] - deleted)
-                        upgrade_msg = f"\nðŸ”„ Upgraded! {deleted} à¤ªà¥à¤°à¤¾à¤¨à¥€ print(s) auto-deleted"
-                        logger.info(f"ðŸ”„ Phase2: {deleted} à¤ªà¥à¤°à¤¾à¤¨à¥€ print(s) auto-deleted: {deleted_labels}")
+                        upgrade_msg = f"\n🔄 Upgraded! {deleted} पुरानी print(s) auto-deleted"
+                        logger.info(f"🔄 Phase2: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
                 except Exception as ue:
                     logger.error(f"Auto-Upgrade error in Phase2: {ue}")
 
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
-                await upload_status.edit_text(f"âœ… **Saved:** `{movie_title} {label}`\nðŸ”¢ Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
+                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
             except Exception as e:
-                await upload_status.edit_text(f"âŒ DB Save Failed: {e}")
+                await upload_status.edit_text(f"❌ DB Save Failed: {e}")
             finally:
                 close_db_connection(conn)
     
 async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not BATCH_SESSION.get('active'): 
-        await update.message.reply_text("âŒ Koi batch active nahi hai!")
+        await update.message.reply_text("❌ Koi batch active nahi hai!")
         return
     
-    status_msg = await update.message.reply_text("ðŸ”„ **Batch complete kar raha hoon...**", parse_mode='Markdown')
+    status_msg = await update.message.reply_text("🔄 **Batch complete kar raha hoon...**", parse_mode='Markdown')
 
     try:
         movie_id = BATCH_SESSION.get('movie_id')
@@ -6811,7 +6811,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         movie_year = BATCH_SESSION.get('year', '')
         movie_category = BATCH_SESSION.get('category', '')
         
-        # DB à¤¸à¥‡ à¤•à¥à¤µà¤¾à¤²à¤¿à¤Ÿà¥€ à¤”à¤° à¤¡à¥‡à¤Ÿà¤¾ à¤¨à¤¿à¤•à¤¾à¤²à¥‡à¤‚
+        # DB से क्वालिटी और डेटा निकालें
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT genre, language, \"cast\", poster_url, rating FROM movies WHERE id = %s", (movie_id,))
@@ -6826,29 +6826,29 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         m_poster = minfo[3] if minfo else None
         m_rating = minfo[4] if minfo else "N/A"
 
-        # à¤•à¥à¤µà¤¾à¤²à¤¿à¤Ÿà¥€ à¤…à¤²à¤¾à¤‡à¤¨à¤®à¥‡à¤‚à¤Ÿ
+        # क्वालिटी अलाइनमेंट
         res_list = sorted(list(set(re.search(r'(\d{3,4}p)', r[0]).group(1) for r in qrows if re.search(r'(\d{3,4}p)', r[0]))), key=lambda x: int(x.replace('p','')), reverse=True)
         dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
 
-        # ðŸŽ¯ à¤†à¤ªà¤•à¤¾ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤•à¥à¤²à¥€à¤¨ à¤«à¥‰à¤°à¥à¤®à¥‡à¤Ÿ
+        # 🎯 आपका पसंदीदा क्लीन फॉर्मेट
         caption = (
-            f"ðŸŽ¬ <b>{movie_title}</b>\n"
-            f"âœ¨ Genre: {db_genre}\n"
+            f"🎬 <b>{movie_title}</b>\n"
+            f"✨ Genre: {db_genre}\n"
             f"Language: {db_lang}\n"
             f"Quality: V2 HQ-HDTC {dynamic_res}\n"
-            f"â” â” â” â” â” â” â” â” â” â” â”\n"
-            f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-            f"â” â” â” â” â” â” â” â” â” â” â”\n"
-            f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"👇 <b>Download Below</b> 👇"
         )
         
-        # ðŸš« AI Alias Generation OFF â€” Flask Web App mein Google Suggest + pg_trgm already handles typos
-        # generate_aliases_gemini() hata diya â€” Gemini API keys bachegi + DB clean rahega
+        # 🚫 AI Alias Generation OFF — Flask Web App mein Google Suggest + pg_trgm already handles typos
+        # generate_aliases_gemini() hata diya — Gemini API keys bachegi + DB clean rahega
         aliases = []
         alias_count = 0
 
-        # ðŸš€ POST TO FORUM
-        forum_post_status = "â³ Posting to Forum..."
+        # 🚀 POST TO FORUM
+        forum_post_status = "⏳ Posting to Forum..."
         
         topic_id = 1
         cat_lower = str(movie_category or "").lower()
@@ -6868,8 +6868,8 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         post_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Download Now", url=secure_url), InlineKeyboardButton("Download Now", url=secure_url)],
-            [InlineKeyboardButton("âš¡ Download Now", url=secure_url)],
-            [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+            [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+            [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
         ])
         
         photo_to_send = m_poster if (m_poster and m_poster != 'N/A' and m_poster.startswith('http')) else None
@@ -6886,35 +6886,35 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
             else:
                 await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, message_thread_id=topic_id, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
-            forum_post_status = f"âœ… Auto-Posted to Forum (Topic ID: {topic_id})"
+            forum_post_status = f"✅ Auto-Posted to Forum (Topic ID: {topic_id})"
         except Exception as e:
             logger.error(f"Auto Forum Post Error: {e}")
-            forum_post_status = f"âš ï¸ Forum Post Failed"
+            forum_post_status = f"⚠️ Forum Post Failed"
 
         channels_count = len(get_storage_channels())
         report = (
-            f"ðŸŽ‰ **Batch Completed!**\n\n"
-            f"ðŸŽ¬ **Movie:** `{movie_title}`\n"
-            f"ðŸ“… **Year:** {movie_year if movie_year else 'N/A'}\n"
-            f"ðŸ·ï¸ **Category:** {movie_category}\n"
-            f"ðŸ“‚ **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n\n"
-            f"âœ… Backups: {channels_count} channels\n"
-            f"ðŸ’¬ {forum_post_status}"
+            f"🎉 **Batch Completed!**\n\n"
+            f"🎬 **Movie:** `{movie_title}`\n"
+            f"📅 **Year:** {movie_year if movie_year else 'N/A'}\n"
+            f"🏷️ **Category:** {movie_category}\n"
+            f"📂 **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n\n"
+            f"✅ Backups: {channels_count} channels\n"
+            f"💬 {forum_post_status}"
         )
 
         extracted_thumb = BATCH_SESSION.get('extracted_thumb')
         if extracted_thumb: context.bot_data[f"auto_thumb_{movie_id}"] = extracted_thumb
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ðŸ¤– Auto Post (HD TMDB Poster)", callback_data=f"autopost_{movie_id}")],
-            [InlineKeyboardButton("ðŸ“¢ Manual Post (Send Poster)", callback_data=f"askposter_{movie_id}")]
+            [InlineKeyboardButton("🤖 Auto Post (HD TMDB Poster)", callback_data=f"autopost_{movie_id}")],
+            [InlineKeyboardButton("📢 Manual Post (Send Poster)", callback_data=f"askposter_{movie_id}")]
         ])
 
         await status_msg.edit_text(report, parse_mode='Markdown', reply_markup=keyboard)
 
     except Exception as e:
         logger.error(f"Error in batch_done_command: {e}", exc_info=True)
-        await status_msg.edit_text(f"âŒ Error during /done: {e}")
+        await status_msg.edit_text(f"❌ Error during /done: {e}")
 
     finally:
         BATCH_SESSION.update({
@@ -6936,12 +6936,12 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         return # Agar wait nahi kar raha tha, to ignore karo
 
     if not update.message.photo:
-        await update.message.reply_text("âŒ Please send a valid PHOTO.")
+        await update.message.reply_text("❌ Please send a valid PHOTO.")
         return
 
     # Sabse acchi quality ki photo nikalo
     file_id = update.message.photo[-1].file_id
-    status_msg = await update.message.reply_text("â³ Publishing to channels...")
+    status_msg = await update.message.reply_text("⏳ Publishing to channels...")
 
     # 1. Database se sirf Title nikalo
     conn = get_db_connection()
@@ -6953,22 +6953,22 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     close_db_connection(conn)
 
     if not res:
-        await status_msg.edit_text("âŒ Movie not found in DB.")
+        await status_msg.edit_text("❌ Movie not found in DB.")
         context.user_data.pop('waiting_for_poster', None)
         return
     
     m_title = res[0]
 
-    # ðŸŽ¯ FIX: This block must be indented to match the rest of the function
+    # 🎯 FIX: This block must be indented to match the rest of the function
     channel_caption = (
-        f"ðŸŽ¬ <b>{m_title}</b>\n"
-        f"âœ¨ Genre: {m_genre}\n"
+        f"🎬 <b>{m_title}</b>\n"
+        f"✨ Genre: {m_genre}\n"
         f"Language: {m_lang}\n"
         f"Quality: V2 HQ-HDTC {dynamic_res}\n"
-        f"â” â” â” â” â” â” â” â” â” â” â”\n"
-        f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-        f"â” â” â” â” â” â” â” â” â” â” â”\n"
-        f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+        f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+        f"👇 <b>Download Below</b> 👇"
     )
 
     # 3. Download Buttons Banao
@@ -6979,8 +6979,8 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
             InlineKeyboardButton("Download Now", url=secure_url),
             InlineKeyboardButton("Download Now", url=secure_url)
         ],
-        [InlineKeyboardButton("âš¡ Download Now", url=secure_url)],
-        [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+        [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+        [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
     ])
 
     # 4. Channels me Post karo
@@ -6988,7 +6988,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
     if not target_channels:
-        await status_msg.edit_text("âŒ Error: No BROADCAST_CHANNELS found in .env")
+        await status_msg.edit_text("❌ Error: No BROADCAST_CHANNELS found in .env")
         context.user_data.pop('waiting_for_poster', None)
         return
 
@@ -7007,7 +7007,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Restore Feature ke liye DB me save karo
             if sent_msg:
                 save_post_to_db(
-                    movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",  # âœ… NAYA: bot3 hat gaya!
+                    movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",  # ✅ NAYA: bot3 hat gaya!
                     channel_caption, file_id, "photo", keyboard.to_dict(), None, "movies"
                 )
                 sent_count += 1
@@ -7015,12 +7015,12 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
             logger.error(f"Auto-post failed for {chat_id_str}: {e}")
 
     # 5. Finish and Clear State
-    await status_msg.edit_text(f"âœ… <b>Posted successfully to {sent_count} channels!</b>", parse_mode='HTML')
+    await status_msg.edit_text(f"✅ <b>Posted successfully to {sent_count} channels!</b>", parse_mode='HTML')
     context.user_data.pop('waiting_for_poster', None)
 
 async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    âœ… FIXED: Smart Post Generator with proper error handling
+    ✅ FIXED: Smart Post Generator with proper error handling
     """
     try:
         user_id = update.effective_user.id
@@ -7031,7 +7031,7 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 1. Check Media
         if not (message.photo or message.video):
-            await message.reply_text("âŒ Photo ya Video bhejo caption ke sath")
+            await message.reply_text("❌ Photo ya Video bhejo caption ke sath")
             return
 
         caption_text = message.caption or ""
@@ -7061,7 +7061,7 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             custom_msg = ""
 
         if not query_text:
-            await message.reply_text("âŒ Movie name missing")
+            await message.reply_text("❌ Movie name missing")
             return
 
         # 4. Find Movie in DB
@@ -7089,14 +7089,14 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot3 = "FlimfyBoxBot"
         
         if movie_id:
-            # âœ… FIXED: Web App Secure Link (Exactly like /superdone)
+            # ✅ FIXED: Web App Secure Link (Exactly like /superdone)
             secure_link = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
             link1 = secure_link
             link2 = secure_link
             link3 = secure_link
         else:
             import re
-            # âš ï¸ Agar movie DB me nahi hai (Sirf search query hai), to purana link chalega
+            # ⚠️ Agar movie DB me nahi hai (Sirf search query hai), to purana link chalega
             # Clean text to contain only alphanumeric, underscores, and hyphens, and limit to 64 bytes
             safe_query = re.sub(r'[^a-zA-Z0-9_-]', '', query_text.replace(' ', '_'))
             link_param = f"q_{safe_query}"[:64]
@@ -7107,14 +7107,14 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 6. Build Keyboard
         if movie_id:
-            # âœ… Yahan se web_app= hata diya hai, ab direct tumhara /watch/ wala link khulega
+            # ✅ Yahan se web_app= hata diya hai, ab direct tumhara /watch/ wala link khulega
             keyboard = InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("Download Now", url=link1),
                     InlineKeyboardButton("Download Now", url=link2),
                 ],
                 [InlineKeyboardButton("Download Now", url=link3)],
-                [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+                [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
             ])
         else:
             # Agar fallback tg:// link hai, toh normal URL rehne do
@@ -7124,20 +7124,20 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("Download Now", url=link2),
                 ],
                 [InlineKeyboardButton("Download Now", url=link3)],
-                [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+                [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
             ])
         # 7. Build Caption
-        channel_caption = f"ðŸŽ¬ <b>{query_text}</b>\n"
+        channel_caption = f"🎬 <b>{query_text}</b>\n"
         if custom_msg:
-            channel_caption += f"âœ¨ <b>{custom_msg}</b>\n\n"
+            channel_caption += f"✨ <b>{custom_msg}</b>\n\n"
         else:
             channel_caption += "\n"
         
         channel_caption += (
-            "âž–âž–âž–âž–âž–âž–âž–\n"
+            "➖➖➖➖➖➖➖\n"
             f"<b>Support:</b> <a href='https://t.me/+dxaCr_cMmGpkYTFl'>Join Chat</a>\n"
-            "âž–âž–âž–âž–âž–âž–âž–\n"
-            "<b>ðŸ‘‡ Download Below</b>"
+            "➖➖➖➖➖➖➖\n"
+            "<b>👇 Download Below</b>"
         )
 
         # 8. Send to Channels
@@ -7145,7 +7145,7 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
         if not target_channels:
-            await message.reply_text("âŒ No BROADCAST_CHANNELS configured in .env")
+            await message.reply_text("❌ No BROADCAST_CHANNELS configured in .env")
             return
 
         sent_count = 0
@@ -7153,14 +7153,14 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for chat_id_str in target_channels:
             try:
-                # âœ… FIXED: Parse channel ID properly
+                # ✅ FIXED: Parse channel ID properly
                 try:
                     chat_id = int(chat_id_str)
                 except ValueError:
                     failed_list.append(f"Invalid ID: {chat_id_str}")
                     continue
 
-                logger.info(f"ðŸ“¤ Sending to {chat_id}...")
+                logger.info(f"📤 Sending to {chat_id}...")
 
                 sent_msg = None
 
@@ -7182,7 +7182,7 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
 
                 if sent_msg:
-                    logger.info(f"âœ… Sent to {chat_id}, Message ID: {sent_msg.message_id}")
+                    logger.info(f"✅ Sent to {chat_id}, Message ID: {sent_msg.message_id}")
                     sent_count += 1
 
             except telegram.error.BadRequest as e:
@@ -7202,27 +7202,27 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Error sending to {chat_id_str}: {e}")
 
         # 9. Final Report
-        report = f"""âœ… <b>Post Processed ({media_type.capitalize()})</b>
+        report = f"""✅ <b>Post Processed ({media_type.capitalize()})</b>
 
-ðŸ“¤ <b>Sent:</b> {sent_count}/{len(target_channels)}
-âŒ <b>Failed:</b> {len(failed_list)}
+📤 <b>Sent:</b> {sent_count}/{len(target_channels)}
+❌ <b>Failed:</b> {len(failed_list)}
 
-ðŸŽ¬ <b>Movie:</b> {query_text}
-ðŸ“ <b>Extra:</b> {custom_msg or 'None'}"""
+🎬 <b>Movie:</b> {query_text}
+📝 <b>Extra:</b> {custom_msg or 'None'}"""
 
         if failed_list:
             report += "\n\n<b>Errors:</b>\n"
             for err in failed_list[:3]:  # Show first 3 errors
-                report += f"â€¢ {err}\n"
+                report += f"• {err}\n"
 
         await message.reply_text(report, parse_mode='HTML')
 
     except Exception as e:
         logger.error(f"Critical error in post_query: {e}", exc_info=True)
-        await message.reply_text(f"âŒ Error: {str(e)[:100]}")
+        await message.reply_text(f"❌ Error: {str(e)[:100]}")
 
 # ==========================================
-# ðŸš€ AUTO MASS-FORWARD & LINK SHORTENER
+# 🚀 AUTO MASS-FORWARD & LINK SHORTENER
 # ==========================================
 
 async def shorten_link(long_url):
@@ -7244,7 +7244,7 @@ async def shorten_link(long_url):
 
 
 # ==========================================
-# ðŸš€ 18+ MASS-FORWARD BATCH SYSTEM (SAFE)
+# 🚀 18+ MASS-FORWARD BATCH SYSTEM (SAFE)
 # ==========================================
 
 async def shorten_link(long_url):
@@ -7269,12 +7269,12 @@ async def shorten_link(long_url):
 BATCH_18_SESSION = {'active': False, 'movie_id': None, 'movie_title': None, 'file_count': 0, 'admin_id': None}
 
 async def batch18_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """18+ à¤¬à¥ˆà¤š à¤¶à¥à¤°à¥‚ à¤•à¤°à¥‡à¤‚ - à¤¬à¤¿à¤²à¥à¤•à¥à¤² /batch à¤•à¥€ à¤¤à¤°à¤¹ à¤•à¤¾à¤® à¤•à¤°à¥‡à¤—à¤¾"""
+    """18+ बैच शुरू करें - बिल्कुल /batch की तरह काम करेगा"""
     if update.effective_user.id not in ADMIN_IDS:
         return
 
-    if BATCH_SESSION.get('active'):  # à¤…à¤—à¤° à¤¨à¥‰à¤°à¥à¤®à¤² à¤¬à¥ˆà¤š à¤šà¤² à¤°à¤¹à¤¾ à¤¹à¥ˆ à¤¤à¥‹ 18+ à¤¨à¤¹à¥€à¤‚ à¤šà¤²à¥‡à¤—à¤¾
-        await update.message.reply_text("âŒ à¤ªà¤¹à¤²à¥‡ à¤¸à¥‡ à¤¨à¥‰à¤°à¥à¤®à¤² à¤¬à¥ˆà¤š à¤šà¤² à¤°à¤¹à¤¾ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤‰à¤¸à¥‡ /done à¤•à¤°à¥‡à¤‚ à¤¯à¤¾ /cancel à¤•à¤°à¥‡à¤‚à¥¤")
+    if BATCH_SESSION.get('active'):  # अगर नॉर्मल बैच चल रहा है तो 18+ नहीं चलेगा
+        await update.message.reply_text("❌ पहले से नॉर्मल बैच चल रहा है। कृपया उसे /done करें या /cancel करें।")
         return
 
     BATCH_18_SESSION.update({
@@ -7286,20 +7286,20 @@ async def batch18_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
 
     await update.message.reply_text(
-        "ðŸ”ž **18+ à¤¬à¥ˆà¤š à¤®à¥‹à¤¡ à¤šà¤¾à¤²à¥‚!**\n\n"
-        "ðŸ‘‰ à¤…à¤¬ à¤†à¤ª à¤œà¤¿à¤¸ 18+ à¤®à¥‚à¤µà¥€/à¤¸à¥€à¤°à¥€à¤œà¤¼ à¤•à¥€ à¤«à¤¼à¤¾à¤‡à¤²à¥‡à¤‚ à¤­à¥‡à¤œà¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚, à¤‰à¤¸à¤•à¥€ **à¤ªà¤¹à¤²à¥€ à¤«à¤¼à¤¾à¤‡à¤²** à¤•à¥ˆà¤ªà¥à¤¶à¤¨ à¤•à¥‡ à¤¸à¤¾à¤¥ à¤­à¥‡à¤œà¥‡à¤‚à¥¤\n"
-        "ðŸ‘‰ à¤¬à¥‰à¤Ÿ à¤‰à¤¸à¤•à¤¾ à¤Ÿà¤¾à¤‡à¤Ÿà¤², à¤¸à¤¾à¤², à¤­à¤¾à¤·à¤¾ à¤†à¤¦à¤¿ à¤¨à¤¿à¤•à¤¾à¤²à¤•à¤° à¤†à¤ªà¤•à¥‹ à¤¦à¤¿à¤–à¤¾à¤à¤—à¤¾à¥¤\n"
-        "ðŸ‘‰ à¤‡à¤¸à¤•à¥‡ à¤¬à¤¾à¤¦ à¤†à¤ª à¤‰à¤¸à¥€ à¤®à¥‚à¤µà¥€ à¤•à¥€ à¤¬à¤¾à¤•à¥€ à¤¸à¤­à¥€ à¤«à¤¼à¤¾à¤‡à¤²à¥‡à¤‚ (à¤•à¥‹à¤ˆ à¤­à¥€ à¤•à¥à¤µà¤¾à¤²à¤¿à¤Ÿà¥€/à¤à¤ªà¤¿à¤¸à¥‹à¤¡) à¤à¤•-à¤à¤• à¤•à¤°à¤•à¥‡ à¤­à¥‡à¤œ à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤\n"
-        "ðŸ‘‰ à¤¸à¤¬ à¤­à¥‡à¤œà¤¨à¥‡ à¤•à¥‡ à¤¬à¤¾à¤¦ `/done18` à¤²à¤¿à¤–à¥‡à¤‚à¥¤",
+        "🔞 **18+ बैच मोड चालू!**\n\n"
+        "👉 अब आप जिस 18+ मूवी/सीरीज़ की फ़ाइलें भेजना चाहते हैं, उसकी **पहली फ़ाइल** कैप्शन के साथ भेजें।\n"
+        "👉 बॉट उसका टाइटल, साल, भाषा आदि निकालकर आपको दिखाएगा।\n"
+        "👉 इसके बाद आप उसी मूवी की बाकी सभी फ़ाइलें (कोई भी क्वालिटी/एपिसोड) एक-एक करके भेज सकते हैं।\n"
+        "👉 सब भेजने के बाद `/done18` लिखें।",
         parse_mode='Markdown'
     )
 
 # ============================================================================
-# ðŸ”ž 18+ BATCH LISTENER (Fully Optimized & Fixed)
+# 🔞 18+ BATCH LISTENER (Fully Optimized & Fixed)
 # ============================================================================
 
 # ============================================================================
-# ðŸ”ž ADULT METADATA COMBO ENGINE - 5 Sources Pipeline
+# 🔞 ADULT METADATA COMBO ENGINE - 5 Sources Pipeline
 # ============================================================================
 async def fetch_adult_metadata_combo(
     movie_name: str,
@@ -7329,14 +7329,14 @@ async def fetch_adult_metadata_combo(
         "source": "Default"
     }
 
-    logger.info(f"ðŸ” Adult Combo Search: '{movie_name}' ({movie_year})")
+    logger.info(f"🔍 Adult Combo Search: '{movie_name}' ({movie_year})")
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # SOURCE 1: TMDB with include_adult=true
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # âš ï¸ STRICT YEAR CHECK: Agar caption mein year diya hai aur TMDB ne
+    # ─────────────────────────────────────────────
+    # ⚠️ STRICT YEAR CHECK: Agar caption mein year diya hai aur TMDB ne
     # 3 saal se zyada purani cheez pakdi, toh wo result REJECT karo.
-    # Example: Caption="2026", TMDB returned "1972" â†’ REJECT
+    # Example: Caption="2026", TMDB returned "1972" → REJECT
     try:
         tmdb_data = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, adult_mode=True)
         if tmdb_data:
@@ -7349,8 +7349,8 @@ async def fetch_adult_metadata_combo(
                 if abs(caption_year - t_year) > 3:
                     year_ok = False
                     logger.warning(
-                        f"â›” TMDB year mismatch REJECTED: caption={caption_year}, TMDB={t_year} "
-                        f"for '{movie_name}' â€” ye galat movie hai!"
+                        f"⛔ TMDB year mismatch REJECTED: caption={caption_year}, TMDB={t_year} "
+                        f"for '{movie_name}' — ye galat movie hai!"
                     )
 
             if year_ok:
@@ -7361,7 +7361,7 @@ async def fetch_adult_metadata_combo(
                 if t_rating and t_rating != "N/A": result["rating"] = t_rating
                 if t_plot and len(t_plot) > 20: result["plot"] = t_plot
                 result["source"] = "TMDB"
-                logger.info(f"âœ… TMDB accepted: {result['title']} ({t_year})")
+                logger.info(f"✅ TMDB accepted: {result['title']} ({t_year})")
 
                 # Poster: agar TMDB ne direct nahi diya, TMDB search se poster dhundho
                 if t_poster:
@@ -7377,10 +7377,10 @@ async def fetch_adult_metadata_combo(
                         for r in all_results:
                             if r.get("poster_path"):
                                 result["poster_url"] = f"https://image.tmdb.org/t/p/original{r['poster_path']}"
-                                logger.info(f"âœ… TMDB poster found via IMDB ID")
+                                logger.info(f"✅ TMDB poster found via IMDB ID")
                                 break
                     except Exception as pe:
-                        logger.warning(f"âš ï¸ TMDB poster fetch failed: {pe}")
+                        logger.warning(f"⚠️ TMDB poster fetch failed: {pe}")
                 else:
                     # Title se TMDB poster search
                     try:
@@ -7391,19 +7391,19 @@ async def fetch_adult_metadata_combo(
                         for item in search_data.get("results", []):
                             if item.get("poster_path"):
                                 result["poster_url"] = f"https://image.tmdb.org/t/p/original{item['poster_path']}"
-                                logger.info(f"âœ… TMDB poster found via title search")
+                                logger.info(f"✅ TMDB poster found via title search")
                                 break
                     except Exception as pe:
-                        logger.warning(f"âš ï¸ TMDB title poster search failed: {pe}")
+                        logger.warning(f"⚠️ TMDB title poster search failed: {pe}")
 
             else:
-                logger.info(f"â­ï¸ TMDB skipped â€” wrong year match, trying other sources...")
+                logger.info(f"⏭️ TMDB skipped — wrong year match, trying other sources...")
     except Exception as e:
-        logger.warning(f"âš ï¸ TMDB failed: {e}")
+        logger.warning(f"⚠️ TMDB failed: {e}")
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # SOURCE 2: Wikipedia API (no key needed)
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     try:
         wiki_query = quote(f"{movie_name} web series")
         wiki_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{wiki_query}"
@@ -7417,9 +7417,9 @@ async def fetch_adult_metadata_combo(
                 result["source"] = result["source"] + "+Wiki" if result["source"] != "Default" else "Wikipedia"
             if wiki_thumb and not result["poster_url"]:
                 result["poster_url"] = wiki_thumb
-            logger.info(f"âœ… Wikipedia data found for: {movie_name}")
+            logger.info(f"✅ Wikipedia data found for: {movie_name}")
     except Exception as e:
-        logger.warning(f"âš ï¸ Wikipedia failed: {e}")
+        logger.warning(f"⚠️ Wikipedia failed: {e}")
 
     # Hindi Wikipedia fallback
     if not result["plot"]:
@@ -7435,9 +7435,9 @@ async def fetch_adult_metadata_combo(
         except Exception:
             pass
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # SOURCE 3: DuckDuckGo Instant Answer (no key)
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     if not result["plot"] or not result["poster_url"]:
         try:
             ddg_query = quote(f"{movie_name} {movie_year} ullu altbalaji web series")
@@ -7461,13 +7461,13 @@ async def fetch_adult_metadata_combo(
                         if text and len(text) > 30:
                             result["plot"] = text[:400]
                             break
-                logger.info(f"âœ… DuckDuckGo data processed for: {movie_name}")
+                logger.info(f"✅ DuckDuckGo data processed for: {movie_name}")
         except Exception as e:
-            logger.warning(f"âš ï¸ DuckDuckGo failed: {e}")
+            logger.warning(f"⚠️ DuckDuckGo failed: {e}")
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # SOURCE 4: Google Custom Search (text + image)
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     try:
         google_data = await fetch_metadata_from_google(
             f"{movie_name} {movie_year} web series cast plot",
@@ -7481,9 +7481,9 @@ async def fetch_adult_metadata_combo(
                 if g_plot and len(g_plot) > 30:
                     result["plot"] = g_plot
             result["source"] = result["source"] + "+Google" if result["source"] != "Default" else "Google"
-            logger.info(f"âœ… Google data found for: {movie_name}")
+            logger.info(f"✅ Google data found for: {movie_name}")
     except Exception as e:
-        logger.warning(f"âš ï¸ Google search failed: {e}")
+        logger.warning(f"⚠️ Google search failed: {e}")
 
     # Google Image search specifically for poster (separate query)
     if not result["poster_url"]:
@@ -7497,16 +7497,16 @@ async def fetch_adult_metadata_combo(
         except Exception:
             pass
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # SOURCE 5: Gemini AI - Most reliable for Indian OTT
     # Training data mein Ullu/AltBalaji content hai
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # Sirf tab call karo jab plot ya cast khaali ho
     gemini_needed = not result["plot"] or len(result.get("plot","")) < 50 or not result["cast"]
     if gemini_needed:
-        # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ─────────────────────────────────────────────
         # SOURCE 5: Gemini AI with full key rotation
-        # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ─────────────────────────────────────────────
         import google.generativeai as genai
 
         api_keys = []
@@ -7534,7 +7534,7 @@ Platform: {platform_hint}
 Content Type: Adult / 18+ Web Series (NOT classic cinema)
 
 STRICT RULES:
-- "year" MUST be {movie_year or "2024"} or close to it â€” do NOT return years like 1972, 1990 etc.
+- "year" MUST be {movie_year or "2024"} or close to it — do NOT return years like 1972, 1990 etc.
 - This is a web series, NOT an old film
 - If you know this series, give real data; if not, generate realistic data for this title
 
@@ -7585,28 +7585,28 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
                     except: pass
 
                 result["source"] = result["source"] + "+Gemini" if result["source"] != "Default" else "Gemini AI"
-                logger.info(f"âœ… Gemini success with key #{key_idx + 1} for: {movie_name}")
+                logger.info(f"✅ Gemini success with key #{key_idx + 1} for: {movie_name}")
                 gemini_success = True
-                break  # Success â€” baaki keys try mat karo
+                break  # Success — baaki keys try mat karo
 
             except json.JSONDecodeError as je:
-                logger.warning(f"âš ï¸ Gemini key #{key_idx+1} JSON parse failed: {je}")
-                break  # JSON error = response aaya, parse fail â€” retry se fayda nahi
+                logger.warning(f"⚠️ Gemini key #{key_idx+1} JSON parse failed: {je}")
+                break  # JSON error = response aaya, parse fail — retry se fayda nahi
             except Exception as e:
                 err_str = str(e)
                 if "429" in err_str or "quota" in err_str.lower() or "rate" in err_str.lower():
-                    logger.warning(f"âš ï¸ Gemini key #{key_idx+1} quota exceeded, trying next key...")
+                    logger.warning(f"⚠️ Gemini key #{key_idx+1} quota exceeded, trying next key...")
                     continue  # Next key try karo
                 else:
-                    logger.warning(f"âš ï¸ Gemini key #{key_idx+1} failed: {e}")
-                    break  # Unknown error â€” stop
+                    logger.warning(f"⚠️ Gemini key #{key_idx+1} failed: {e}")
+                    break  # Unknown error — stop
 
         if not gemini_success:
-            logger.warning(f"âš ï¸ All {len(api_keys)} Gemini keys exhausted for: {movie_name}")
+            logger.warning(f"⚠️ All {len(api_keys)} Gemini keys exhausted for: {movie_name}")
 
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     # FINAL: Default fallback values fill karo
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ─────────────────────────────────────────────
     if not result["plot"]:
         result["plot"] = f"{movie_name} - Exclusive premium 18+ content. Watch on FlimfyBox Premium."
     if not result["genre"]:
@@ -7615,9 +7615,9 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         result["rating"] = "18+"
 
     logger.info(
-        f"ðŸ“Š Adult Combo Result for '{movie_name}': "
-        f"source={result['source']}, poster={'âœ…' if result['poster_url'] else 'âŒ'}, "
-        f"plot={'âœ…' if result['plot'] else 'âŒ'}, cast={'âœ…' if result['cast'] else 'âŒ'}"
+        f"📊 Adult Combo Result for '{movie_name}': "
+        f"source={result['source']}, poster={'✅' if result['poster_url'] else '❌'}, "
+        f"plot={'✅' if result['plot'] else '❌'}, cast={'✅' if result['cast'] else '❌'}"
     )
 
     return result
@@ -7625,7 +7625,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
 async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    ðŸ”ž 18+ BATCH LISTENER: Auto-extracts metadata and saves files.
+    🔞 18+ BATCH LISTENER: Auto-extracts metadata and saves files.
     Fixed: Clean logs, better adult detection, proper error handling.
     """
     # === GUARD CLAUSES ===
@@ -7648,17 +7648,17 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         raw_caption = message.caption or ""
         if not raw_caption:
             await message.reply_text(
-                "âŒ **18+ à¤¬à¥ˆà¤š:** à¤ªà¤¹à¤²à¥€ à¤«à¤¾à¤‡à¤² à¤•à¥‡ à¤¸à¤¾à¤¥ caption à¤®à¥‡à¤‚ movie à¤•à¤¾ naam zaroor dein.",
+                "❌ **18+ बैच:** पहली फाइल के साथ caption में movie का naam zaroor dein.",
                 parse_mode='Markdown'
             )
             return
         
-        # ðŸŽ¯ Adult content auto-detection from filename
+        # 🎯 Adult content auto-detection from filename
         raw_lower = raw_caption.lower()
         force_adult = any(tag in raw_lower for tag in ['unrated', '18+', 'adult', 'hot', 'bhabhi', 'mastani'])
         
         status_msg = await message.reply_text(
-            "ðŸ”ž **Analyzing 18+ content...**" + (" (Forced Adult Mode)" if force_adult else ""),
+            "🔞 **Analyzing 18+ content...**" + (" (Forced Adult Mode)" if force_adult else ""),
             quote=True
         )
 
@@ -7684,20 +7684,20 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if movie_name == "UNKNOWN" or len(movie_name) < 2:
             await status_msg.edit_text(
-                "âŒ Name identify nahi ho paya. Sahi naam ke sath dobara bhejein."
+                "❌ Name identify nahi ho paya. Sahi naam ke sath dobara bhejein."
             )
             return
         
         await status_msg.edit_text(
-            f"âœ… **Extracted:** ðŸŽ¬ `{movie_name}` ({movie_year or 'N/A'})\n"
-            f"â³ Fetching metadata from TMDB/Google...",
+            f"✅ **Extracted:** 🎬 `{movie_name}` ({movie_year or 'N/A'})\n"
+            f"⏳ Fetching metadata from TMDB/Google...",
             parse_mode='Markdown'
         )
 
-        # === ðŸš€ COMBO METADATA ENGINE (5 Sources) ===
+        # === 🚀 COMBO METADATA ENGINE (5 Sources) ===
         await status_msg.edit_text(
-            f"ðŸ” **Searching:** `{movie_name}`\n"
-            f"â³ Trying TMDB â†’ Wikipedia â†’ DuckDuckGo â†’ Google â†’ Gemini AI...",
+            f"🔍 **Searching:** `{movie_name}`\n"
+            f"⏳ Trying TMDB → Wikipedia → DuckDuckGo → Google → Gemini AI...",
             parse_mode='Markdown'
         )
 
@@ -7714,7 +7714,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         category  = gemini_category  # Always keep Adult category
         data_source = combo["source"]
 
-        # IMDB cast fetch (extra â€” agar imdb_id mila ho)
+        # IMDB cast fetch (extra — agar imdb_id mila ho)
         if imdb_id and not cast_str:
             try:
                 cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
@@ -7724,7 +7724,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # === DATABASE INSERTION ===
         conn = get_db_connection()
         if not conn:
-            await status_msg.edit_text("âŒ Database Connection Failed.")
+            await status_msg.edit_text("❌ Database Connection Failed.")
             return
 
         try:
@@ -7759,7 +7759,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """, (final_poster, final_year, final_year, genre, rating, plot, 
                       category, movie_lang, movie_extra, cast_str, existing_id))
                 movie_id = cur.fetchone()[0]
-                logger.info(f"ðŸ”„ Updated existing movie: {title} (ID: {movie_id})")
+                logger.info(f"🔄 Updated existing movie: {title} (ID: {movie_id})")
                 
             else:
                 # Insert new movie
@@ -7772,7 +7772,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """, (title, imdb_id, poster_url, year, genre, rating, 
                       plot, category, movie_lang, movie_extra, cast_str))
                 movie_id = cur.fetchone()[0]
-                logger.info(f"âœ… Created new movie: {title} (ID: {movie_id})")
+                logger.info(f"✅ Created new movie: {title} (ID: {movie_id})")
 
             conn.commit()
 
@@ -7792,31 +7792,31 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
 
             # Build success message
-            cast_display = f"\nðŸ‘¥ **Cast:** {cast_str}" if cast_str else ""
-            poster_display = "âœ… Found" if poster_url else "âŒ Not Found"
+            cast_display = f"\n👥 **Cast:** {cast_str}" if cast_str else ""
+            poster_display = "✅ Found" if poster_url else "❌ Not Found"
             
             success_msg = (
-                f"âœ… **18+ Metadata Ready**\n"
-                f"ðŸ“¡ **Source:** {data_source}\n\n"
-                f"ðŸŽ¬ **Title:** `{title}`\n"
-                f"ðŸ“… **Year:** {year if year else 'N/A'}\n"
-                f"ðŸŽ­ **Genre:** {genre}\n"
-                f"â­ï¸ **Rating:** {rating}\n"
-                f"ðŸ–¼ï¸ **Poster:** {poster_display}\n"
-                f"ðŸ·ï¸ **Category:** {category}\n"
+                f"✅ **18+ Metadata Ready**\n"
+                f"📡 **Source:** {data_source}\n\n"
+                f"🎬 **Title:** `{title}`\n"
+                f"📅 **Year:** {year if year else 'N/A'}\n"
+                f"🎭 **Genre:** {genre}\n"
+                f"⭐️ **Rating:** {rating}\n"
+                f"🖼️ **Poster:** {poster_display}\n"
+                f"🏷️ **Category:** {category}\n"
                 f"{cast_display}\n"
-                f"ðŸš€ **Ab files bhejein, phir `/done18` likhein.**"
+                f"🚀 **Ab files bhejein, phir `/done18` likhein.**"
             )
 
             # Build keyboard
             keyboard = []
             if file_count_old > 0:
                 keyboard.append([InlineKeyboardButton(
-                    "ðŸ—‘ï¸ Delete OLD Files", 
+                    "🗑️ Delete OLD Files", 
                     callback_data=f"clearfiles_{movie_id}"
                 )])
             keyboard.append([InlineKeyboardButton(
-                "âŒ Cancel Batch", 
+                "❌ Cancel Batch", 
                 callback_data="cancel_batch18"
             )])
 
@@ -7827,9 +7827,9 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         except Exception as e:
-            logger.error(f"âŒ 18+ DB Error: {e}")
+            logger.error(f"❌ 18+ DB Error: {e}")
             if conn: conn.rollback()
-            await status_msg.edit_text(f"âŒ Database Error: {e}")
+            await status_msg.edit_text(f"❌ Database Error: {e}")
         finally:
             close_db_connection(conn)
         
@@ -7837,7 +7837,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === PHASE 2: SUBSEQUENT FILES ===
     upload_status = await message.reply_text(
-        "â³ Saving 18+ file...", 
+        "⏳ Saving 18+ file...", 
         quote=True
     )
 
@@ -7860,12 +7860,12 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  else (message.video.file_size if message.video else 0))
     file_size_str = get_readable_file_size(file_size)
 
-    # ðŸ§¹ Caption Clean: Links, @usernames, promotions hatao before quality detection
+    # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
     text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
     current_lang = BATCH_18_SESSION.get('language', 'Hindi')
     label = generate_quality_label(text_for_detection, file_size_str, current_lang)
 
-    # ðŸš€ FIXED: Batch ki baaki files ke liye sirf Fallback (Regex) use karein (API Key bachegi)
+    # 🚀 FIXED: Batch ki baaki files ke liye sirf Fallback (Regex) use karein (API Key bachegi)
     try:
         ai_data_f = await fallback_extraction(text_for_detection)
         f_lang = ai_data_f.get('language', '')
@@ -7883,14 +7883,14 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db_connection()
     if conn:
         try:
-            # ðŸ›¡ï¸ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
+            # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
             rejected, existing = is_downgrade(BATCH_18_SESSION['movie_id'], label, conn)
             if rejected:
-                logger.info(f"ðŸ›¡ï¸ Batch18: REJECTED '{label}' â€” DB already has better '{existing}'")
+                logger.info(f"🛡️ Batch18: REJECTED '{label}' — DB already has better '{existing}'")
                 await upload_status.edit_text(
-                    f"ðŸ›¡ï¸ **Downgrade Blocked!**\n"
-                    f"âŒ `{label}` save nahi hua\n"
-                    f"âœ… DB mein pehle se better print hai: `{existing}`",
+                    f"🛡️ **Downgrade Blocked!**\n"
+                    f"❌ `{label}` save nahi hua\n"
+                    f"✅ DB mein pehle se better print hai: `{existing}`",
                     parse_mode='Markdown'
                 )
                 close_db_connection(conn)
@@ -7922,35 +7922,35 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             BATCH_18_SESSION['file_count'] += 1
 
-            # ðŸ”„ Auto-Upgrade: à¤ªà¥à¤°à¤¾à¤¨à¥€ à¤˜à¤Ÿà¤¿à¤¯à¤¾ prints delete à¤•à¤°à¥‹
+            # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
             upgrade_msg = ""
             try:
                 deleted, deleted_labels = auto_upgrade_delete(BATCH_18_SESSION['movie_id'], label, conn)
                 if deleted > 0:
                     BATCH_18_SESSION['file_count'] = max(0, BATCH_18_SESSION['file_count'] - deleted)
-                    upgrade_msg = f"\nðŸ”„ Upgraded! {deleted} à¤ªà¥à¤°à¤¾à¤¨à¥€ print(s) auto-deleted"
-                    logger.info(f"ðŸ”„ Batch18: {deleted} à¤ªà¥à¤°à¤¾à¤¨à¥€ print(s) auto-deleted: {deleted_labels}")
+                    upgrade_msg = f"\n🔄 Upgraded! {deleted} पुरानी print(s) auto-deleted"
+                    logger.info(f"🔄 Batch18: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
             except Exception as ue:
                 logger.error(f"Auto-Upgrade error in Batch18: {ue}")
             
             await upload_status.edit_text(
-                f"âœ… **Saved:** `{BATCH_18_SESSION['movie_title']} {label}`\n"
-                f"ðŸ“¦ Total Files: {BATCH_18_SESSION['file_count']}{upgrade_msg}",
+                f"✅ **Saved:** `{BATCH_18_SESSION['movie_title']} {label}`\n"
+                f"📦 Total Files: {BATCH_18_SESSION['file_count']}{upgrade_msg}",
                 parse_mode='Markdown'
             )
             
         except Exception as e:
             logger.error(f"18+ File Save Error: {e}")
             if conn: conn.rollback()
-            await upload_status.edit_text(f"âŒ Save Error: {e}")
+            await upload_status.edit_text(f"❌ Save Error: {e}")
         finally:
             close_db_connection(conn)
     else:
-        await upload_status.edit_text("âŒ Database connection failed")
+        await upload_status.edit_text("❌ Database connection failed")
 
 
 # ============================================================================
-# ðŸ”ž 18+ BATCH DONE (Optimized)
+# 🔞 18+ BATCH DONE (Optimized)
 # ============================================================================
 
 async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7958,7 +7958,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Validation
     if not BATCH_18_SESSION.get('active'):
-        await update.message.reply_text("âŒ à¤•à¥‹à¤ˆ à¤¸à¤•à¥à¤°à¤¿à¤¯ 18+ à¤¬à¥ˆà¤š à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤")
+        await update.message.reply_text("❌ कोई सक्रिय 18+ बैच नहीं है।")
         return
 
     if update.effective_user.id != BATCH_18_SESSION.get('admin_id'):
@@ -7970,7 +7970,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not movie_id or file_count == 0:
         await update.message.reply_text(
-            "âŒ à¤•à¥‹à¤ˆ à¤«à¤¼à¤¾à¤‡à¤² à¤¸à¥‡à¤µ à¤¨à¤¹à¥€à¤‚ à¤•à¥€ à¤—à¤ˆà¥¤ à¤¬à¥ˆà¤š à¤°à¤¦à¥à¤¦ à¤•à¤¿à¤¯à¤¾ à¤œà¤¾ à¤°à¤¹à¤¾ à¤¹à¥ˆà¥¤"
+            "❌ कोई फ़ाइल सेव नहीं की गई। बैच रद्द किया जा रहा है।"
         )
         BATCH_18_SESSION.update({
             'active': False, 'movie_id': None, 'movie_title': None,
@@ -7981,23 +7981,23 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get adult channel
     adult_channel_id_str = os.environ.get('ADULT_CHANNEL_ID')
     if not adult_channel_id_str:
-        await update.message.reply_text("âŒ .env à¤®à¥‡à¤‚ ADULT_CHANNEL_ID à¤¸à¥‡à¤Ÿ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤")
+        await update.message.reply_text("❌ .env में ADULT_CHANNEL_ID सेट नहीं है।")
         return
     
     try:
         ADULT_CHANNEL_ID = int(adult_channel_id_str)
     except ValueError:
-        await update.message.reply_text("âŒ ADULT_CHANNEL_ID invalid à¤¹à¥ˆà¥¤")
+        await update.message.reply_text("❌ ADULT_CHANNEL_ID invalid है।")
         return
 
     status_msg = await update.message.reply_text(
-        f"ðŸ”„ **{movie_title}** à¤•à¤¾ 18+ à¤ªà¥‹à¤¸à¥à¤Ÿ à¤¬à¤¨ à¤°à¤¹à¤¾ à¤¹à¥ˆ..."
+        f"🔄 **{movie_title}** का 18+ पोस्ट बन रहा है..."
     )
 
     # Fetch movie data
     conn = get_db_connection()
     if not conn:
-        await status_msg.edit_text("âŒ Database error.")
+        await status_msg.edit_text("❌ Database error.")
         return
 
     try:
@@ -8009,7 +8009,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m_data = cur.fetchone()
         
         if not m_data:
-            await status_msg.edit_text("âŒ Movie DB à¤®à¥‡à¤‚ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤")
+            await status_msg.edit_text("❌ Movie DB में नहीं मिली।")
             return
             
         poster_url, year, genre, rating, language, description = m_data
@@ -8023,7 +8023,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cur.close()
         
     except Exception as e:
-        await status_msg.edit_text(f"âŒ DB Error: {e}")
+        await status_msg.edit_text(f"❌ DB Error: {e}")
         return
     finally:
         close_db_connection(conn)
@@ -8053,24 +8053,24 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if style_choice == 1:
         caption = (
-            f"ðŸ”ž <b>{safe_title}</b>\n"
-            f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-            f"âœ¨ <b>Genre:</b> {genre or 'Romance, Drama'}\n"
-            f"ðŸ”Š <b>Language:</b> {language or 'Hindi'}\n"
-            f"ðŸ’¿ <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
-            f"âž–âž–âž–âž–âž–âž–âž–âž–âž–âž–\n"
-            f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-            f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+            f"🔞 <b>{safe_title}</b>\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"✨ <b>Genre:</b> {genre or 'Romance, Drama'}\n"
+            f"🔊 <b>Language:</b> {language or 'Hindi'}\n"
+            f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+            f"👇 <b>Download Below</b> 👇"
         )
     else:
         caption = (
-            f"ðŸ”¥ <b>{unicode_title}</b>\n"
-            f" â”œ âœ¨ Genre: {genre or 'Romance, Drama'}\n"
-            f" â”œ ðŸ”Š Language: {language or 'Hindi'}\n"
-            f" â”” ðŸ’¿ Quality: V2 HQ-HDTC {dynamic_res}\n"
-            f"â” â” â” â” â” â” â” â” â” â” â”\n"
-            f"ðŸ”ž <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
-            f"ðŸ‘‡ <b>Download Below</b> ðŸ‘‡"
+            f"🔥 <b>{unicode_title}</b>\n"
+            f" ├ ✨ Genre: {genre or 'Romance, Drama'}\n"
+            f" ├ 🔊 Language: {language or 'Hindi'}\n"
+            f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
+            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"🔞 <b>18+ Content:</b> <a href='https://t.me/+n250bD5-fHAyOTY1'>Join Premium</a>\n"
+            f"👇 <b>Download Below</b> 👇"
         )
 
     # Build keyboard
@@ -8080,8 +8080,8 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("Download Now", url=secure_url),
             InlineKeyboardButton("Download Now", url=secure_url)
         ],
-        [InlineKeyboardButton("âš¡ Download Now", url=secure_url)],
-        [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+        [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+        [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
     ])
 
     # Send to adult channel
@@ -8113,15 +8113,15 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         await status_msg.edit_text(
-            f"âœ… **18+ à¤¬à¥ˆà¤š à¤ªà¥‚à¤°à¥à¤£!**\n\n"
-            f"ðŸŽ¬ {movie_title}\n"
-            f"ðŸ“¦ à¤•à¥à¤² à¤«à¤¼à¤¾à¤‡à¤²à¥‡à¤‚: {file_count}\n"
-            f"ðŸ“¢ à¤à¤¡à¤²à¥à¤Ÿ à¤šà¥ˆà¤¨à¤² à¤®à¥‡à¤‚ à¤ªà¥‹à¤¸à¥à¤Ÿ à¤­à¥‡à¤œ à¤¦à¥€ à¤—à¤ˆà¥¤"
+            f"✅ **18+ बैच पूर्ण!**\n\n"
+            f"🎬 {movie_title}\n"
+            f"📦 कुल फ़ाइलें: {file_count}\n"
+            f"📢 एडल्ट चैनल में पोस्ट भेज दी गई।"
         )
 
     except Exception as e:
         logger.error(f"18+ Post Error: {e}")
-        await status_msg.edit_text(f"âŒ à¤ªà¥‹à¤¸à¥à¤Ÿ à¤­à¥‡à¤œà¤¨à¥‡ à¤®à¥‡à¤‚ à¤à¤°à¤°: {e}")
+        await status_msg.edit_text(f"❌ पोस्ट भेजने में एरर: {e}")
 
     # Clear session
     BATCH_18_SESSION.update({
@@ -8137,7 +8137,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================================
-# ðŸ”ž 18+ BATCH CANCEL
+# 🔞 18+ BATCH CANCEL
 # ============================================================================
 
 async def batch18_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -8150,7 +8150,7 @@ async def batch18_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'file_count': 0,
             'admin_id': None
         })
-        await update.message.reply_text("ðŸ›‘ 18+ à¤¬à¥ˆà¤š à¤°à¤¦à¥à¤¦ à¤•à¤° à¤¦à¤¿à¤¯à¤¾ à¤—à¤¯à¤¾à¥¤")
+        await update.message.reply_text("🛑 18+ बैच रद्द कर दिया गया।")
 
 async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Premium 18+ Post - Single Item (Fixed Crash)"""
@@ -8176,7 +8176,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not command_text.startswith('/post18'): return
 
-        status_msg = await message.reply_text("â³ <b>Processing Premium Post...</b>", parse_mode='HTML')
+        status_msg = await message.reply_text("⏳ <b>Processing Premium Post...</b>", parse_mode='HTML')
 
         if "|" in command_text:
             parts        = command_text.split('|', 1)
@@ -8200,7 +8200,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
             query_text, custom_msg = raw_input, ""
 
         if not query_text:
-            await status_msg.edit_text("âŒ Movie name missing!")
+            await status_msg.edit_text("❌ Movie name missing!")
             return
 
         metadata = await run_async(fetch_movie_metadata, query_text)
@@ -8222,26 +8222,26 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if embed_link:
             short_link = await shorten_link(embed_link) # Naya GPLink integration
             link_section = (
-                f"\nâ”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„â”„\n\n"
-                f'ðŸ“º <b>Watch Online & Download:</b>\nðŸ‘‰ {short_link}'
+                f"\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n"
+                f'📺 <b>Watch Online & Download:</b>\n👉 {short_link}'
             )
 
         year_display = f" ({year_str})" if year_str else ""
         channel_caption = (
-            f"â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—\n"
-            f"      ðŸ”¥ {display_title} ðŸ”¥\n"
-            f"      â”â”â”{year_display}â”â”â”\n"
-            f"â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n"
+            f"╔═══════════════════════╗\n"
+            f"      🔥 {display_title} 🔥\n"
+            f"      ━━━{year_display}━━━\n"
+            f"╚═══════════════════════╝\n"
             f"\n"
-            f"ðŸ”ž 18+  |  ðŸ’Ž <b>Premium Quality</b>\n"
-            f"ðŸš¨ <i>Only For Adults (18+)</i>"
+            f"🔞 18+  |  💎 <b>Premium Quality</b>\n"
+            f"🚨 <i>Only For Adults (18+)</i>"
             f"{link_section}\n\n"
-            f"ðŸ”ž <b>Join Premium:</b> https://t.me/+n250bD5-fHAyOTY1" 
+            f"🔞 <b>Join Premium:</b> https://t.me/+n250bD5-fHAyOTY1" 
         )
 
         target_channel = os.environ.get('ADULT_CHANNEL_ID')
         if not target_channel:
-            await status_msg.edit_text("âŒ ADULT_CHANNEL_ID missing!")
+            await status_msg.edit_text("❌ ADULT_CHANNEL_ID missing!")
             return
 
         poster_final = user_photo_id or imdb_poster or DEFAULT_POSTER
@@ -8253,20 +8253,20 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 sent_post = await context.bot.send_photo(chat_id=int(target_channel), photo=poster_final, caption=channel_caption, parse_mode='HTML')
         except Exception as post_err:
-            await status_msg.edit_text(f"âŒ Post failed:\n<code>{post_err}</code>", parse_mode='HTML')
+            await status_msg.edit_text(f"❌ Post failed:\n<code>{post_err}</code>", parse_mode='HTML')
             return
 
-        await status_msg.edit_text(f"âœ… <b>Premium Post Done!</b>\nðŸŽ¬ Movie: <b>{query_text}</b>", parse_mode='HTML')
+        await status_msg.edit_text(f"✅ <b>Premium Post Done!</b>\n🎬 Movie: <b>{query_text}</b>", parse_mode='HTML')
 
     except Exception as e:
         logger.error(f"Post18 Critical Error: {e}")
-        try: await message.reply_text(f"âŒ Error: {e}")
+        try: await message.reply_text(f"❌ Error: {e}")
         except: pass
 # ==================== ADMIN COMMANDS ====================
 async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command to add a movie manually (Supports Unreleased)"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Sorry Darling, sirf ð‘¶ð’˜ð’ð’†ð’“ hi is command ka istemal kar sakte hain.")
+        await update.message.reply_text("Sorry Darling, sirf 𝑶𝒘𝒏𝒆𝒓 hi is command ka istemal kar sakte hain.")
         return
 
     conn = None
@@ -8283,7 +8283,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8302,7 +8302,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """,
                 (title.strip(), "", None, True)
             )
-            message = f"âœ… '{title}' ko successfully **Unreleased** mark kar diya gaya hai. (Cute message activate ho gaya âœ¨)"
+            message = f"✅ '{title}' ko successfully **Unreleased** mark kar diya gaya hai. (Cute message activate ho gaya ✨)"
 
         # CASE 2: TELEGRAM FILE ID
         elif any(value.startswith(prefix) for prefix in ["BQAC", "BAAC", "CAAC", "AQAC"]):
@@ -8317,13 +8317,13 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """,
                 (title.strip(), "", value.strip(), False)
             )
-            message = f"âœ… '{title}' ko File ID ke sath add kar diya gaya hai."
+            message = f"✅ '{title}' ko File ID ke sath add kar diya gaya hai."
 
         # CASE 3: URL LINK
         elif "http" in value or "." in value:
             normalized_url = value.strip()
             if not value.startswith(('http://', 'https://')):
-                await update.message.reply_text("âŒ Invalid URL format. URL must start with http:// or https://")
+                await update.message.reply_text("❌ Invalid URL format. URL must start with http:// or https://")
                 return
 
             cur.execute(
@@ -8337,10 +8337,10 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 """,
                 (title.strip(), normalized_url, None, False)
             )
-            message = f"âœ… '{title}' ko URL ke sath add kar diya gaya hai."
+            message = f"✅ '{title}' ko URL ke sath add kar diya gaya hai."
 
         else:
-            await update.message.reply_text("âŒ Invalid format. Please provide valid File ID, URL, or type 'unreleased'.")
+            await update.message.reply_text("❌ Invalid format. Please provide valid File ID, URL, or type 'unreleased'.")
             return
 
         conn.commit()
@@ -8358,7 +8358,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 num_notified = await notify_users_for_movie(context, title, value_to_send)
                 # Group notification optional
                 # await notify_in_group(context, title)
-                await update.message.reply_text(f"ðŸ“¢ Notification: {num_notified} users notified.")
+                await update.message.reply_text(f"📢 Notification: {num_notified} users notified.")
 
     except Exception as e:
         logger.error(f"Error in add_movie command: {e}")
@@ -8373,24 +8373,24 @@ async def notify_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 1: Admin types /notify"""
     if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     
-    await update.message.reply_text("ðŸŽ¬ <b>Smart Notify Started!</b>\n\nðŸ‘‰ à¤¸à¤¬à¤¸à¥‡ à¤ªà¤¹à¤²à¥‡ à¤®à¥à¤à¥‡ <b>Movie / Series</b> à¤•à¤¾ à¤¨à¤¾à¤® à¤¬à¤¤à¤¾à¤‡à¤:", parse_mode='HTML')
+    await update.message.reply_text("🎬 <b>Smart Notify Started!</b>\n\n👉 सबसे पहले मुझे <b>Movie / Series</b> का नाम बताइए:", parse_mode='HTML')
     return ASK_MOVIE
 
 async def notify_ask_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 2: Admin gives Movie Name"""
     # Cancel command check
     if update.message.text == '/cancel':
-        await update.message.reply_text("âŒ Notify Cancelled.")
+        await update.message.reply_text("❌ Notify Cancelled.")
         return ConversationHandler.END
         
     context.user_data['notify_movie'] = update.message.text
-    await update.message.reply_text("ðŸ‘¤ <b>à¤…à¤¬ User à¤•à¤¾ Username à¤¯à¤¾ User ID à¤¬à¤¤à¤¾à¤‡à¤:</b>\n(à¤œà¥ˆà¤¸à¥‡ @username à¤¯à¤¾ 123456789)", parse_mode='HTML')
+    await update.message.reply_text("👤 <b>अब User का Username या User ID बताइए:</b>\n(जैसे @username या 123456789)", parse_mode='HTML')
     return ASK_USER
 
 async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 3: Admin gives Username/ID -> Bot sends Template using Multi-Bot"""
     if update.message.text == '/cancel':
-        await update.message.reply_text("âŒ Notify Cancelled.")
+        await update.message.reply_text("❌ Notify Cancelled.")
         return ConversationHandler.END
 
     user_input = update.message.text.replace('@', '').strip()
@@ -8399,7 +8399,7 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Find user ID from DB
     conn = get_db_connection()
     if not conn:
-        await update.message.reply_text("âŒ DB Error!")
+        await update.message.reply_text("❌ DB Error!")
         return ConversationHandler.END
 
     try:
@@ -8413,26 +8413,26 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute("SELECT user_id, first_name FROM user_requests WHERE username ILIKE %s LIMIT 1", (user_input,))
             res = cur.fetchone()
             if not res:
-                await update.message.reply_text(f"âŒ '{user_input}' database me nahi mila. ID try karein.")
+                await update.message.reply_text(f"❌ '{user_input}' database me nahi mila. ID try karein.")
                 return ConversationHandler.END
             target_user_id, first_name = res
 
-        # ðŸŽ¨ Beautiful Template
+        # 🎨 Beautiful Template
         msg = (
-            f"ðŸŽ‰ <b>Good News!</b> ðŸ‘‹\n\n"
-            f"Hello <b>{first_name}!</b> à¤†à¤ªà¤•à¥€ Requested File à¤…à¤¬ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¹à¥ˆà¥¤\n\n"
-            f"ðŸŽ¬ File: <b>{movie_name}</b>\n\n"
-            f"à¤‡à¤¸à¥‡ à¤ªà¤¾à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤…à¤­à¥€ à¤¬à¥‰à¤Ÿ à¤®à¥‡à¤‚ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤Ÿà¤¾à¤‡à¤ª à¤•à¤°à¥‡à¤‚ à¤”à¤° à¤à¤¨à¥à¤œà¥‰à¤¯ à¤•à¤°à¥‡à¤‚! ðŸ˜Š\n\n"
-            f"â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”\nRegards, <b>@Ownermahi</b>"
+            f"🎉 <b>Good News!</b> 👋\n\n"
+            f"Hello <b>{first_name}!</b> आपकी Requested File अब उपलब्ध है।\n\n"
+            f"🎬 File: <b>{movie_name}</b>\n\n"
+            f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
+            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
         )
 
         # Multi-bot send function call karo
         success = await send_multi_bot_message(target_user_id, msg)
 
         if success:
-            await update.message.reply_text(f"âœ… <b>Perfect!</b> Notification successfully {first_name} ko bhej di gayi hai.", parse_mode='HTML')
+            await update.message.reply_text(f"✅ <b>Perfect!</b> Notification successfully {first_name} ko bhej di gayi hai.", parse_mode='HTML')
         else:
-            await update.message.reply_text("âŒ <b>Fail!</b> User ne teeno bots ko block kar diya hai.", parse_mode='HTML')
+            await update.message.reply_text("❌ <b>Fail!</b> User ne teeno bots ko block kar diya hai.", parse_mode='HTML')
 
     finally:
         close_db_connection(conn)
@@ -8451,13 +8451,13 @@ async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_T
     new_bot = context.args[1].lstrip("@")
 
     status_msg = await update.message.reply_text(
-        "ðŸš€ **Safe Update Mode On...**\nStarting to fix buttons slowly to avoid ban.",
+        "🚀 **Safe Update Mode On...**\nStarting to fix buttons slowly to avoid ban.",
         parse_mode='Markdown'
     )
 
     conn = get_db_connection()
     if not conn:
-        await status_msg.edit_text("âŒ DB connection failed.")
+        await status_msg.edit_text("❌ DB connection failed.")
         return
 
     cur = conn.cursor()
@@ -8476,8 +8476,8 @@ async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_T
             secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{m_id}"
 
             new_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("ðŸ“¥ Download Server 1", url=secure_url)],
-                [InlineKeyboardButton("ðŸ“¢ Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+                [InlineKeyboardButton("📥 Download Server 1", url=secure_url)],
+                [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
             ])
             await context.bot.edit_message_reply_markup(
                 chat_id=ch_id,
@@ -8489,7 +8489,7 @@ async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_T
             await asyncio.sleep(3)
             if success % 50 == 0:
                 await asyncio.sleep(10)
-                await status_msg.edit_text(f"â˜• Break...\nUpdated: {success}/{total}")
+                await status_msg.edit_text(f"☕ Break...\nUpdated: {success}/{total}")
 
         except RetryAfter as e:
             await asyncio.sleep(e.retry_after + 5)
@@ -8502,12 +8502,12 @@ async def update_buttons_command(update: Update, context: ContextTypes.DEFAULT_T
 
     cur.close()
     close_db_connection(conn)
-    await status_msg.edit_text(f"âœ… Updated {success}/{total} posts safely.", parse_mode='Markdown')
+    await status_msg.edit_text(f"✅ Updated {success}/{total} posts safely.", parse_mode='Markdown')
 
 async def bulk_add_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add multiple movies at once"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Sorry Darling, à¤¸à¤¿à¤°à¥à¤« à¤à¤¡à¤®à¤¿à¤¨ à¤¹à¥€ à¤‡à¤¸ à¤•à¤®à¤¾à¤‚à¤¡ à¤•à¤¾ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤")
+        await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
     try:
@@ -8516,7 +8516,7 @@ async def bulk_add_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if len(lines) <= 1 and not context.args:
             await update.message.reply_text("""
-à¤—à¤²à¤¤ à¤«à¥‰à¤°à¥à¤®à¥‡à¤Ÿ! à¤à¤¸à¥‡ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤°à¥‡à¤‚:
+गलत फॉर्मेट! ऐसे इस्तेमाल करें:
 
 /bulkadd
 Movie1 https://link1.com
@@ -8537,7 +8537,7 @@ Movie3 file_id_here
             parts = line.split()
             if len(parts) < 2:
                 failed_count += 1
-                results.append(f"âŒ Invalid line format: {line}")
+                results.append(f"❌ Invalid line format: {line}")
                 continue
 
             url_or_id = parts[-1]
@@ -8547,7 +8547,7 @@ Movie3 file_id_here
                 conn = get_db_connection()
                 if not conn:
                     failed_count += 1
-                    results.append(f"âŒ {title} - Database connection failed")
+                    results.append(f"❌ {title} - Database connection failed")
                     continue
 
                 cur = conn.cursor()
@@ -8568,13 +8568,13 @@ Movie3 file_id_here
                 close_db_connection(conn)
 
                 success_count += 1
-                results.append(f"âœ… {title}")
+                results.append(f"✅ {title}")
             except Exception as e:
                 failed_count += 1
-                results.append(f"âŒ {title} - Error: {str(e)}")
+                results.append(f"❌ {title} - Error: {str(e)}")
 
         result_message = f"""
-ðŸ“Š Bulk Add Results:
+📊 Bulk Add Results:
 
 Successfully added: {success_count}
 Failed: {failed_count}
@@ -8583,24 +8583,24 @@ Details:
 """ + "\n".join(results[:10])
 
         if len(results) > 10:
-            result_message += f"\n\n... à¤”à¤° {len(results) - 10} more items"
+            result_message += f"\n\n... और {len(results) - 10} more items"
 
         await update.message.reply_text(result_message)
 
     except Exception as e:
         logger.error(f"Error in bulk_add_movies: {e}")
-        await update.message.reply_text(f"Bulk add à¤®à¥‡à¤‚ error: {e}")
+        await update.message.reply_text(f"Bulk add में error: {e}")
 
 async def add_alias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add an alias for an existing movie"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Sorry Darling, à¤¸à¤¿à¤°à¥à¤« à¤à¤¡à¤®à¤¿à¤¨ à¤¹à¥€ à¤‡à¤¸ à¤•à¤®à¤¾à¤‚à¤¡ à¤•à¤¾ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤")
+        await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
     conn = None
     try:
         if not context.args or len(context.args) < 2:
-            await update.message.reply_text("à¤—à¤²à¤¤ à¤«à¥‰à¤°à¥à¤®à¥‡à¤Ÿ! à¤à¤¸à¥‡ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤°à¥‡à¤‚:\n/addalias à¤®à¥‚à¤µà¥€_à¤•à¤¾_à¤…à¤¸à¤²à¥€_à¤¨à¤¾à¤® alias_name")
+            await update.message.reply_text("गलत फॉर्मेट! ऐसे इस्तेमाल करें:\n/addalias मूवी_का_असली_नाम alias_name")
             return
 
         parts = context.args
@@ -8609,7 +8609,7 @@ async def add_alias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8618,7 +8618,7 @@ async def add_alias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movie = cur.fetchone()
 
         if not movie:
-            await update.message.reply_text(f"âŒ '{movie_title}' à¤¡à¥‡à¤Ÿà¤¾à¤¬à¥‡à¤¸ à¤®à¥‡à¤‚ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤ à¤ªà¤¹à¤²à¥‡ à¤®à¥‚à¤µà¥€ à¤•à¥‹ add à¤•à¤°à¥‡à¤‚à¥¤")
+            await update.message.reply_text(f"❌ '{movie_title}' डेटाबेस में नहीं मिली। पहले मूवी को add करें।")
             return
 
         movie_id = movie
@@ -8629,7 +8629,7 @@ async def add_alias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         conn.commit()
-        await update.message.reply_text(f"âœ… Alias '{alias}' successfully added for '{movie_title}'")
+        await update.message.reply_text(f"✅ Alias '{alias}' successfully added for '{movie_title}'")
 
     except Exception as e:
         logger.error(f"Error adding alias: {e}")
@@ -8643,14 +8643,14 @@ async def list_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = None
     try:
         if not context.args:
-            await update.message.reply_text("à¤•à¥ƒà¤ªà¤¯à¤¾ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤¦à¥‡à¤‚:\n/aliases à¤®à¥‚à¤µà¥€_à¤•à¤¾_à¤¨à¤¾à¤®")
+            await update.message.reply_text("कृपया मूवी का नाम दें:\n/aliases मूवी_का_नाम")
             return
 
         movie_title = " ".join(context.args)
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8666,13 +8666,13 @@ async def list_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = cur.fetchone()
 
         if not result:
-            await update.message.reply_text(f"'{movie_title}' à¤¡à¥‡à¤Ÿà¤¾à¤¬à¥‡à¤¸ à¤®à¥‡à¤‚ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤")
+            await update.message.reply_text(f"'{movie_title}' डेटाबेस में नहीं मिली।")
             return
 
         title, aliases = result
-        aliases_list = "\n".join(f"- {alias}" for alias in aliases) if aliases else "à¤•à¥‹à¤ˆ aliases à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¤‚"
+        aliases_list = "\n".join(f"- {alias}" for alias in aliases) if aliases else "कोई aliases नहीं हैं"
 
-        await update.message.reply_text(f"ðŸŽ¬ **{title}**\n\n**Aliases:**\n{aliases_list}", parse_mode='Markdown')
+        await update.message.reply_text(f"🎬 **{title}**\n\n**Aliases:**\n{aliases_list}", parse_mode='Markdown')
 
     except Exception as e:
         logger.error(f"Error listing aliases: {e}")
@@ -8683,7 +8683,7 @@ async def list_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bulk_add_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add multiple aliases at once"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Sorry Darling, à¤¸à¤¿à¤°à¥à¤« à¤à¤¡à¤®à¤¿à¤¨ à¤¹à¥€ à¤‡à¤¸ à¤•à¤®à¤¾à¤‚à¤¡ à¤•à¤¾ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤")
+        await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
     conn = None
@@ -8693,7 +8693,7 @@ async def bulk_add_aliases(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if len(lines) <= 1 and not context.args:
             await update.message.reply_text("""
-à¤—à¤²à¤¤ à¤«à¥‰à¤°à¥à¤®à¥‡à¤Ÿ! à¤à¤¸à¥‡ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤°à¥‡à¤‚:
+गलत फॉर्मेट! ऐसे इस्तेमाल करें:
 
 /aliasbulk
 Movie1: alias1, alias2, alias3
@@ -8706,7 +8706,7 @@ Movie2: alias4, alias5
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8745,7 +8745,7 @@ Movie2: alias4, alias5
         conn.commit()
 
         await update.message.reply_text(f"""
-ðŸ“Š Alias Bulk Add Results:
+📊 Alias Bulk Add Results:
 
 Successfully added: {success_count}
 Failed: {failed_count}
@@ -8761,7 +8761,7 @@ Failed: {failed_count}
 async def notify_manually(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Manually notify users about a movie"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("Sorry Darling, à¤¸à¤¿à¤°à¥à¤« à¤à¤¡à¤®à¤¿à¤¨ à¤¹à¥€ à¤‡à¤¸ à¤•à¤®à¤¾à¤‚à¤¡ à¤•à¤¾ à¤‡à¤¸à¥à¤¤à¥‡à¤®à¤¾à¤² à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤")
+        await update.message.reply_text("Sorry Darling, सिर्फ एडमिन ही इस कमांड का इस्तेमाल कर सकते हैं।")
         return
 
     try:
@@ -8773,7 +8773,7 @@ async def notify_manually(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8787,17 +8787,17 @@ async def notify_manually(update: Update, context: ContextTypes.DEFAULT_TYPE):
             value_to_send = file_id if file_id else url
             num_notified = await notify_users_for_movie(context, title, value_to_send)
             await notify_in_group(context, title)
-            await update.message.reply_text(f"{num_notified} users à¤•à¥‹ '{title}' à¤•à¥‡ à¤²à¤¿à¤ notify à¤•à¤¿à¤¯à¤¾ à¤—à¤¯à¤¾ à¤¹à¥ˆà¥¤")
+            await update.message.reply_text(f"{num_notified} users को '{title}' के लिए notify किया गया है।")
         else:
-            await update.message.reply_text(f"'{movie_title}' à¤¡à¥‡à¤Ÿà¤¾à¤¬à¥‡à¤¸ à¤®à¥‡à¤‚ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤")
+            await update.message.reply_text(f"'{movie_title}' डेटाबेस में नहीं मिली।")
     except Exception as e:
         logger.error(f"Error in notify_manually: {e}")
-        await update.message.reply_text(f"à¤à¤• à¤à¤°à¤° à¤†à¤¯à¤¾: {e}")
+        await update.message.reply_text(f"एक एरर आया: {e}")
 
 async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send text notification to specific user"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     try:
@@ -8810,7 +8810,7 @@ async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8821,7 +8821,7 @@ async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_
         user = cur.fetchone()
 
         if not user:
-            await update.message.reply_text(f"âŒ User `@{target_username}` not found in database.", parse_mode='Markdown')
+            await update.message.reply_text(f"❌ User `@{target_username}` not found in database.", parse_mode='Markdown')
             cur.close()
             close_db_connection(conn)
             return
@@ -8833,21 +8833,21 @@ async def notify_user_by_username(update: Update, context: ContextTypes.DEFAULT_
             text=message_text
         )
 
-        await update.message.reply_text(f"âœ… Message sent to `@{target_username}` ({first_name})", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ Message sent to `@{target_username}` ({first_name})", parse_mode='Markdown')
 
         cur.close()
         close_db_connection(conn)
 
     except telegram.error.Forbidden:
-        await update.message.reply_text(f"âŒ User blocked the bot.")
+        await update.message.reply_text(f"❌ User blocked the bot.")
     except Exception as e:
         logger.error(f"Error in notify_user_by_username: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast HTML message to all users with formatting support"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     try:
@@ -8861,7 +8861,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8874,7 +8874,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             close_db_connection(conn)
             return
 
-        status_msg = await update.message.reply_text(f"ðŸ“¤ Broadcasting to {len(all_users)} users...\nâ³ Please wait...")
+        status_msg = await update.message.reply_text(f"📤 Broadcasting to {len(all_users)} users...\n⏳ Please wait...")
 
         success_count = 0
         failed_count = 0
@@ -8882,7 +8882,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for user_id_tuple in all_users:
             user_id = user_id_tuple[0]
             try:
-                # ðŸ“¢ YAHAN PAR 'HTML' USE HOGA
+                # 📢 YAHAN PAR 'HTML' USE HOGA
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=message_text,
@@ -8897,9 +8897,9 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 failed_count += 1
 
         await status_msg.edit_text(
-            f"ðŸ“Š <b>Broadcast Complete</b>\n\n"
-            f"âœ… Sent: {success_count}\n"
-            f"âŒ Failed: {failed_count}",
+            f"📊 <b>Broadcast Complete</b>\n\n"
+            f"✅ Sent: {success_count}\n"
+            f"❌ Failed: {failed_count}",
             parse_mode='HTML'
         )
 
@@ -8908,12 +8908,12 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error in broadcast_message: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Schedule a notification for later"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     try:
@@ -8930,7 +8930,7 @@ async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TY
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -8941,7 +8941,7 @@ async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TY
         user = cur.fetchone()
 
         if not user:
-            await update.message.reply_text(f"âŒ User `@{target_username}` not found.", parse_mode='Markdown')
+            await update.message.reply_text(f"❌ User `@{target_username}` not found.", parse_mode='Markdown')
             cur.close()
             close_db_connection(conn)
             return
@@ -8962,7 +8962,7 @@ async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TY
         asyncio.create_task(send_scheduled_notification())
 
         await update.message.reply_text(
-            f"â° Notification scheduled!\n\n"
+            f"⏰ Notification scheduled!\n\n"
             f"To: `@{target_username}` ({first_name})\n"
             f"Delay: {delay_minutes} minutes\n"
             f"Message: {message_text[:50]}...",
@@ -8973,21 +8973,21 @@ async def schedule_notification(update: Update, context: ContextTypes.DEFAULT_TY
         close_db_connection(conn)
 
     except ValueError:
-        await update.message.reply_text("âŒ Invalid delay. Please provide number of minutes.")
+        await update.message.reply_text("❌ Invalid delay. Please provide number of minutes.")
     except Exception as e:
         logger.error(f"Error in schedule_notification: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Notify user with media by replying to a message"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     try:
         if not update.message.reply_to_message:
             await update.message.reply_text(
-                "âŒ Please reply to a message (file/video/audio/photo) with:\n"
+                "❌ Please reply to a message (file/video/audio/photo) with:\n"
                 "/notifyuserwithmedia @username Optional message"
             )
             return
@@ -9006,7 +9006,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9017,7 +9017,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
         user = cur.fetchone()
 
         if not user:
-            await update.message.reply_text(f"âŒ User `@{target_username}` not found in database.", parse_mode='Markdown')
+            await update.message.reply_text(f"❌ User `@{target_username}` not found in database.", parse_mode='Markdown')
             cur.close()
             close_db_connection(conn)
             return
@@ -9030,13 +9030,13 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
 
         warning_msg = await context.bot.send_message(
             chat_id=user_id,
-            text="á¯“âž¤This file automaticallyâ•ï¸deletes after 1 minuteâ•ï¸so please forward it to another chat àªœâ€âž´",
+            text="ᯓ➤This file automatically❕️deletes after 1 minute❕️so please forward it to another chat જ⁀➴",
             parse_mode='Markdown'
         )
 
         sent_msg = None
         media_type = "unknown"
-        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("âž¡ï¸ Join Channel", url="https://t.me/FlimfyBoxx")]])
+        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url="https://t.me/FlimfyBoxx")]])
 
         if replied_message.document:
             media_type = "file"
@@ -9096,7 +9096,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
                 text=text_to_send
             )
         else:
-            await update.message.reply_text("âŒ Unsupported media type.")
+            await update.message.reply_text("❌ Unsupported media type.")
             cur.close()
             close_db_connection(conn)
             return
@@ -9111,7 +9111,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
                 )
             )
 
-        confirmation = f"âœ… **Notification Sent!**\n\n"
+        confirmation = f"✅ **Notification Sent!**\n\n"
         confirmation += f"To: `@{target_username}` ({first_name})\n"
         confirmation += f"Media Type: {media_type.capitalize()}"
 
@@ -9121,20 +9121,20 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
         close_db_connection(conn)
 
     except telegram.error.Forbidden:
-        await update.message.reply_text(f"âŒ User blocked the bot.")
+        await update.message.reply_text(f"❌ User blocked the bot.")
     except Exception as e:
         logger.error(f"Error in notify_user_with_media: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast media to all users"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     replied_message = update.message.reply_to_message
     if not replied_message:
-        await update.message.reply_text("âŒ Please reply to a media message to broadcast it.")
+        await update.message.reply_text("❌ Please reply to a media message to broadcast it.")
         return
 
     try:
@@ -9142,7 +9142,7 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9156,12 +9156,12 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         status_msg = await update.message.reply_text(
-            f"ðŸ“¤ Broadcasting media to {len(all_users)} users...\nâ³ Please wait..."
+            f"📤 Broadcasting media to {len(all_users)} users...\n⏳ Please wait..."
         )
 
         success_count = 0
         failed_count = 0
-        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("âž¡ï¸ Join Channel", url="https://t.me/FlimfyBoxx")]])
+        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url="https://t.me/FlimfyBoxx")]])
 
         for user_id, first_name, username in all_users:
             try:
@@ -9207,10 +9207,10 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
                 logger.error(f"Failed broadcast to {user_id}: {e}")
 
         await status_msg.edit_text(
-            f"ðŸ“Š **Broadcast Complete**\n\n"
-            f"âœ… Sent: {success_count}\n"
-            f"âŒ Failed: {failed_count}\n"
-            f"ðŸ“ Total: {len(all_users)}"
+            f"📊 **Broadcast Complete**\n\n"
+            f"✅ Sent: {success_count}\n"
+            f"❌ Failed: {failed_count}\n"
+            f"📝 Total: {len(all_users)}"
         )
 
         cur.close()
@@ -9218,17 +9218,17 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except Exception as e:
         logger.error(f"Error in broadcast_with_media: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Quick notify - sends media to specific requesters"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     replied_message = update.message.reply_to_message
     if not replied_message:
-        await update.message.reply_text("âŒ Reply to a media message first!")
+        await update.message.reply_text("❌ Reply to a media message first!")
         return
 
     if not context.args:
@@ -9240,7 +9240,7 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9262,18 +9262,18 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
             target_users = cur.fetchall()
 
         if not target_users:
-            await update.message.reply_text(f"âŒ No users found for '{query}'")
+            await update.message.reply_text(f"❌ No users found for '{query}'")
             cur.close()
             close_db_connection(conn)
             return
 
         success_count = 0
         failed_count = 0
-        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("âž¡ï¸ Join Channel", url="https://t.me/FlimfyBoxx")]])
+        join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url="https://t.me/FlimfyBoxx")]])
 
         for user_id, first_name, username in target_users:
             try:
-                caption = f"ðŸŽ¬ {query}" if not query.startswith('@') else None
+                caption = f"🎬 {query}" if not query.startswith('@') else None
                 if replied_message.document:
                     await context.bot.send_document(
                         chat_id=user_id,
@@ -9305,8 +9305,8 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Failed to send to {user_id}: {e}")
 
         await update.message.reply_text(
-            f"âœ… Sent to {success_count} user(s)\n"
-            f"âŒ Failed for {failed_count} user(s)\n"
+            f"✅ Sent to {success_count} user(s)\n"
+            f"❌ Failed for {failed_count} user(s)\n"
             f"Query: {query}"
         )
 
@@ -9315,17 +9315,17 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error in quick_notify: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Forward message from channel to user"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     replied_message = update.message.reply_to_message
     if not replied_message:
-        await update.message.reply_text("âŒ Reply to a message first!")
+        await update.message.reply_text("❌ Reply to a message first!")
         return
 
     if not context.args:
@@ -9337,7 +9337,7 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9348,7 +9348,7 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = cur.fetchone()
 
         if not user:
-            await update.message.reply_text(f"âŒ User `@{target_username}` not found.", parse_mode='Markdown')
+            await update.message.reply_text(f"❌ User `@{target_username}` not found.", parse_mode='Markdown')
             cur.close()
             close_db_connection(conn)
             return
@@ -9357,19 +9357,19 @@ async def forward_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await replied_message.forward(chat_id=user_id)
 
-        await update.message.reply_text(f"âœ… Forwarded to `@{target_username}` ({first_name})", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ Forwarded to `@{target_username}` ({first_name})", parse_mode='Markdown')
 
         cur.close()
         close_db_connection(conn)
 
     except Exception as e:
         logger.error(f"Error in forward_to_user: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get user information"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     if not context.args:
@@ -9381,7 +9381,7 @@ async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9402,7 +9402,7 @@ async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_info = cur.fetchone()
 
         if not user_info:
-            await update.message.reply_text(f"âŒ No data found for `@{target_username}`", parse_mode='Markdown')
+            await update.message.reply_text(f"❌ No data found for `@{target_username}`", parse_mode='Markdown')
             cur.close()
             close_db_connection(conn)
             return
@@ -9422,25 +9422,25 @@ async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username_str = f"`@{username}`" if username else "N/A"
 
         info_text = f"""
-ðŸ‘¤ **User Information**
+👤 **User Information**
 
 **Basic Info:**
-â€¢ Name: {first_name}
-â€¢ Username: {username_str}
-â€¢ User ID: `{user_id}`
+• Name: {first_name}
+• Username: {username_str}
+• User ID: `{user_id}`
 
 **Statistics:**
-â€¢ Total Requests: {total}
-â€¢ Fulfilled: {fulfilled}
-â€¢ Pending: {total - fulfilled}
-â€¢ Last Request: {last_request.strftime('%Y-%m-%d %H:%M') if last_request else 'N/A'}
+• Total Requests: {total}
+• Fulfilled: {fulfilled}
+• Pending: {total - fulfilled}
+• Last Request: {last_request.strftime('%Y-%m-%d %H:%M') if last_request else 'N/A'}
 
 **Recent Requests:**
 """
 
         if recent_requests:
             for movie, req_time, notified in recent_requests:
-                status = "âœ…" if notified else "â³"
+                status = "✅" if notified else "⏳"
                 info_text += f"{status} {movie} - {req_time.strftime('%m/%d %H:%M')}\n"
         else:
             info_text += "No recent requests."
@@ -9452,12 +9452,12 @@ async def get_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error in get_user_info: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all bot users with Accurate Count from Activity Log"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     try:
@@ -9470,12 +9470,12 @@ async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
 
-        # 1. âœ… REAL TOTAL COUNT (From user_activity table)
+        # 1. ✅ REAL TOTAL COUNT (From user_activity table)
         # Ye un sabhi unique users ko ginega jinhone kabhi bhi bot use kiya hai
         cur.execute("SELECT COUNT(DISTINCT user_id) FROM user_activity")
         result = cur.fetchone()
@@ -9504,8 +9504,8 @@ async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         listable_users = cur.fetchone()[0]
         total_pages = (listable_users + per_page - 1) // per_page if listable_users > 0 else 1
 
-        users_text = f"ðŸ‘¥ **Bot Users** (Page {page}/{total_pages})\n"
-        users_text += f"ðŸ“Š **Total Unique Users: {total_users}**\n\n"
+        users_text = f"👥 **Bot Users** (Page {page}/{total_pages})\n"
+        users_text += f"📊 **Total Unique Users: {total_users}**\n\n"
 
         if not users:
             users_text += "No active requesters found on this page."
@@ -9515,11 +9515,11 @@ async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 safe_name = (first_name or "Unknown").replace("<", "&lt;").replace(">", "&gt;")
                 
                 users_text += f"{idx}. <b>{safe_name}</b> ({username_str})\n"
-                users_text += f"   ðŸ†” `{user_id}` | ðŸ“¥ Reqs: {req_count}\n"
-                users_text += f"   ðŸ•’ {last_seen.strftime('%Y-%m-%d %H:%M')}\n\n"
+                users_text += f"   🆔 `{user_id}` | 📥 Reqs: {req_count}\n"
+                users_text += f"   🕒 {last_seen.strftime('%Y-%m-%d %H:%M')}\n\n"
 
         if total_users > listable_users:
-            users_text += f"\nâš ï¸ *Note:* {total_users - listable_users} users ne bot use kiya hai par koi Request nahi bheji (isliye list me naam nahi hai)."
+            users_text += f"\n⚠️ *Note:* {total_users - listable_users} users ne bot use kiya hai par koi Request nahi bheji (isliye list me naam nahi hai)."
 
         await update.message.reply_text(users_text, parse_mode='HTML')
 
@@ -9528,12 +9528,12 @@ async def list_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error in list_all_users: {e}")
-        await update.message.reply_text(f"âŒ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Get comprehensive bot statistics"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     conn = None
@@ -9542,7 +9542,7 @@ async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         conn = get_db_connection()
         if not conn:
-            await update.message.reply_text("âŒ Database connection failed.")
+            await update.message.reply_text("❌ Database connection failed.")
             return
 
         cur = conn.cursor()
@@ -9574,25 +9574,25 @@ async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fulfillment_rate = (fulfilled / total_requests * 100) if total_requests > 0 else 0
 
         stats_text = f"""
-ðŸ“Š **Bot Statistics**
+📊 **Bot Statistics**
 
 **Database:**
-â€¢ Movies: {total_movies}
-â€¢ Users: {total_users}
-â€¢ Total Requests: {total_requests}
-â€¢ Fulfilled: {fulfilled}
-â€¢ Pending: {total_requests - fulfilled}
+• Movies: {total_movies}
+• Users: {total_users}
+• Total Requests: {total_requests}
+• Fulfilled: {fulfilled}
+• Pending: {total_requests - fulfilled}
 
 **Activity:**
-â€¢ Today's Requests: {today_requests}
-â€¢ Fulfillment Rate: {fulfillment_rate:.1f}%
+• Today's Requests: {today_requests}
+• Fulfillment Rate: {fulfillment_rate:.1f}%
 
 **Top Requesters:**
 """
         if top_users:
             for name, username, count in top_users:
                 username_str = f"`@{username}`" if username else "N/A"
-                stats_text += f"â€¢ {name} ({username_str}): {count} requests\n"
+                stats_text += f"• {name} ({username_str}): {count} requests\n"
         else:
             stats_text += "No user data available."
             
@@ -9600,7 +9600,7 @@ async def get_bot_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     except Exception as e:
         logger.error(f"Error in get_bot_stats: {e}")
-        await update.message.reply_text(f"âŒ Error while fetching stats: {e}")
+        await update.message.reply_text(f"❌ Error while fetching stats: {e}")
         
     finally:
         if cur: cur.close()
@@ -9612,14 +9612,14 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     user_id = update.effective_user.id
     if not is_admin(user_id):
-        await update.message.reply_text("â›” à¤¸à¤¿à¤°à¥à¤« à¤à¤¡à¤®à¤¿à¤¨ à¤•à¥‡ à¤²à¤¿à¤!")
+        await update.message.reply_text("⛔ सिर्फ एडमिन के लिए!")
         return
 
-    status_msg = await update.message.reply_text("â³ **Scanning Database for incomplete movies...**", parse_mode='Markdown')
+    status_msg = await update.message.reply_text("⏳ **Scanning Database for incomplete movies...**", parse_mode='Markdown')
 
     conn = get_db_connection()
     if not conn:
-        await status_msg.edit_text("âŒ Database connection failed.")
+        await status_msg.edit_text("❌ Database connection failed.")
         return
 
     try:
@@ -9629,11 +9629,11 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
         movies_to_fix = cur.fetchall()
         
         if not movies_to_fix:
-            await status_msg.edit_text("âœ… **All Good!** Database mein sabhi movies ka metadata complete hai.")
+            await status_msg.edit_text("✅ **All Good!** Database mein sabhi movies ka metadata complete hai.")
             return
 
         total = len(movies_to_fix)
-        await status_msg.edit_text(f"ðŸ§ Found **{total}** movies to fix. Starting update process... (This may take time)")
+        await status_msg.edit_text(f"🧐 Found **{total}** movies to fix. Starting update process... (This may take time)")
 
         success_count = 0
         failed_count = 0
@@ -9644,14 +9644,14 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
                 if index % 10 == 0:
                     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-                # âœ… FETCH CORRECT METADATA (6 Values)
+                # ✅ FETCH CORRECT METADATA (6 Values)
                 metadata = fetch_movie_metadata(title)
                 if metadata:
                     new_title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
 
                     # Only update if we found something useful
                     if genre or poster_url or year > 0:
-                        # âœ… CORRECT SQL UPDATE QUERY (Order Matters!)
+                        # ✅ CORRECT SQL UPDATE QUERY (Order Matters!)
                         cur.execute("""
                             UPDATE movies 
                             SET genre = %s, 
@@ -9673,7 +9673,7 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
                 await asyncio.sleep(0.5) 
 
             except Exception as e:
-                # ðŸ›‘ ROLLBACK IS CRITICAL HERE
+                # 🛑 ROLLBACK IS CRITICAL HERE
                 if conn:
                     conn.rollback() 
                 logger.error(f"Failed to fix {title}: {e}")
@@ -9681,17 +9681,17 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # Final Report
         await status_msg.edit_text(
-            f"ðŸŽ‰ **Repair Complete!**\n\n"
-            f"âœ… Fixed: {success_count}\n"
-            f"âŒ Failed: {failed_count}\n"
-            f"ðŸ“Š Total Processed: {total}\n\n"
-            f"Database updated successfully! ðŸš€",
+            f"🎉 **Repair Complete!**\n\n"
+            f"✅ Fixed: {success_count}\n"
+            f"❌ Failed: {failed_count}\n"
+            f"📊 Total Processed: {total}\n\n"
+            f"Database updated successfully! 🚀",
             parse_mode='Markdown'
         )
 
     except Exception as e:
         logger.error(f"Error in fix_metadata: {e}")
-        await status_msg.edit_text(f"âŒ Error: {e}")
+        await status_msg.edit_text(f"❌ Error: {e}")
     finally:
         if cur: cur.close()
         if conn: close_db_connection(conn)
@@ -9713,14 +9713,14 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
     # --- Argument Check ---
     if len(context.args) < 2:
         await update.message.reply_text(
-            "ðŸ“‹ <b>Restore Command Guide:</b>\n\n"
+            "📋 <b>Restore Command Guide:</b>\n\n"
             "<code>/restore &lt;channel_id&gt; &lt;type&gt; [delay]</code>\n\n"
             "<b>Types Available:</b>\n"
-            "ðŸŽ¬ <code>movies</code>  - Normal movies\n"
-            "ðŸ”ž <code>adult</code>   - 18+ content\n"
-            "ðŸ“º <code>series</code>  - Web series\n"
-            "ðŸŽŒ <code>anime</code>   - Anime\n"
-            "ðŸ“¦ <code>all</code>     - Everything\n\n"
+            "🎬 <code>movies</code>  - Normal movies\n"
+            "🔞 <code>adult</code>   - 18+ content\n"
+            "📺 <code>series</code>  - Web series\n"
+            "🎌 <code>anime</code>   - Anime\n"
+            "📦 <code>all</code>     - Everything\n\n"
             "<b>Examples:</b>\n"
             "<code>/restore -100123456789 movies</code>\n"
             "<code>/restore -100987654321 adult 5</code>",
@@ -9733,7 +9733,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
         new_channel_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            "âŒ Channel ID galat hai!\n"
+            "❌ Channel ID galat hai!\n"
             "Sahi format: <code>-100XXXXXXXXXX</code>",
             parse_mode='HTML'
         )
@@ -9745,8 +9745,8 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
     valid_types = ['movies', 'adult', 'series', 'anime', 'all']
     if content_type not in valid_types:
         await update.message.reply_text(
-            f"âŒ Type galat hai: <code>{content_type}</code>\n\n"
-            f"âœ… Valid types: <code>{', '.join(valid_types)}</code>",
+            f"❌ Type galat hai: <code>{content_type}</code>\n\n"
+            f"✅ Valid types: <code>{', '.join(valid_types)}</code>",
             parse_mode='HTML'
         )
         return
@@ -9763,7 +9763,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
     # --- Database Se Posts Nikalo ---
     conn = get_db_connection()
     if not conn:
-        await update.message.reply_text("âŒ Database error.")
+        await update.message.reply_text("❌ Database error.")
         return
 
     cur = conn.cursor()
@@ -9792,11 +9792,11 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not posts:
         type_emoji = {
-            'movies': 'ðŸŽ¬', 'adult': 'ðŸ”ž',
-            'series': 'ðŸ“º', 'anime': 'ðŸŽŒ', 'all': 'ðŸ“¦'
+            'movies': '🎬', 'adult': '🔞',
+            'series': '📺', 'anime': '🎌', 'all': '📦'
         }
         await update.message.reply_text(
-            f"{type_emoji.get(content_type, 'ðŸ“¦')} "
+            f"{type_emoji.get(content_type, '📦')} "
             f"<b>{content_type.upper()}</b> type ki koi bhi "
             f"post restore ke liye nahi mili.",
             parse_mode='HTML'
@@ -9807,11 +9807,11 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
     est_minutes = (total * delay) // 60
 
     status_msg = await update.message.reply_text(
-        f"ðŸ”„ <b>Restore Starting...</b>\n\n"
-        f"ðŸ“¦ Type: <code>{content_type.upper()}</code>\n"
-        f"ðŸ“Š Total Posts: <code>{total}</code>\n"
-        f"â± Delay: <code>{delay}</code> seconds\n"
-        f"âŒ› Est. Time: ~<code>{est_minutes}</code> min\n\n"
+        f"🔄 <b>Restore Starting...</b>\n\n"
+        f"📦 Type: <code>{content_type.upper()}</code>\n"
+        f"📊 Total Posts: <code>{total}</code>\n"
+        f"⏱ Delay: <code>{delay}</code> seconds\n"
+        f"⌛ Est. Time: ~<code>{est_minutes}</code> min\n\n"
         f"<i>Please wait, do not stop the bot...</i>",
         parse_mode='HTML'
     )
@@ -9920,11 +9920,11 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
             if idx % 10 == 0 or idx == total:
                 try:
                     await status_msg.edit_text(
-                        f"ðŸ”„ <b>Restoring {content_type.upper()}...</b>\n\n"
-                        f"ðŸ“Š Progress: <code>{idx}/{total}</code>\n"
-                        f"âœ… Success:  <code>{success}</code>\n"
-                        f"âŒ Failed:   <code>{failed}</code>\n"
-                        f"â­ Skipped:  <code>{skipped}</code>",
+                        f"🔄 <b>Restoring {content_type.upper()}...</b>\n\n"
+                        f"📊 Progress: <code>{idx}/{total}</code>\n"
+                        f"✅ Success:  <code>{success}</code>\n"
+                        f"❌ Failed:   <code>{failed}</code>\n"
+                        f"⏭ Skipped:  <code>{skipped}</code>",
                         parse_mode='HTML'
                     )
                 except Exception:
@@ -9938,7 +9938,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
             logger.warning(f"Rate limited! Waiting {wait}s")
             try:
                 await status_msg.edit_text(
-                    f"â¸ <b>Telegram ne slow kiya!</b>\n"
+                    f"⏸ <b>Telegram ne slow kiya!</b>\n"
                     f"Waiting <code>{wait}</code> seconds...\n"
                     f"Progress: <code>{idx}/{total}</code>",
                     parse_mode='HTML'
@@ -9949,7 +9949,7 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
 
         except telegram.error.Forbidden:
             await status_msg.edit_text(
-                f"âŒ <b>Bot ko channel mein admin access nahi!</b>\n\n"
+                f"❌ <b>Bot ko channel mein admin access nahi!</b>\n\n"
                 f"Steps:\n"
                 f"1. Channel open karo\n"
                 f"2. Bot ko Admin banao\n"
@@ -9964,57 +9964,57 @@ async def restore_posts_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Final Report
     type_emoji = {
-        'movies': 'ðŸŽ¬', 'adult': 'ðŸ”ž',
-        'series': 'ðŸ“º', 'anime': 'ðŸŽŒ', 'all': 'ðŸ“¦'
+        'movies': '🎬', 'adult': '🔞',
+        'series': '📺', 'anime': '🎌', 'all': '📦'
     }
     await status_msg.edit_text(
-        f"ðŸŽ‰ <b>Restore Complete!</b>\n\n"
-        f"{type_emoji.get(content_type,'ðŸ“¦')} Type: "
+        f"🎉 <b>Restore Complete!</b>\n\n"
+        f"{type_emoji.get(content_type,'📦')} Type: "
         f"<code>{content_type.upper()}</code>\n"
-        f"ðŸ“¦ Total:   <code>{total}</code>\n"
-        f"âœ… Success: <code>{success}</code>\n"
-        f"âŒ Failed:  <code>{failed}</code>\n"
-        f"â­ Skipped: <code>{skipped}</code>\n\n"
-        f"ðŸ“¢ New Channel: <code>{new_channel_id}</code>\n"
-        f"ðŸ¤– Bot: @{new_bot}",
+        f"📦 Total:   <code>{total}</code>\n"
+        f"✅ Success: <code>{success}</code>\n"
+        f"❌ Failed:  <code>{failed}</code>\n"
+        f"⏭ Skipped: <code>{skipped}</code>\n\n"
+        f"📢 New Channel: <code>{new_channel_id}</code>\n"
+        f"🤖 Bot: @{new_bot}",
         parse_mode='HTML'
     )
 
 async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show admin commands help"""
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("â›” Admin only command.")
+        await update.message.reply_text("⛔ Admin only command.")
         return
 
     help_text = """
-ðŸ‘‘ **Admin Commands Guide**
+👑 **Admin Commands Guide**
 
 **Media Notifications:**
-â€¢ `/notifyuserwithmedia @user [msg]` - Reply to media + send to user
-â€¢ `/qnotify <@user|MovieTitle>` - Quick notify (reply to media)
-â€¢ `/forwardto @user` - Forward channel message (reply to msg)
-â€¢ `/broadcastmedia [msg]` - Broadcast media to all (reply to media)
+• `/notifyuserwithmedia @user [msg]` - Reply to media + send to user
+• `/qnotify <@user|MovieTitle>` - Quick notify (reply to media)
+• `/forwardto @user` - Forward channel message (reply to msg)
+• `/broadcastmedia [msg]` - Broadcast media to all (reply to media)
 
 **Text Notifications:**
-â€¢ `/notifyuser @user <msg>` - Send text message
-â€¢ `/broadcast <msg>` - Text broadcast to all
-â€¢ `/schedulenotify <min> @user <msg>` - Schedule notification
+• `/notifyuser @user <msg>` - Send text message
+• `/broadcast <msg>` - Text broadcast to all
+• `/schedulenotify <min> @user <msg>` - Schedule notification
 
 **User Management:**
-â€¢ `/userinfo @username` - Get user stats
-â€¢ `/listusers [page]` - List all users
+• `/userinfo @username` - Get user stats
+• `/listusers [page]` - List all users
 
 **Movie Management:**
-â€¢ `/addmovie <Title> <URL|FileID>` - Add movie
-â€¢ `/bulkadd` - Bulk add movies (multi-line)
-â€¢ `/addalias <Title> <alias>` - Add alias
-â€¢ `/aliasbulk` - Bulk add aliases (multi-line)
-â€¢ `/aliases <MovieTitle>` - List aliases
-â€¢ `/notify <MovieTitle>` - Auto-notify requesters
+• `/addmovie <Title> <URL|FileID>` - Add movie
+• `/bulkadd` - Bulk add movies (multi-line)
+• `/addalias <Title> <alias>` - Add alias
+• `/aliasbulk` - Bulk add aliases (multi-line)
+• `/aliases <MovieTitle>` - List aliases
+• `/notify <MovieTitle>` - Auto-notify requesters
 
 **Stats & Help:**
-â€¢ `/stats` - Bot statistics
-â€¢ `/adminhelp` - This help message
+• `/stats` - Bot statistics
+• `/adminhelp` - This help message
 """
 
     await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -10026,19 +10026,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
     if isinstance(update, Update) and update.effective_message:
         try:
-            # âœ… IMPROVED: Only send ReplyKeyboardMarkup in Private Chats to prevent Channel crashes
+            # ✅ IMPROVED: Only send ReplyKeyboardMarkup in Private Chats to prevent Channel crashes
             is_private = update.effective_chat and update.effective_chat.type == "private"
             keyboard_markup = get_main_keyboard() if is_private else None
 
             error_msg = str(context.error)
             if "too many values to unpack" in error_msg:
                 await update.effective_message.reply_text(
-                    "âŒ Error: Data format issue. Please try again.",
+                    "❌ Error: Data format issue. Please try again.",
                     reply_markup=keyboard_markup
                 )
             elif "unpacking" in error_msg:
                 await update.effective_message.reply_text(
-                    "âŒ Error: Could not process your request. Please try again.",
+                    "❌ Error: Could not process your request. Please try again.",
                     reply_markup=keyboard_markup
                 )
             else:
@@ -10081,11 +10081,11 @@ TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "9fa44f5e9fbd41415df930ce5b81c4d7"
 
 # ==================== API ROUTES ====================
 
-# ðŸ‘‡ NAYA FIX: UptimeRobot ke liye Root URL (Taaki 404 na aaye) ðŸ‘‡
+# 👇 NAYA FIX: UptimeRobot ke liye Root URL (Taaki 404 na aaye) 👇
 @flask_app.route('/', methods=['GET', 'HEAD'])
 def home():
     return "Bot is Alive & Running!", 200
-# ðŸ‘† NAYA FIX END ðŸ‘†
+# 👆 NAYA FIX END 👆
 
 @flask_app.route('/api/movies', methods=['GET'])
 def get_movies():
@@ -10214,7 +10214,7 @@ def get_movie_details(movie_id):
                     trailer = next((v for v in videos.get('results', []) if v['type'] == 'Trailer' and v['site'] == 'YouTube'), None)
                     if trailer:
                         movie['trailer_key'] = trailer['key']
-                        # ðŸ”¥ FIX: Permanently save to DB
+                        # 🔥 FIX: Permanently save to DB
                         try:
                             conn_update = get_db_connection()
                             if conn_update:
@@ -10284,7 +10284,7 @@ def search_movies_api():
     tmdb_results = []
     if len(local_results) < 15:
         try:
-            # Use original query (including year) â€“ no stripping
+            # Use original query (including year) – no stripping
             tmdb_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={quote(query)}"
             resp = requests.get(tmdb_url, timeout=5).json()
             for item in resp.get('results', []):
@@ -10347,7 +10347,7 @@ def request_movie_api():
     success = store_user_request(user_id, username, first_name, title, None, None)
     
     if success:
-        # ðŸ”¥ FIX: Web App se aayi request ko turant Admin Channel me send karein
+        # 🔥 FIX: Web App se aayi request ko turant Admin Channel me send karein
         bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
         request_channel = os.environ.get('REQUEST_CHANNEL_ID')
         
@@ -10355,20 +10355,20 @@ def request_movie_api():
             try:
                 # Beautiful Admin Notification Format
                 msg_text = (
-                    f"ðŸŽ¬ <b>New WebApp Request!</b> ðŸŽ¬\n\n"
+                    f"🎬 <b>New WebApp Request!</b> 🎬\n\n"
                     f"Movie: <b>{title}</b>\n"
                     f"User: {first_name} (<code>{user_id}</code>)\n"
                 )
                 if username:
                     msg_text += f"Username: @{username}\n"
-                msg_text += f"From: ðŸŒ Web Portal"
+                msg_text += f"From: 🌐 Web Portal"
 
                 # Inline Buttons for Admin
                 short_title = title[:15].replace('_', ' ')
                 reply_markup = {
                     "inline_keyboard": [
-                        [{"text": "âœ… Movie Add Kar Di Gai Hai", "callback_data": f"reqA_{user_id}_{short_title}"}],
-                        [{"text": "âŒ Nahi Mili", "callback_data": f"reqN_{user_id}_{short_title}"}]
+                        [{"text": "✅ Movie Add Kar Di Gai Hai", "callback_data": f"reqA_{user_id}_{short_title}"}],
+                        [{"text": "❌ Nahi Mili", "callback_data": f"reqN_{user_id}_{short_title}"}]
                     ]
                 }
                 
@@ -10388,7 +10388,7 @@ def request_movie_api():
     else:
         return jsonify({'status': 'error', 'message': 'Could not save request'}), 500
 
-# ðŸ¤– GOOGLE AUTO-SUGGEST PROXY (Spelling Fixer)
+# 🤖 GOOGLE AUTO-SUGGEST PROXY (Spelling Fixer)
 @flask_app.route('/api/suggest', methods=['GET'])
 def get_suggestions():
     q = request.args.get('q', '').strip()
@@ -10547,7 +10547,7 @@ def get_imdb_id(tmdb_id):
 
 # ==================== MAIN WEB APP PAGE (Premium HTML) ====================
 
-# ðŸ›¡ï¸ MIDDLEMAN REDIRECT PAGE (Anti-Bot)
+# 🛡️ MIDDLEMAN REDIRECT PAGE (Anti-Bot)
 @flask_app.route('/watch/<int:movie_id>')
 def secure_watch(movie_id):
     # Yeh HTML page user ko dikhega. Bots JS run nahi kar pate.
@@ -10578,10 +10578,10 @@ def secure_watch(movie_id):
                     if(data.url) {
                         window.location.href = data.url; 
                     } else {
-                        document.body.innerHTML = "<h3>âŒ Server Error. Please try again.</h3>";
+                        document.body.innerHTML = "<h3>❌ Server Error. Please try again.</h3>";
                     }
                 }).catch(e => {
-                    document.body.innerHTML = "<h3>âŒ Connection failed.</h3>";
+                    document.body.innerHTML = "<h3>❌ Connection failed.</h3>";
                 });
             }, 1500); 
         </script>
@@ -10590,7 +10590,7 @@ def secure_watch(movie_id):
     """
     return html
 
-# ðŸ” SECRET LINK GENERATOR API (Auto Delete Logic)
+# 🔐 SECRET LINK GENERATOR API (Auto Delete Logic)
 @flask_app.route('/api/gen_link/<int:movie_id>', methods=['POST'])
 def gen_secure_link(movie_id):
     token = "tmp_" + secrets.token_hex(6)
@@ -10620,7 +10620,7 @@ def serve_mini_app():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FlimfyBox Â· PREMIUM</title>
+    <title>FlimfyBox · PREMIUM</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -10859,7 +10859,7 @@ def serve_mini_app():
             height: 50vh;
             min-height: 320px;
             background-size: cover;
-            background-position: top center; /* ðŸ‘‰ 'center 20%' ki jagah 'top center' karein taaki landscape image ka main hissa dikhe */
+            background-position: top center; /* 👉 'center 20%' ki jagah 'top center' karein taaki landscape image ka main hissa dikhe */
             overflow: hidden;
         }
         .dp-backdrop::after {
@@ -10988,7 +10988,7 @@ def serve_mini_app():
         .toast.show { bottom: 30px; }
         .loader { text-align: center; padding: 40px; color: var(--primary); font-size: 16px; }
         
-        /* ðŸŒŸ NAYA: Request Button Glow Animation */
+        /* 🌟 NAYA: Request Button Glow Animation */
         @keyframes requestBlink {
             0% { box-shadow: 0 0 10px var(--primary); transform: scale(1); }
             50% { box-shadow: 0 0 25px var(--primary), 0 0 10px white; transform: scale(1.02); background: var(--primary); }
@@ -11036,7 +11036,7 @@ def serve_mini_app():
             <div class="hero-overlay">
                 <div class="hero-info">
                     <h2 id="heroTitle">Loading...</h2>
-                    <span id="heroMeta">âœ¨ Premium Collection</span>
+                    <span id="heroMeta">✨ Premium Collection</span>
                 </div>
             </div>
         </div>
@@ -11099,8 +11099,8 @@ def serve_mini_app():
                     <h1 class="dp-title" id="dpTitle">Title</h1>
                 </div>
                 <div class="rich-info-box">
-                    <div><span>IMDb</span> <label id="dpRating" style="color:var(--primary);">â€”</label></div>
-                    <div><span>Genre</span> <label id="dpGenre">â€”</label></div>
+                    <div><span>IMDb</span> <label id="dpRating" style="color:var(--primary);">—</label></div>
+                    <div><span>Genre</span> <label id="dpGenre">—</label></div>
                     <div><span>Cast</span> <label id="dpActors">Fetching...</label></div>
                     <div><span>Audio</span> <label>Dual Audio [Hindi & English] + Subs</label></div>
                     <div class="rich-desc" id="dpDesc">Loading story...</div>
@@ -11130,7 +11130,7 @@ def serve_mini_app():
         </div>
     </div>
 
-    <div class="toast" id="toast">âœ… Done!</div>
+    <div class="toast" id="toast">✅ Done!</div>
 
     <script>
         const tg = window.Telegram.WebApp;
@@ -11206,7 +11206,7 @@ def serve_mini_app():
             }
         }
 
-        // ðŸ”¥ NAYA: Infinite Scroll Listener
+        // 🔥 NAYA: Infinite Scroll Listener
         window.addEventListener('scroll', () => {
             // Agar user page ke bottom se 600px upar hai, toh advance mein next page load kar lo
             if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 600) {
@@ -11251,7 +11251,7 @@ def serve_mini_app():
                     const m = top5[idx];
                     document.getElementById('heroSlider').style.backgroundImage = `url(${m.image})`;
                     document.getElementById('heroTitle').innerText = m.title;
-                    document.getElementById('heroMeta').innerText = `${m.year} â€¢ ${m.category}`;
+                    document.getElementById('heroMeta').innerText = `${m.year} • ${m.category}`;
                     idx = (idx + 1) % top5.length;
                 };
                 updateHero();
@@ -11273,9 +11273,9 @@ def serve_mini_app():
         function renderCards(movies, cardClass = 'card', forceTMDB = false) {
             if (!movies.length) return '<div style="color:var(--text-muted); padding:10px;">No movies</div>';
             return movies.map(m => {
-                // ðŸ”¥ FIX: Automatically detect karega ki poster TMDB (Request) ka hai ya Local DB ka
+                // 🔥 FIX: Automatically detect karega ki poster TMDB (Request) ka hai ya Local DB ka
                 const isTMDB = forceTMDB || m.source === 'tmdb'; 
-                const rating = m.rating && m.rating !== 'N/A' ? `â­ ${m.rating}` : '';
+                const rating = m.rating && m.rating !== 'N/A' ? `⭐ ${m.rating}` : '';
                 const badge = isTMDB ? '<div class="card-rating" style="color:white; background:var(--primary);">Request</div>' : (rating ? `<div class="card-rating">${rating}</div>` : '');
                 
                 return `
@@ -11472,7 +11472,7 @@ document.addEventListener('click', (e) => {
                         if (m.trailer_key) {
                             document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="playTrailer('${m.trailer_key}')"><i class="fab fa-youtube"></i> Watch Trailer</button>`;
                         } else {
-                            document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="showToast('âŒ Trailer not found')"><i class="fas fa-video-slash"></i> No Trailer</button>`;
+                            document.getElementById('dpTrailerBtn').innerHTML = `<button class="btn-trailer" onclick="showToast('❌ Trailer not found')"><i class="fas fa-video-slash"></i> No Trailer</button>`;
                         }
                         // Download links
                         if (m.files && m.files.length) {
@@ -11480,7 +11480,7 @@ document.addEventListener('click', (e) => {
                             m.files.forEach(f => {
                                 links += `
                                     <button class="dl-btn" onclick="downloadMovie(${m.id})">
-                                        <span class="quality-text">ðŸ“ ${f.quality} <span class="file-size">[${f.size || 'N/A'}]</span></span>
+                                        <span class="quality-text">📁 ${f.quality} <span class="file-size">[${f.size || 'N/A'}]</span></span>
                                         <span class="action">Get</span>
                                     </button>
                                 `;
@@ -11490,7 +11490,7 @@ document.addEventListener('click', (e) => {
                             document.getElementById('dpLinks').innerHTML = `
                                 <div class="dl-heading">DOWNLOAD</div>
                                 <button class="dl-btn" onclick="downloadMovie(${m.id})">
-                                    <span class="quality-text">ðŸ“ 1080p Full HD</span>
+                                    <span class="quality-text">📁 1080p Full HD</span>
                                     <span class="action">Get</span>
                                 </button>
                             `;
@@ -11530,17 +11530,17 @@ document.addEventListener('click', (e) => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success' && data.imdb_id) {
-                        titleEl.innerText = 'Secure Player Â· Premium Stream';
+                        titleEl.innerText = 'Secure Player · Premium Stream';
                         // streamimdb.ru requires IMDb ID for playing
                         iframeCont.innerHTML = `<iframe src="https://streamimdb.ru/embed/movie/${data.imdb_id}" allowfullscreen allow="autoplay"></iframe>`;
                     } else {
                         titleEl.innerText = 'Error loading stream';
-                        iframeCont.innerHTML = '<div style="color:white;text-align:center;">âŒ Could not find streaming source. Try Requesting the movie instead.</div>';
+                        iframeCont.innerHTML = '<div style="color:white;text-align:center;">❌ Could not find streaming source. Try Requesting the movie instead.</div>';
                     }
                 })
                 .catch(e => {
                     titleEl.innerText = 'Network Error';
-                    iframeCont.innerHTML = '<div style="color:white;text-align:center;">âŒ Network error while loading player.</div>';
+                    iframeCont.innerHTML = '<div style="color:white;text-align:center;">❌ Network error while loading player.</div>';
                 });
         };
 
@@ -11551,7 +11551,7 @@ document.addEventListener('click', (e) => {
 
         window.requestMovie = function(title) {
             tg.HapticFeedback.notificationOccurred('success');
-            showToast('â³ Requesting...');
+            showToast('⏳ Requesting...');
             const user = tg.initDataUnsafe?.user || {id: 0, username: 'webapp', first_name: 'User'};
             fetch('/api/request', {
                 method: 'POST',
@@ -11560,16 +11560,16 @@ document.addEventListener('click', (e) => {
             })
             .then(r => r.json())
             .then(d => {
-                if (d.status === 'success') showToast('âœ… Request sent!');
-                else showToast('âŒ Failed');
+                if (d.status === 'success') showToast('✅ Request sent!');
+                else showToast('❌ Failed');
             })
-            .catch(() => showToast('âŒ Error'));
+            .catch(() => showToast('❌ Error'));
         };
 
-        // ðŸ”¥ NAYA: Silent Request (Jab TMDB aur Google dono fail ho jayein)
+        // 🔥 NAYA: Silent Request (Jab TMDB aur Google dono fail ho jayein)
         window.requestSilent = function(title) {
             tg.HapticFeedback.notificationOccurred('success');
-            showToast('â³ Sending Request...');
+            showToast('⏳ Sending Request...');
             const user = tg.initDataUnsafe?.user || {id: 0, username: 'webapp', first_name: 'User'};
             
             fetch('/api/request', {
@@ -11580,17 +11580,17 @@ document.addEventListener('click', (e) => {
             .then(r => r.json())
             .then(d => {
                 if (d.status === 'success') {
-                    showToast('âœ… Request Sent to Admin!');
+                    showToast('✅ Request Sent to Admin!');
                     // Request bhejte hi Mini app close kar do (Seamless feel ke liye)
                     setTimeout(() => { tg.close(); }, 1500);
                 } else {
-                    showToast('âŒ Failed to send');
+                    showToast('❌ Failed to send');
                 }
             })
-            .catch(() => showToast('âŒ Network Error'));
+            .catch(() => showToast('❌ Network Error'));
         };
 
-        // ðŸ›¡ï¸ NAYA: Anti-Bot Middleware Par Bhejne Wala Function
+        // 🛡️ NAYA: Anti-Bot Middleware Par Bhejne Wala Function
         window.downloadBot = function(id) {
             tg.HapticFeedback.impactOccurred('heavy');
             // Seedha Bot ki jagah pehle Secure verification page par bhejenge
@@ -11605,7 +11605,7 @@ document.addEventListener('click', (e) => {
         // Start
         loadMovies();
         
-        // ðŸª„ NAYA JUGAD: URL se query nikal kar auto-search karna
+        // 🪄 NAYA JUGAD: URL se query nikal kar auto-search karna
         setTimeout(() => {
             const urlParams = new URLSearchParams(window.location.search);
             const reqQuery = urlParams.get('req');
@@ -11613,7 +11613,7 @@ document.addEventListener('click', (e) => {
             if (reqQuery) {
                 const searchInput = document.getElementById('searchInput');
                 searchInput.value = reqQuery;
-                showToast("ðŸ” Finding correct spelling...");
+                showToast("🔍 Finding correct spelling...");
                 // Search ko trigger karo
                 searchInput.dispatchEvent(new Event('input', { bubbles: true }));
             }
@@ -11648,18 +11648,18 @@ async def start_request_flow(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     # --- NEW STYLISH & SHORT TEXT ---
     request_instruction_text = (
-        "ðŸ“ ð—¥ð—²ð—¾ð˜‚ð—²ð˜€ð˜ ð—¥ð˜‚ð—¹ð—²ð˜€..!!\n\n"
-        "à¤¬à¤¸ à¤®à¥‚à¤µà¥€/à¤¸à¥€à¤°à¥€à¤œà¤¼ à¤•à¤¾ <b>à¤…à¤¸à¤²à¥€ à¤¨à¤¾à¤®</b> à¤²à¤¿à¤–à¥‡à¤‚à¥¤âœ”ï¸\n\n"
-        "à¤«à¤¼à¤¾à¤²à¤¤à¥‚ à¤¶à¤¬à¥à¤¦ (Download, HD, Please) à¤¨ à¤²à¤¿à¤–à¥‡à¤‚à¥¤â™»ï¸\n\n"
-        "<b><a href='https://www.google.com/'>ð—šð—¼ð—¼ð—´ð—¹ð—²</a></b> à¤¸à¥‡ à¤¸à¤¹à¥€ à¤¸à¥à¤ªà¥‡à¤²à¤¿à¤‚à¤— à¤šà¥‡à¤• à¤•à¤° à¤²à¥‡à¤‚à¥¤ â˜œ\n\n"
-        "âœá°ð—˜ð˜…ð—®ð—ºð—½ð—¹ð—²\n\n"
-        "à¤¸à¤¹à¥€ à¤¹à¥ˆ.!â€¼ï¸    \n"
-        "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n"
-        "Animal âœ”ï¸ | Animal Movie Download âŒ\n"
-        "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n"
-        "Mirzapur S03 âœ”ï¸ | Mirzapur New Season âŒ\n"
-        "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n\n"
-        "ðŸ‘‡ <b>à¤…à¤¬ à¤¨à¥€à¤šà¥‡ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤­à¥‡à¤œà¥‡à¤‚:</b>"
+        "📝 𝗥𝗲𝗾𝘂𝗲𝘀𝘁 𝗥𝘂𝗹𝗲𝘀..!!\n\n"
+        "बस मूवी/सीरीज़ का <b>असली नाम</b> लिखें।✔️\n\n"
+        "फ़ालतू शब्द (Download, HD, Please) न लिखें।♻️\n\n"
+        "<b><a href='https://www.google.com/'>𝗚𝗼𝗼𝗴𝗹𝗲</a></b> से सही स्पेलिंग चेक कर लें। ☜\n\n"
+        "✐ᝰ𝗘𝘅𝗮𝗺𝗽𝗹𝗲\n\n"
+        "सही है.!‼️    \n"
+        "─────────────────────\n"
+        "Animal ✔️ | Animal Movie Download ❌\n"
+        "─────────────────────\n"
+        "Mirzapur S03 ✔️ | Mirzapur New Season ❌\n"
+        "─────────────────────\n\n"
+        "👇 <b>अब नीचे मूवी का नाम भेजें:</b>"
     )
     
     # Message Edit karein
@@ -11683,11 +11683,11 @@ async def handle_request_name_input(update: Update, context: ContextTypes.DEFAUL
     # User ka message delete karne ke liye (Clean Chat)
     track_message_for_deletion(context, chat_id, update.message.message_id, 120)
 
-    # âœ… FIXED: Safety Check - Agar user ne koi Menu Button daba diya
-    MENU_BUTTONS = ['ðŸ” Search Movies', 'ðŸ“‚ Browse by Genre', 'ðŸ™‹ Request Movie', 'ðŸ“Š My Stats', 'â“ Help']
+    # ✅ FIXED: Safety Check - Agar user ne koi Menu Button daba diya
+    MENU_BUTTONS = ['🔍 Search Movies', '📂 Browse by Genre', '🙋 Request Movie', '📊 My Stats', '❓ Help']
 
     if user_name_input.startswith('/') or user_name_input in MENU_BUTTONS:
-        msg = await update.message.reply_text("âŒ **Request Process Cancelled.**")
+        msg = await update.message.reply_text("❌ **Request Process Cancelled.**")
         track_message_for_deletion(context, chat_id, msg.message_id, 10)
         # Us button ka original function chala do
         await main_menu_or_search(update, context)
@@ -11699,20 +11699,20 @@ async def handle_request_name_input(update: Update, context: ContextTypes.DEFAUL
     # Confirmation Keyboard (Yes/No)
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("âœ… Yes, Confirm", callback_data="confirm_yes"),
-            InlineKeyboardButton("âŒ No, Cancel", callback_data="confirm_no")
+            InlineKeyboardButton("✅ Yes, Confirm", callback_data="confirm_yes"),
+            InlineKeyboardButton("❌ No, Cancel", callback_data="confirm_no")
         ]
     ])
     
     msg = await update.message.reply_text(
-        f"ðŸ”” <b>Confirmation Required</b>\n\n"
-        f"à¤•à¥à¤¯à¤¾ à¤†à¤ª <b>'{user_name_input}'</b> à¤•à¥‹ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?\n\n"
-        f"à¤¨à¤¾à¤® à¤¸à¤¹à¥€ à¤¹à¥ˆ à¤¤à¥‹ <b>Yes</b> à¤¦à¤¬à¤¾à¤à¤‚, à¤¨à¤¹à¥€à¤‚ à¤¤à¥‹ <b>No</b> à¤¦à¤¬à¤¾à¤•à¤° à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤",
+        f"🔔 <b>Confirmation Required</b>\n\n"
+        f"क्या आप <b>'{user_name_input}'</b> को रिक्वेस्ट करना चाहते हैं?\n\n"
+        f"नाम सही है तो <b>Yes</b> दबाएं, नहीं तो <b>No</b> दबाकर दोबारा कोशिश करें।",
         reply_markup=keyboard,
         parse_mode='HTML'
     )
     
-    # âš¡ Ye Confirmation message 60 seconds me delete ho jayega
+    # ⚡ Ye Confirmation message 60 seconds me delete ho jayega
     track_message_for_deletion(context, chat_id, msg.message_id, 60)
     
     return CONFIRMATION
@@ -11727,7 +11727,7 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
     user = query.from_user
     
     if choice == "confirm_no":
-        await query.edit_message_text("âŒ Request Cancelled. à¤†à¤ª à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤¸à¤°à¥à¤š à¤¯à¤¾ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚à¥¤")
+        await query.edit_message_text("❌ Request Cancelled. आप दोबारा सर्च या रिक्वेस्ट कर सकते हैं।")
         # Cancel message auto delete in 10 seconds
         track_message_for_deletion(context, chat_id, query.message.message_id, 10)
         context.user_data.pop('temp_request_name', None)
@@ -11752,20 +11752,20 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
             await send_admin_notification(context, user, movie_title, group_info)
             
             success_text = f"""
-âœ… <b>Request Sent to Admin!</b>
+✅ <b>Request Sent to Admin!</b>
 
-ðŸŽ¬ Movie: <b>{movie_title}</b>
+🎬 Movie: <b>{movie_title}</b>
 
-ðŸ“ à¤†à¤ªà¤•à¥€ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ ð‘¶ð’˜ð’ð’†ð’“ <b>@Ownermahi</b> / <b>@Ownermahi</b> à¤•à¥‹ à¤®à¤¿à¤²à¥€ à¤—à¤ˆ à¤¹à¥ˆà¥¤
-â³ à¤œà¥ˆà¤¸à¥‡ à¤¹à¥€ à¤®à¥‚à¤µà¥€ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¹à¥‹à¤—à¥€, à¤µà¥‹ à¤–à¥à¤¦ à¤†à¤ªà¤•à¥‹ à¤¯à¤¹à¤¾à¤ à¤¸à¥‚à¤šà¤¿à¤¤ (Notify) à¤•à¤° à¤¦à¥‡à¤‚à¤—à¥‡à¥¤
+📝 आपकी रिक्वेस्ट 𝑶𝒘𝒏𝒆𝒓 <b>@Ownermahi</b> / <b>@Ownermahi</b> को मिली गई है।
+⏳ जैसे ही मूवी उपलब्ध होगी, वो खुद आपको यहाँ सूचित (Notify) कर देंगे।
 
-<i>à¤¹à¤®à¤¸à¥‡ à¤œà¥à¤¡à¤¼à¥‡ à¤°à¤¹à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤§à¤¨à¥à¤¯à¤µà¤¾à¤¦! ðŸ™</i>
+<i>हमसे जुड़े रहने के लिए धन्यवाद! 🙏</i>
             """
             await query.edit_message_text(success_text, parse_mode='HTML')
         else:
-            await query.edit_message_text("âŒ Error: Request save à¤¨à¤¹à¥€à¤‚ à¤¹à¥‹ à¤ªà¤¾à¤ˆà¥¤ à¤¶à¤¾à¤¯à¤¦ à¤¯à¤¹ à¤ªà¤¹à¤²à¥‡ à¤¸à¥‡ à¤ªà¥‡à¤‚à¤¡à¤¿à¤‚à¤— à¤¹à¥ˆà¥¤")
+            await query.edit_message_text("❌ Error: Request save नहीं हो पाई। शायद यह पहले से पेंडिंग है।")
             
-        # âš¡ Success Message Auto Delete (60 Seconds)
+        # ⚡ Success Message Auto Delete (60 Seconds)
         track_message_for_deletion(context, chat_id, query.message.message_id, 60)
             
         context.user_data.pop('temp_request_name', None)
@@ -11774,18 +11774,18 @@ async def handle_confirmation_callback(update: Update, context: ContextTypes.DEF
 async def timeout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """2 Minute Timeout Handler"""
     if update.effective_message:
-        msg = await update.effective_message.reply_text("â³ <b>Session Expired:</b> à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤•à¤¾ à¤¸à¤®à¤¯ à¤¸à¤®à¤¾à¤ªà¥à¤¤ à¤¹à¥‹ à¤—à¤¯à¤¾à¥¤", parse_mode='HTML')
+        msg = await update.effective_message.reply_text("⏳ <b>Session Expired:</b> रिक्वेस्ट का समय समाप्त हो गया।", parse_mode='HTML')
         track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 30)
     return ConversationHandler.END
 
 async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ðŸ‘‡ SABSE PEHLE SAFEGUARD LAGAYEIN: Ignore channel posts or anonymous updates
+    # 👇 SABSE PEHLE SAFEGUARD LAGAYEIN: Ignore channel posts or anonymous updates
     if not update.effective_user:
         return
         
     user_id = update.effective_user.id
 
-    # ðŸ‘‡ VIP Payment UTR Check ðŸ‘‡ (Ab yeh safe hai kyunki channel filter ho chuka hai)
+    # 👇 VIP Payment UTR Check 👇 (Ab yeh safe hai kyunki channel filter ho chuka hai)
     if context.user_data and context.user_data.get('payment_step') == 'utr':
         await payment_utr_handler(update, context)
         return
@@ -11812,25 +11812,25 @@ async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE
     query_text = update.message.text.strip()
     
     # === 2. Menu Button Logic ===
-    if query_text == 'ðŸ” Search Movies':
+    if query_text == '🔍 Search Movies':
         msg = await update.message.reply_text("Great! Just type the name of the movie you want to search for.")
         track_message_for_deletion(context, chat_id, msg.message_id, 60)
         return
 
-    elif query_text == 'ðŸ™‹ Request Movie':
+    elif query_text == '🙋 Request Movie':
         web_app_url = "https://flimfybox-bot-yht0.onrender.com/webapp"
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("ðŸŒ Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
+            [InlineKeyboardButton("🌐 Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
         ])
         msg = await update.message.reply_text(
-            "ðŸ‘‡ **à¤¸à¥à¤®à¤¾à¤°à¥à¤Ÿ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤ªà¥‹à¤°à¥à¤Ÿà¤²:**\n\nà¤¯à¤¹à¤¾à¤ à¤®à¥‚à¤µà¥€ à¤•à¤¾ à¤¨à¤¾à¤® à¤¸à¤°à¥à¤š à¤•à¤°à¥‡à¤‚à¥¤ à¤…à¤—à¤° à¤¸à¥à¤ªà¥‡à¤²à¤¿à¤‚à¤— à¤—à¤²à¤¤ à¤¹à¥à¤ˆ, à¤¤à¥‹ à¤¹à¤®à¤¾à¤°à¤¾ AI à¤‰à¤¸à¥‡ à¤¸à¤¹à¥€ à¤•à¤° à¤¦à¥‡à¤—à¤¾ à¤”à¤° à¤†à¤ª à¤¸à¥€à¤§à¤¾ à¤°à¤¿à¤•à¥à¤µà¥‡à¤¸à¥à¤Ÿ à¤­à¥‡à¤œ à¤ªà¤¾à¤à¤‚à¤—à¥‡!", 
+            "👇 **स्मार्ट रिक्वेस्ट पोर्टल:**\n\nयहाँ मूवी का नाम सर्च करें। अगर स्पेलिंग गलत हुई, तो हमारा AI उसे सही कर देगा और आप सीधा रिक्वेस्ट भेज पाएंगे!", 
             reply_markup=keyboard, 
             parse_mode='Markdown'
         )
         track_message_for_deletion(context, chat_id, msg.message_id, 60)
         return
 
-    elif query_text == 'ðŸ“Š My Stats':
+    elif query_text == '📊 My Stats':
         conn = get_db_connection()
         if conn:
             try:
@@ -11841,7 +11841,7 @@ async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ful = cur.fetchone()[0]
                 
                 stats_msg = await update.message.reply_text(
-                    f"ðŸ“Š **Your Stats**\n\nðŸ“ Total Requests: {req}\nâœ… Fulfilled: {ful}",
+                    f"📊 **Your Stats**\n\n📝 Total Requests: {req}\n✅ Fulfilled: {ful}",
                     parse_mode='Markdown'
                 )
                 track_message_for_deletion(context, chat_id, stats_msg.message_id, 120)
@@ -11851,9 +11851,9 @@ async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE
                 close_db_connection(conn)
         return
 
-    elif query_text == 'â“ Help':
+    elif query_text == '❓ Help':
         help_text = (
-            "ðŸ¤– **How to use:**\n\n"
+            "🤖 **How to use:**\n\n"
             "1. **Search:** Just type any movie name (e.g., 'Avengers').\n"
             "2. **Request:** If not found, use the Request button.\n"
             "3. **Download:** Click the buttons provided."
@@ -11865,7 +11865,7 @@ async def main_menu_or_search(update: Update, context: ContextTypes.DEFAULT_TYPE
     # === 3. If no button matched, Search for the Movie ===
     await search_movies(update, context)
 
-# ðŸ‘‡ðŸ‘‡ðŸ‘‡ IS FUNCTION KO REPLACE KARO (Line ~1665) ðŸ‘‡ðŸ‘‡ðŸ‘‡
+# 👇👇👇 IS FUNCTION KO REPLACE KARO (Line ~1665) 👇👇👇
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -11885,12 +11885,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if len(text) < 2:
         return
 
-    # 3. ðŸš€ FAST SEARCH CALL (Sirf SQL Check)
+    # 3. 🚀 FAST SEARCH CALL (Sirf SQL Check)
     # Hum 5 results maang rahe hain taaki agar typos ho to best match mile
     movies = await run_async(get_movies_fast_sql, text, limit=5)
 
     if not movies:
-        # ðŸ¤« Agar movie nahi mili, to YAHIN RUK JAO.
+        # 🤫 Agar movie nahi mili, to YAHIN RUK JAO.
         # Bot kuch reply nahi karega, group me shanti rahegi.
         return
 
@@ -11902,7 +11902,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Reply to user
     msg = await update.message.reply_text(
-        f"ðŸŽ¬ **Found {len(movies)} results for '{text}'**\nðŸ‘‡ Select movie:",
+        f"🎬 **Found {len(movies)} results for '{text}'**\n👇 Select movie:",
         reply_markup=keyboard,
         parse_mode='Markdown'
     )
@@ -11920,7 +11920,7 @@ async def web_app_data_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             movie_id = int(received_data.split("_")[1])
             
             # Loading message dikhayein
-            status_msg = await context.bot.send_message(chat_id=chat_id, text="â³ <b>Fetching your movie from Web App...</b>", parse_mode='HTML')
+            status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ <b>Fetching your movie from Web App...</b>", parse_mode='HTML')
             
             # Movie bhejne wala purana function call karein
             await deliver_movie_on_start(update, context, movie_id)
@@ -11942,7 +11942,7 @@ async def auto_delete_worker(app: Application):
         logger.error(f"Worker bot info error: {e}")
         return
 
-    logger.info(f"ðŸ§¹ Auto-Delete Worker Started for @{bot_username}")
+    logger.info(f"🧹 Auto-Delete Worker Started for @{bot_username}")
 
     while True:
         try:
@@ -11977,7 +11977,7 @@ async def auto_delete_worker(app: Application):
         # Har 5 second me database check karega
         await asyncio.sleep(5)
 
-# ðŸ‘‡ YAHAN SE COPY KARO AUR EXACTLY 'def register_handlers' KE THEEK UPAR PASTE KARO ðŸ‘‡
+# 👇 YAHAN SE COPY KARO AUR EXACTLY 'def register_handlers' KE THEEK UPAR PASTE KARO 👇
 
 async def payment_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Agar user screenshot stage par hai
@@ -11985,7 +11985,7 @@ async def payment_photo_handler(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['screenshot_id'] = update.message.photo[-1].file_id
         context.user_data['payment_step'] = 'utr'
         await update.message.reply_text(
-            "âœ… <b>Screenshot Received!</b>\n\nðŸ”¢ Ab <b>UTR ya Reference Number</b> type karke bhejein.", 
+            "✅ <b>Screenshot Received!</b>\n\n🔢 Ab <b>UTR ya Reference Number</b> type karke bhejein.", 
             parse_mode='HTML'
         )
         return True # Matlab photo handle ho gayi
@@ -12001,10 +12001,10 @@ async def payment_utr_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Admin ko alert bhejna
         admin_id = int(os.environ.get('ADMIN_USER_ID', '123456789')) 
         admin_text = (
-            f"ðŸ”” <b>NEW PAYMENT PENDING</b>\n\n"
-            f"ðŸ‘¤ Name: {user.first_name}\n"
-            f"ðŸ†” ID: <code>{user.id}</code>\n"
-            f"ðŸ”¢ UTR: <code>{utr_number}</code>"
+            f"🔔 <b>NEW PAYMENT PENDING</b>\n\n"
+            f"👤 Name: {user.first_name}\n"
+            f"🆔 ID: <code>{user.id}</code>\n"
+            f"🔢 UTR: <code>{utr_number}</code>"
         )
         try:
             await context.bot.send_photo(chat_id=admin_id, photo=screenshot_id, caption=admin_text, parse_mode='HTML')
@@ -12012,7 +12012,7 @@ async def payment_utr_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
             
         await update.message.reply_text(
-            "â³ <b>Verification Pending!</b>\n\nâœ… Payment details admin ko bhej di gayi hai. Thodi der me VIP access mil jayega.", 
+            "⏳ <b>Verification Pending!</b>\n\n✅ Payment details admin ko bhej di gayi hai. Thodi der me VIP access mil jayega.", 
             parse_mode='HTML'
         )
         # Process complete, ab reset kar do
@@ -12026,13 +12026,13 @@ async def payment_utr_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def register_handlers(application: Application):
     """
-    à¤¯à¤¹ à¤«à¤‚à¤•à¥à¤¶à¤¨ à¤¹à¤° à¤¬à¥‰à¤Ÿ à¤ªà¤° à¤²à¥‰à¤œà¤¿à¤• (Handlers) à¤¸à¥‡à¤Ÿ à¤•à¤°à¥‡à¤—à¤¾à¥¤
-    à¤¤à¤¾à¤•à¤¿ à¤¤à¥€à¤¨à¥‹à¤‚ à¤¬à¥‰à¤Ÿà¥à¤¸ à¤¸à¥‡à¤® à¤•à¤¾à¤® à¤•à¤°à¥‡à¤‚à¥¤
+    यह फंक्शन हर बॉट पर लॉजिक (Handlers) सेट करेगा।
+    ताकि तीनों बॉट्स सेम काम करें।
     """
     # -----------------------------------------------------------
     # 1. NEW REQUEST SYSTEM HANDLER (With 2 Min Timeout)
     # -----------------------------------------------------------
-    # à¤¨à¥‹à¤Ÿ: ConversationHandler à¤•à¥‹ à¤¹à¤° à¤¬à¤¾à¤° à¤¨à¤¯à¤¾ à¤¬à¤¨à¤¾à¤¨à¤¾ à¤œà¤°à¥‚à¤°à¥€ à¤¹à¥ˆ
+    # नोट: ConversationHandler को हर बार नया बनाना जरूरी है
     request_conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_request_flow, pattern="^request_")],
         states={
@@ -12066,7 +12066,7 @@ def register_handlers(application: Application):
     # 2. GLOBAL HANDLERS
     # -----------------------------------------------------------
 
-    # ðŸ‘‡ YAHAN PAR 'application' LIKHNA HAI 'app' KI JAGAH ðŸ‘‡
+    # 👇 YAHAN PAR 'application' LIKHNA HAI 'app' KI JAGAH 👇
     
     
     
@@ -12089,25 +12089,25 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("fixbuttons", update_buttons_command))
     application.add_handler(CommandHandler("restore", restore_posts_command))
 
-    # ðŸš€ NEW: Add this line to catch the poster image
+    # 🚀 NEW: Add this line to catch the poster image
     application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_admin_poster), group=0)
 
-    # ðŸš€ SUPER BATCH COMMANDS
-    # âœ… superbatch_listener HATA DIYA â€” ab pm_file_listener hi "muh" hai
+    # 🚀 SUPER BATCH COMMANDS
+    # ✅ superbatch_listener HATA DIYA — ab pm_file_listener hi "muh" hai
     # Jab SUPER_BATCH_SESSION active ho, pm_file_listener (group=2) khud files collect karta hai
     application.add_handler(CommandHandler("superbatch", superbatch_start))
     application.add_handler(CommandHandler("superdone", superbatch_done))
     
     
     # ==========================================
-    # ðŸ”ž 18+ BATCH SYSTEM HANDLERS
+    # 🔞 18+ BATCH SYSTEM HANDLERS
     # ==========================================
     application.add_handler(CommandHandler("batch18", batch18_start))
     application.add_handler(CommandHandler("done18", batch18_done))
     application.add_handler(CommandHandler("cancel18", batch18_cancel))
 
     
-    # âœ… FIX: group=1 à¤œà¥‹à¤¡à¤¼à¤¾ à¤—à¤¯à¤¾ à¤¤à¤¾à¤•à¤¿ à¤¯à¤¹ à¤¦à¥‚à¤¸à¤°à¥‡ à¤«à¤¾à¤‡à¤²à¥à¤¸ à¤•à¥‹ à¤¬à¥à¤²à¥‰à¤• à¤¨ à¤•à¤°à¥‡
+    # ✅ FIX: group=1 जोड़ा गया ताकि यह दूसरे फाइल्स को ब्लॉक न करे
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.FORWARDED, batch18_listener), group=1)
     
     # Batch Commands
@@ -12117,7 +12117,7 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("fixdata", fix_missing_metadata))
     application.add_handler(CommandHandler("post", post_to_topic_command))
     
-    # âœ… FIX: group=2 â€” Sirf PM (Private Chat) mein hi pm_file_listener chalega
+    # ✅ FIX: group=2 — Sirf PM (Private Chat) mein hi pm_file_listener chalega
     # Channel ya group se koi bhi message yahan nahi aayega
     application.add_handler(MessageHandler(
         filters.ChatType.PRIVATE &
@@ -12155,7 +12155,7 @@ def register_handlers(application: Application):
 
 async def main():
     """Main function to run MULTIPLE bots concurrently"""
-    logger.info("ðŸš€ Starting Multi-Bot System...")
+    logger.info("🚀 Starting Multi-Bot System...")
 
     # =================================================================
     # 1. Flask Server FIRST (Render timeout se bachao)
@@ -12163,7 +12163,7 @@ async def main():
     flask_thread        = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    logger.info("ðŸŒ Flask server started.")
+    logger.info("🌐 Flask server started.")
 
     # =================================================================
     # 2. Database Setup
@@ -12178,7 +12178,7 @@ async def main():
         fix_movies_title_constraint()
         fix_movie_files_table()  # movie_files UNIQUE constraint + missing columns
     except Exception as e:
-        logger.error(f"âŒ DB Setup Error: {e}")  # â† YE LINE ZAROORI HAI
+        logger.error(f"❌ DB Setup Error: {e}")  # ← YE LINE ZAROORI HAI
 
     # =================================================================
     # 3. Get Tokens from ENV
@@ -12193,18 +12193,18 @@ async def main():
     tokens = list(set([t for t in tokens if t]))
 
     if not tokens:
-        logger.error("âŒ No tokens found! Check Environment Variables.")
+        logger.error("❌ No tokens found! Check Environment Variables.")
         return
 
     # =================================================================
     # 4. Initialize & Start All Bots
     # =================================================================
     apps = []
-    logger.info(f"ðŸ¤– Found {len(tokens)} tokens. Initializing bots...")
+    logger.info(f"🤖 Found {len(tokens)} tokens. Initializing bots...")
 
     for i, token in enumerate(tokens):
         try:
-            logger.info(f"ðŸ”¹ Initializing Bot {i+1}...")
+            logger.info(f"🔹 Initializing Bot {i+1}...")
 
             app = (
                 Application.builder()
@@ -12221,7 +12221,7 @@ async def main():
             await app.updater.start_polling(drop_pending_updates=True)
             asyncio.create_task(auto_delete_worker(app))
             if i == 0:
-                logger.info("ðŸš€ Starting Trending Worker for Main Bot...")
+                logger.info("🚀 Starting Trending Worker for Main Bot...")
                 asyncio.create_task(trending_worker_loop(app, ADMIN_USER_ID))
             
 
@@ -12229,13 +12229,13 @@ async def main():
             apps.append(app)
 
             bot_info = await app.bot.get_me()
-            logger.info(f"âœ… Bot {i+1} Started: @{bot_info.username}")
+            logger.info(f"✅ Bot {i+1} Started: @{bot_info.username}")
 
         except Exception as e:
-            logger.error(f"âŒ Failed to start Bot {i+1}: {e}")
+            logger.error(f"❌ Failed to start Bot {i+1}: {e}")
 
     if not apps:
-        logger.error("âŒ No bots could be started.")
+        logger.error("❌ No bots could be started.")
         return
 
     # =================================================================
