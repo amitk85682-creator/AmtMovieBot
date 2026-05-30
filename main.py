@@ -5691,7 +5691,16 @@ def auto_upgrade_delete(movie_id, new_quality_label, conn):
         return 0, []
 
 
-def generate_quality_label(file_name, file_size_str, ai_language=""):
+def generate_quality_label(file_name, file_size_str="", ai_language=""):
+    """
+    File name se CLEAN quality label generate karta hai.
+    Returns ONLY: resolution + source + episode info.
+    Example: '1080p WEB-DL', '720p CAMRip', 'S01E03 480p HDRip'
+    
+    NOTE: file_size_str aur ai_language params backward compat ke liye hain,
+    but ye quality label me INCLUDE nahi hote. Ye apne dedicated DB columns
+    (file_size, languages) me separately store hone chahiye.
+    """
     # Pehle episode format ko hamesha ke liye theek karo (S07E12 22 -> S07E12-22)
     name_lower = normalize_episodes(file_name.lower())
     quality = "HD"
@@ -5700,23 +5709,38 @@ def generate_quality_label(file_name, file_size_str, ai_language=""):
     if "4k" in name_lower or "2160p" in name_lower: quality = "4K"
     elif "1080p" in name_lower: quality = "1080p"
     elif "720p" in name_lower:  quality = "720p"
-    elif "576p" in name_lower:  quality = "576p"   # ← NEW
+    elif "576p" in name_lower:  quality = "576p"
     elif "480p" in name_lower:  quality = "480p"
     elif "360p" in name_lower:  quality = "360p"
     elif "cam" in name_lower or "rip" in name_lower: quality = "CamRip"
 
-    # 2. Detect Source (WEB-DL, BluRay, etc.)
+    # 2. Detect Source (ALL levels — Level 4 to Level 1, longest keywords first)
     source_tag = ""
+    # Level 4 — Ultimate OTT / Disc
     if "web-dl" in name_lower or "webdl" in name_lower:   source_tag = " WEB-DL"
-    elif "webrip" in name_lower or "web-rip" in name_lower: source_tag = " WEBRip"
     elif "bluray" in name_lower or "blu-ray" in name_lower: source_tag = " BluRay"
-    elif "hdtv" in name_lower:                              source_tag = " HDTV"
-    elif "hdrip" in name_lower:                             source_tag = " HDRip"
+    elif "bdrip" in name_lower or "brrip" in name_lower:  source_tag = " BluRay"
+    elif "remux" in name_lower:                            source_tag = " Remux"
+    # Level 3 — Good Digital
+    elif "webrip" in name_lower or "web-rip" in name_lower: source_tag = " WEBRip"
+    elif "hc-webrip" in name_lower:                        source_tag = " WEBRip"
+    elif "hdrip" in name_lower:                            source_tag = " HDRip"
+    elif "hdtv" in name_lower:                             source_tag = " HDTV"
+    # Level 2 — Theater Print with Better Audio (check BEFORE Level 1)
+    elif "hq-hdtc" in name_lower or "hqhdtc" in name_lower: source_tag = " HDTC"
+    elif "hdtc" in name_lower or "hd-tc" in name_lower:   source_tag = " HDTC"
+    elif "hdts" in name_lower or "hd-ts" in name_lower:   source_tag = " HDTS"
+    elif "predvd" in name_lower or "pre-dvd" in name_lower: source_tag = " PreDVD"
+    elif "dvdscr" in name_lower or "screener" in name_lower: source_tag = " DVDScr"
+    # Level 1 — Camera Prints (सबसे घटिया)
+    elif "hdcam" in name_lower or "hd-cam" in name_lower: source_tag = " HDCAM"
+    elif "hqcam" in name_lower or "hq-cam" in name_lower: source_tag = " HDCAM"
+    elif "camrip" in name_lower:                           source_tag = " CAMRip"
+    elif "telecine" in name_lower or "tc" in name_lower.split(): source_tag = " CAMRip"
+    elif "telesync" in name_lower or "ts" in name_lower.split(): source_tag = " CAMRip"
+    elif "cam" in name_lower.split():                      source_tag = " CAMRip"
 
-    # 3. Add AI Detected Language
-    lang_tag = f" ({ai_language})" if ai_language else ""
-
-    # 4. Detect Series (S01, S02, S01E01, S01P01, Season 1, etc.)
+    # 3. Detect Series (S01, S02, S01E01, S01P01, Season 1, etc.)
     # \b used taaki 1080p 10bit ka 'p 10' E10 na ban jaye
     season_match = re.search(
         r'(?i)(\bs\d{1,2}\s*(?:[ep]\d{1,3})?'
@@ -5728,10 +5752,11 @@ def generate_quality_label(file_name, file_size_str, ai_language=""):
 
     if season_match:
         episode_tag = season_match.group(0).upper().replace("P", "E").strip()
-        # ✅ Season + Resolution + Source + Language — sab sath mein
-        return f"{episode_tag} {quality}{source_tag}{lang_tag} [{file_size_str}]"
+        # Episode/Season should NOT go into quality string, it goes to extra_info.
+        pass
 
-    return f"{quality}{source_tag}{lang_tag} [{file_size_str}]"
+    # ✅ CLEAN: Resolution + Source ONLY
+    return f"{quality}{source_tag}".strip()
 
 def get_readable_file_size(size_in_bytes):
     """Converts bytes to readable format (MB, GB)"""
@@ -6423,6 +6448,9 @@ async def _pm_save_file(message, context) -> str | None:
     file_size = (message.document.file_size if message.document
                  else message.video.file_size if message.video
                  else 0)
+    file_unique_id = (message.document.file_unique_id if message.document
+                      else message.video.file_unique_id if message.video
+                      else message.photo[-1].file_unique_id if message.photo else None)
 
     # Thumbnail update BATCH_SESSION mein (poster ke liye)
     if message.video and message.video.thumbnail:
@@ -6456,19 +6484,20 @@ async def _pm_save_file(message, context) -> str | None:
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (movie_id, quality) DO UPDATE SET
+            INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (file_unique_id) DO UPDATE SET
+            quality = EXCLUDED.quality,
             url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
             languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
             """,
             (BATCH_SESSION['movie_id'], label, file_size_str, main_url,
-             json.dumps(backup_map), f_lang, f_extra)
+             json.dumps(backup_map), f_lang, f_extra, file_unique_id)
         )
         conn.commit()
         cur.close()
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
-        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label}")
+        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label} [{file_size_str}]")
 
         # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
         try:
@@ -6724,6 +6753,9 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_name = message.document.file_name if message.document else (message.video.file_name if message.video else "File")
         file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
+        file_unique_id = (message.document.file_unique_id if message.document
+                          else message.video.file_unique_id if message.video
+                          else message.photo[-1].file_unique_id if message.photo else None)
         
         # 👇👇👇 NAYA CODE: File/Video se Poster (Thumbnail) nikalna 👇👇👇
         if message.video and message.video.thumbnail:
@@ -6768,13 +6800,14 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (movie_id, quality) DO UPDATE SET 
+                    INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (file_unique_id) DO UPDATE SET 
+                    quality = EXCLUDED.quality,
                     url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
                     languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
                     """,
-                    (BATCH_SESSION['movie_id'], label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra)
+                    (BATCH_SESSION['movie_id'], label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra, file_unique_id)
                 )
                 conn.commit()
                 cur.close()
@@ -6792,7 +6825,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.error(f"Auto-Upgrade error in Phase2: {ue}")
 
                 movie_title = BATCH_SESSION.get('movie_title', 'Movie')
-                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}`\n🔢 Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
+                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}` [{file_size_str}]\n🔢 Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
             except Exception as e:
                 await upload_status.edit_text(f"❌ DB Save Failed: {e}")
             finally:
@@ -7896,12 +7929,17 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 close_db_connection(conn)
                 return
 
+            file_unique_id = (message.document.file_unique_id if message.document
+                              else message.video.file_unique_id if message.video
+                              else message.photo[-1].file_unique_id if message.photo else None)
+
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO movie_files 
-                (movie_id, quality, file_size, url, backup_map, languages, extra_info) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (movie_id, quality) DO UPDATE SET 
+                (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (file_unique_id) DO UPDATE SET 
+                    quality = EXCLUDED.quality,
                     url = EXCLUDED.url, 
                     file_size = EXCLUDED.file_size, 
                     backup_map = EXCLUDED.backup_map,
@@ -7915,7 +7953,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 main_url, 
                 json.dumps(backup_map),
                 f_lang, 
-                f_extra
+                f_extra,
+                file_unique_id
             ))
             conn.commit()
             cur.close()
@@ -7934,7 +7973,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Auto-Upgrade error in Batch18: {ue}")
             
             await upload_status.edit_text(
-                f"✅ **Saved:** `{BATCH_18_SESSION['movie_title']} {label}`\n"
+                f"✅ **Saved:** `{BATCH_18_SESSION['movie_title']} {label}` [{file_size_str}]\n"
                 f"📦 Total Files: {BATCH_18_SESSION['file_count']}{upgrade_msg}",
                 parse_mode='Markdown'
             )
