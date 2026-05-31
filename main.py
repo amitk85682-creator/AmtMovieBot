@@ -10451,11 +10451,13 @@ def get_suggestions():
 
 @flask_app.route('/api/smart-merge', methods=['POST'])
 def smart_merge_api():
-    """Hybrid Search Endpoint: Checks Local DB first, then fetches TMDB concurrently."""
+    """Hybrid Search Endpoint: Checks Local DB first (raw_query top priority), then fetches TMDB concurrently."""
     import re as re_mod
     data = request.json or {}
     queries = data.get('queries', [])
-    if not queries:
+    raw_query = data.get('raw_query', '').strip()
+    
+    if not queries and not raw_query:
         return jsonify({'status': 'success', 'results': []})
     
     def normalize(s):
@@ -10466,11 +10468,17 @@ def smart_merge_api():
     local_results = []
     found_normalized = set()
     
+    # Define search queries (raw_query top priority)
+    search_queries = []
+    if raw_query:
+        search_queries.append(raw_query)
+    search_queries.extend([q for q in queries if q != raw_query])
+    
     if conn:
         try:
             cur = conn.cursor()
             # Fuzzy search: Use % wildcards around each word for flexible matching
-            for q in queries:
+            for q in search_queries:
                 words = q.split()
                 if not words:
                     continue
@@ -10507,7 +10515,7 @@ def smart_merge_api():
 
     # Find which queries still need TMDB lookup
     matched_queries = {r['_query'] for r in local_results}
-    missing_queries = [q for q in queries if q not in matched_queries]
+    missing_queries = [q for q in search_queries if q not in matched_queries]
     tmdb_results = []
     
     def fetch_tmdb(q):
@@ -10544,12 +10552,12 @@ def smart_merge_api():
                 if res:
                     tmdb_results.append(res)
     
-    # Build final results ordered by original query order
+    # Build final results ordered by original query order (raw_query first)
     all_fetched = local_results + tmdb_results
     final_results = []
     seen_ids = set()
     
-    for q in queries:
+    for q in search_queries:
         # Find the result that was fetched for this query
         match = next((r for r in all_fetched if r.get('_query') == q), None)
         if match and match['id'] not in seen_ids:
@@ -11379,7 +11387,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                     const mergeRes = await fetch('/api/smart-merge', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ queries: suggs })
+                        body: JSON.stringify({ queries: suggs, raw_query: query })
                     });
                     const mergeData = await mergeRes.json();
                     if (currentId !== searchRequestId) return;
