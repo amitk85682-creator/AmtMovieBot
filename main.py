@@ -11387,7 +11387,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
                     const mergeRes = await fetch('/api/smart-merge', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ queries: suggs, raw_query: query })
+                        body: JSON.stringify({ queries: suggs, raw_query: q })
                     });
                     const mergeData = await mergeRes.json();
                     if (currentId !== searchRequestId) return;
