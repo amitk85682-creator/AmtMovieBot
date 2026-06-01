@@ -1119,11 +1119,19 @@ async def _extract_web_series(text, original):
         s_match = re.search(r'(?i)(s\d{1,2}|season\s*\d+)', text)
         if s_match:
             extra_parts.append(s_match.group().upper())
-            
-        e_match = re.search(r'(?i)(\[?(?:ep|e|episode)\s*\d{1,3}\s*(?:[-~_]|to)\s*(?:e|ep)?\s*\d{1,3}\]?|\b(?:ep|e|episode)\s*\d{1,3}\b)', text)
+        
+        # Episode detection — S04E01 combined format + standalone E01/EP01
+        e_match = re.search(
+            r'(?i)(?:'
+            r'S\d{1,2}(E\d{1,3}(?:\s*[-~_]\s*E?\d{1,3})?)'  # S04E01 or S04E01-E03
+            r'|(\[?(?:ep|e|episode)\s*\d{1,3}\s*(?:[-~_]|to)\s*(?:e|ep)?\s*\d{1,3}\]?)'  # E01-E03, EP1 to 5
+            r'|\b((?:ep|e|episode)\s*\d{1,3})\b'  # Standalone E01, EP01, Episode 1
+            r')', text)
         if e_match:
-            ep = re.sub(r'[\[\]]', '', e_match.group()).upper()
-            extra_parts.append(ep)
+            ep = (e_match.group(1) or e_match.group(2) or e_match.group(3) or '').strip()
+            ep = re.sub(r'[\[\]]', '', ep).upper()
+            if ep:
+                extra_parts.append(ep)
             
         if re.search(r'(?i)(combined|complete|batch)', text):
             extra_parts.append('COMBINED')
