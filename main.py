@@ -5699,6 +5699,57 @@ def auto_upgrade_delete(movie_id, new_quality_label, conn):
         return 0, []
 
 
+def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id):
+    """
+    Bulletproof UPSERT for movie_files table.
+    Works regardless of which constraints exist in the DB:
+    - Old: UNIQUE (movie_id, quality) 
+    - New: UNIQUE (file_unique_id)
+    - Both at same time
+    
+    Strategy: Try INSERT → catch any constraint violation → UPDATE by file_unique_id
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (movie_id, label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id))
+        conn.commit()
+        cur.close()
+        return True  # Fresh insert
+    except Exception as insert_err:
+        conn.rollback()
+        # Constraint violation — update the existing row instead
+        try:
+            cur2 = conn.cursor()
+            cur2.execute("""
+                UPDATE movie_files 
+                SET quality = %s, file_size = %s, url = %s, backup_map = %s, 
+                    file_id = NULL, languages = %s, extra_info = %s
+                WHERE file_unique_id = %s
+            """, (label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id))
+            
+            if cur2.rowcount == 0:
+                # file_unique_id doesn't exist yet but (movie_id, quality) does
+                # This means a DIFFERENT file has the same quality → just update that row
+                cur2.execute("""
+                    UPDATE movie_files 
+                    SET file_size = %s, url = %s, backup_map = %s, 
+                        file_id = NULL, languages = %s, extra_info = %s, file_unique_id = %s
+                    WHERE movie_id = %s AND quality = %s
+                """, (file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id, movie_id, label))
+            
+            conn.commit()
+            cur2.close()
+            logger.info(f"🔄 upsert_movie_file: Updated existing row for '{label}' (file_unique_id={file_unique_id})")
+            return True  # Updated
+        except Exception as update_err:
+            conn.rollback()
+            logger.error(f"❌ upsert_movie_file FAILED: insert_err={insert_err}, update_err={update_err}")
+            raise update_err
+
+
 def generate_quality_label(file_name, file_size_str="", ai_language=""):
     """
     File name se CLEAN quality label generate karta hai.
@@ -6489,21 +6540,8 @@ async def _pm_save_file(message, context) -> str | None:
             close_db_connection(conn)
             return None  # File save nahi hogi, skip karo
 
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (file_unique_id) DO UPDATE SET
-            quality = EXCLUDED.quality,
-            url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
-            languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
-            """,
-            (BATCH_SESSION['movie_id'], label, file_size_str, main_url,
-             json.dumps(backup_map), f_lang, f_extra, file_unique_id)
-        )
-        conn.commit()
-        cur.close()
+        upsert_movie_file(conn, BATCH_SESSION['movie_id'], label, file_size_str, main_url,
+                          json.dumps(backup_map), f_lang, f_extra, file_unique_id)
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
         logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label} [{file_size_str}]")
 
@@ -6805,20 +6843,8 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     close_db_connection(conn)
                     return
 
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (file_unique_id) DO UPDATE SET 
-                    quality = EXCLUDED.quality,
-                    url = EXCLUDED.url, file_size = EXCLUDED.file_size, backup_map = EXCLUDED.backup_map, file_id = NULL,
-                    languages = EXCLUDED.languages, extra_info = EXCLUDED.extra_info
-                    """,
-                    (BATCH_SESSION['movie_id'], label, file_size_str, main_url, json.dumps(backup_map), f_lang, f_extra, file_unique_id)
-                )
-                conn.commit()
-                cur.close()
+                upsert_movie_file(conn, BATCH_SESSION['movie_id'], label, file_size_str, main_url,
+                                  json.dumps(backup_map), f_lang, f_extra, file_unique_id)
                 BATCH_SESSION['file_count'] += 1
 
                 # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
@@ -7941,31 +7967,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                               else message.video.file_unique_id if message.video
                               else message.photo[-1].file_unique_id if message.photo else None)
 
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO movie_files 
-                (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (file_unique_id) DO UPDATE SET 
-                    quality = EXCLUDED.quality,
-                    url = EXCLUDED.url, 
-                    file_size = EXCLUDED.file_size, 
-                    backup_map = EXCLUDED.backup_map,
-                    file_id = NULL,
-                    languages = EXCLUDED.languages, 
-                    extra_info = EXCLUDED.extra_info
-            """, (
-                BATCH_18_SESSION['movie_id'], 
-                label, 
-                file_size_str, 
-                main_url, 
-                json.dumps(backup_map),
-                f_lang, 
-                f_extra,
-                file_unique_id
-            ))
-            conn.commit()
-            cur.close()
+            upsert_movie_file(conn, BATCH_18_SESSION['movie_id'], label, file_size_str, main_url,
+                              json.dumps(backup_map), f_lang, f_extra, file_unique_id)
             
             BATCH_18_SESSION['file_count'] += 1
 
