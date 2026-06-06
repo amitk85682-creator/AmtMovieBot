@@ -131,36 +131,9 @@ DEFAULT_POSTER = os.environ.get(
 WAITING_FOR_NAME, CONFIRMATION = range(2)
 SEARCHING, REQUESTING, MAIN_MENU, REQUESTING_FROM_BUTTON = range(2, 6)
 # ================= CONFIGURATION =================
-FORUM_GROUP_ID = ""  # Apne Group ki ID
-
-# Yahan Topic ID aur uske Keywords set karo
-# Bot in shabdon ko Genre ya Description me dhundega
-TOPIC_MAPPING = {
-    # Format:  Topic_ID:  ['keyword1', 'keyword2', 'keyword3']
-    
-    20: ['south', 'telugu', 'tamil', 'kannada', 'malayalam', 'allu arjun'], # South Topic (ID: 12)
-    32: ['hollywood', 'english', 'marvel', 'dc', 'disney'],                 # Hollywood Topic (ID: 34)
-    16: ['bollywood', 'hindi', 'khan', 'kapoor'],                           # Bollywood Topic (ID: 56)
-    18: ['series', 'season', 'episode', 'netflix', 'amazon'],               # Web Series Topic (ID: 78)
-    22: ['anime', 'cartoon', 'animation'],                                  # Anime Topic (ID: 90)
-    
-    # Default Topic (Agar kuch match na ho to yahan jayega)
-    1: ['default'] 
-}
+# ================= CONFIGURATION =================
+ANIME_CHANNEL_ID = "-1003523910286"
 # =================================================
-
-def get_auto_topic_id(genre, description):
-    """
-    Ye function movie ke data ko padhkar sahi Topic ID batata hai.
-    """
-    text_to_check = (str(genre) + " " + str(description)).lower()
-    
-    for topic_id, keywords in TOPIC_MAPPING.items():
-        for word in keywords:
-            if word in text_to_check:
-                return topic_id
-    
-    return 100 # Agar kuch samajh na aaye to Default Topic ID
 
 async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -216,21 +189,18 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
     # --- 2. DATA UNPACK ---
     movie_id, title, year, rating, genre, poster_url, description, category = movie_data
 
-    # --- 3. TOPIC SELECTION ---
-    topic_id  = 100
+    # --- 3. TARGET CHANNEL SELECTION ---
     cat_lower = str(category or "").lower()
+    
+    target_channels = []
+    if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+        target_channels = [ANIME_CHANNEL_ID]
+    else:
+        target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
 
-    for tid, keywords in TOPIC_MAPPING.items():
-        if cat_lower in [k.lower() for k in keywords]:
-            topic_id = tid
-            break
-
-    if topic_id == 100:
-        if "south"      in cat_lower: topic_id = 20
-        elif "hollywood" in cat_lower: topic_id = 32
-        elif "bollywood" in cat_lower: topic_id = 16
-        elif "anime"     in cat_lower: topic_id = 22
-        elif "series"    in cat_lower: topic_id = 18
+    if not target_channels:
+        await update.message.reply_text("❌ No channels configured for posting.")
+        return
 
     # --- 4. MISSING DATA HANDLE ---
     final_photo = (
@@ -249,15 +219,13 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
         f"🎬 **{title} ({year})**\n\n"
         f"⭐️ **Rating:** {rating}/10\n"
         f"🎭 **Genre:** {genre}\n"
-        f"🏷 **Category:** {category}\n\n"
-        f"📜 **Story:** {short_desc}\n\n"
-        f"👇 **Click Below to Download** 👇"
+        f"📝 **Plot:** {short_desc}\n\n"
+        f"👇 **Download via the buttons below:** 👇"
     )
 
-    # --- 6. DEEP LINKS (NEW SECURE LINKS) ---
+    # --- 6. KEYBOARD BUTTONS ---
     secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
-
-    # Keyboard data (Restore ke liye save hoga)
+    
     keyboard_data = {
         "inline_keyboard": [
             [
@@ -288,35 +256,44 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
         # Agar download fail ho jaye, tabhi URL use karo (Fallback)
         photo_to_send = downloaded_poster if downloaded_poster else final_photo
 
-        sent = await context.bot.send_photo(
-            chat_id            = FORUM_GROUP_ID,
-            message_thread_id  = topic_id,
-            photo              = photo_to_send,
-            caption            = caption,
-            parse_mode         = 'Markdown',
-            reply_markup       = keyboard
-        )
+        sent_msg = None
+        for chat_id in target_channels:
+            try:
+                if hasattr(photo_to_send, 'read'):
+                    photo_to_send.seek(0)
+                sent = await context.bot.send_photo(
+                    chat_id            = chat_id,
+                    photo              = photo_to_send,
+                    caption            = caption,
+                    parse_mode         = 'Markdown',
+                    reply_markup       = keyboard
+                )
+                if not sent_msg:
+                    sent_msg = sent
+            except Exception as e:
+                logger.error(f"Failed to post to {chat_id}: {e}")
 
         # --- 8. DB SAVE (Restore ke liye) ---
         try:
             bot_info = await context.bot.get_me()
-            save_post_to_db(
-                movie_id      = movie_id,
-                channel_id    = FORUM_GROUP_ID,
-                message_id    = sent.message_id,
-                bot_username  = bot_info.username,
-                caption       = caption,
-                media_file_id = final_photo,
-                media_type    = "photo",
-                keyboard_data = keyboard_data,
-                topic_id      = topic_id,
-                content_type  = (
-                    "adult"  if "adult"    in cat_lower else
-                    "series" if "series"   in cat_lower else
-                    "anime"  if "anime"    in cat_lower else
-                    "movies"
+            if sent_msg:
+                save_post_to_db(
+                    movie_id      = movie_id,
+                    channel_id    = target_channels[0],
+                    message_id    = sent_msg.message_id,
+                    bot_username  = bot_info.username,
+                    caption       = caption,
+                    media_file_id = final_photo,
+                    media_type    = "photo",
+                    keyboard_data = keyboard_data,
+                    topic_id      = None,
+                    content_type  = (
+                        "adult"  if "adult"    in cat_lower else
+                        "series" if "series"   in cat_lower else
+                        "anime"  if "anime"    in cat_lower else
+                        "movies"
+                    )
                 )
-            )
             save_status = "💾 DB mein save hua ✅"
         except Exception as save_err:
             logger.warning(f"Post DB save failed (non-critical): {save_err}")
@@ -4470,8 +4447,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cur.execute("SELECT quality FROM movie_files WHERE movie_id = %s", (movie_id,))
         rows = cur.fetchall()
         
-        # मूवी की डिटेल्स निकालें (🚀 NAYA: Ab poster_url bhi nikalega)
-        cur.execute("SELECT title, genre, language, poster_url FROM movies WHERE id = %s", (movie_id,))
+        # मूवी की डिटेल्स निकालें (🚀 NAYA: Ab poster_url aur category bhi nikalega)
+        cur.execute("SELECT title, genre, language, poster_url, category FROM movies WHERE id = %s", (movie_id,))
         m_data = cur.fetchone()
         cur.close()
         
@@ -4496,6 +4473,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         m_genre = m_data[1] if m_data[1] else "Action, Drama"
         m_lang = m_data[2] if m_data[2] else "Hindi + English"
         m_poster = m_data[3] if len(m_data) > 3 and m_data[3] else None
+        m_category = m_data[4] if len(m_data) > 4 and m_data[4] else ""
 
         # --- 2. POSTER PROCESSING (Cinematic Square Effect) ---
         # 🚀 NAYA FIX: Pehle TMDB ka link uthao. Agar TMDB poster nahi hai, tabhi Thumbnail use karo.
@@ -4558,8 +4536,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         # --- 5. BROADCASTING TO CHANNELS ---
-        channels_str = os.environ.get('BROADCAST_CHANNELS', '')
-        target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+        cat_lower = str(m_category).lower()
+        if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+            target_channels = [ANIME_CHANNEL_ID]
+        else:
+            channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+            target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
         if not target_channels:
             await query.edit_message_text(f"{query.message.text}\n\n❌ Error: No BROADCAST_CHANNELS found in env.")
@@ -6126,7 +6108,6 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_files_saved = 0           # 👈 NAYA: Kitni files save hui uski ginti
     movies_posted_list = []         # 👈 NAYA: Jo movies post hui unki list
     channels = get_storage_channels()
-    target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
 
     for i, (temp_title, movie_files) in enumerate(grouped_movies.items(), 1):
         try:
@@ -6270,27 +6251,12 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
             ])
 
-            topic_id = 1
+            # --- TARGET CHANNEL SELECTION (New System) ---
             cat_lower = str(category or "").lower()
-            for tid, keywords in TOPIC_MAPPING.items():
-                if any(k.lower() in cat_lower for k in keywords):
-                    topic_id = tid
-                    break
-            
-            if topic_id == 1:
-                if "south" in cat_lower: topic_id = 20
-                elif "hollywood" in cat_lower: topic_id = 32
-                elif "bollywood" in cat_lower: topic_id = 16
-                elif "anime" in cat_lower: topic_id = 22
-                elif "series" in cat_lower: topic_id = 18
-
-            try:
-                if topic_id == 1:
-                    await context.bot.send_photo(chat_id=FORUM_GROUP_ID, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard)
-                else:
-                    await context.bot.send_photo(chat_id=FORUM_GROUP_ID, message_thread_id=topic_id, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard)
-            except Exception as e:
-                logger.error(f"SuperBatch Forum Post Error: {e}")
+            if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+                target_channels = [ANIME_CHANNEL_ID]
+            else:
+                target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
 
             # 👇 YAHAN SE MAIN CHANNEL PAR BHEJNE KA ASLI LOGIC SHURU HOTA HAI 👇
             
@@ -6915,19 +6881,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # 🚀 POST TO FORUM
         forum_post_status = "⏳ Posting to Forum..."
         
-        topic_id = 1
-        cat_lower = str(movie_category or "").lower()
-        for tid, keywords in TOPIC_MAPPING.items():
-            if any(k.lower() in cat_lower for k in keywords):
-                topic_id = tid
-                break
-        if topic_id == 1:
-            if "south" in cat_lower: topic_id = 20
-            elif "hollywood" in cat_lower: topic_id = 32
-            elif "bollywood" in cat_lower: topic_id = 16
-            elif "anime" in cat_lower: topic_id = 22
-            elif "series" in cat_lower: topic_id = 18
-            
+
         # --- SECURE LINK FOR SUPERBATCH POST ---
         secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
 
@@ -6944,19 +6898,8 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 photo_to_send = thumb_file_id
         if not photo_to_send: photo_to_send = DEFAULT_POSTER
 
-        target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
-        
-        try:
-            if topic_id == 1:
-                await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
-            else:
-                await safe_send(context.bot.send_photo(chat_id=FORUM_GROUP_ID, message_thread_id=topic_id, photo=photo_to_send, caption=caption, parse_mode='HTML', reply_markup=post_keyboard))
-            forum_post_status = f"✅ Auto-Posted to Forum (Topic ID: {topic_id})"
-        except Exception as e:
-            logger.error(f"Auto Forum Post Error: {e}")
-            forum_post_status = f"⚠️ Forum Post Failed"
 
-        channels_count = len(get_storage_channels())
+
         report = (
             f"🎉 **Batch Completed!**\n\n"
             f"🎬 **Movie:** `{movie_title}`\n"
@@ -6964,7 +6907,6 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🏷️ **Category:** {movie_category}\n"
             f"📂 **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n\n"
             f"✅ Backups: {channels_count} channels\n"
-            f"💬 {forum_post_status}"
         )
 
         extracted_thumb = BATCH_SESSION.get('extracted_thumb')
@@ -7012,7 +6954,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = get_db_connection()
     if not conn: return
     cur = conn.cursor()
-    cur.execute("SELECT title FROM movies WHERE id = %s", (movie_id,))
+    cur.execute("SELECT title, category FROM movies WHERE id = %s", (movie_id,))
     res = cur.fetchone()
     cur.close()
     close_db_connection(conn)
@@ -7023,6 +6965,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     m_title = res[0]
+    m_category = res[1]
 
     # 🎯 FIX: This block must be indented to match the rest of the function
     channel_caption = (
@@ -7049,8 +6992,12 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     ])
 
     # 4. Channels me Post karo
-    channels_str = os.environ.get('BROADCAST_CHANNELS', '')
-    target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+    cat_lower = str(m_category).lower()
+    if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+        target_channels = [ANIME_CHANNEL_ID]
+    else:
+        channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+        target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
     if not target_channels:
         await status_msg.edit_text("❌ Error: No BROADCAST_CHANNELS found in .env")
