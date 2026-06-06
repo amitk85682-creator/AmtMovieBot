@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # ENVIRONMENT VARIABLES
 # -------------------------------------------------------------
 TMDB_API_KEY = "9fa44f5e9fbd41415df930ce5b81c4d7"
-CHANNEL_ID = int(os.environ.get('CHANNEL_ID', '-1002555232489'))
+CHANNEL_ID = int(os.environ.get('CHANNEL_ID', '-1003916450868'))
 BOT_INSTANCE_ID = os.environ.get('BOT_INSTANCE_ID', socket.gethostname())
-ADMIN_USER_ID = int(os.environ.get('ADMIN_USER_ID', '6946322342'))
+ADMIN_USER_ID = int(os.environ.get('ADMIN_USER_ID', '8675088364'))
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
@@ -189,7 +189,7 @@ def build_channel_post(item, extra, db_metadata=None):
         f"🔊 <b>Language:</b> {lang}\n"
         f"<b>Quality:</b> {quality}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
-        f"<b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+        f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp<</a>\n"
         f"👇 <b>Download Below</b> 👇"
     )
     return text
@@ -225,7 +225,7 @@ def build_admin_alert(item, extra):
         f"🔊 <b>Language:</b> {lang}\n"
         f"<b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
-        f"<b>18+ Content:</b> <a href='https://t.me/+wcYoTQhIz-ZmOTY1'>Join Premium</a>\n"
+        f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp<</a>\n"
         f"👇 <b>Download Below</b> 👇\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚠️ <i>Yeh movie database mein nahi hai!</i>\n"
