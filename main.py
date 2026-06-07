@@ -6909,7 +6909,6 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"📅 **Year:** {movie_year if movie_year else 'N/A'}\n"
             f"🏷️ **Category:** {movie_category}\n"
             f"📂 **Files Saved:** {BATCH_SESSION.get('file_count', 0)}\n\n"
-            f"✅ Backups: {channels_count} channels\n"
         )
 
         extracted_thumb = BATCH_SESSION.get('extracted_thumb')
