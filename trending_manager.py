@@ -189,7 +189,7 @@ def build_channel_post(item, extra, db_metadata=None):
         f"🔊 <b>Language:</b> {lang}\n"
         f"<b>Quality:</b> {quality}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
-        f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp<</a>\n"
+        f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
         f"👇 <b>Download Below</b> 👇"
     )
     return text
@@ -225,7 +225,7 @@ def build_admin_alert(item, extra):
         f"🔊 <b>Language:</b> {lang}\n"
         f"<b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
         f"➖➖➖➖➖➖➖➖➖➖\n"
-        f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp<</a>\n"
+        f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
         f"👇 <b>Download Below</b> 👇\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚠️ <i>Yeh movie database mein nahi hai!</i>\n"
@@ -696,7 +696,7 @@ async def trending_worker_loop(app, admin_id):
     )
     
     try:
-        await app.bot.send_message(chat_id="-1003916450868", text=startup_msg, parse_mode='HTML')
+        await app.bot.send_message(chat_id=-1003916450868, text=startup_msg, parse_mode='HTML')
         logger.info(f"📨 Startup message sent to -1003916450868")
     except Exception as e:
         logger.error(f"❌ Failed to send startup message: {e}")
