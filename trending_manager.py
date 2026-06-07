@@ -696,8 +696,8 @@ async def trending_worker_loop(app, admin_id):
     )
     
     try:
-        await app.bot.send_message(chat_id=-1003916450868, text=startup_msg, parse_mode='HTML')
-        logger.info(f"📨 Startup message sent to -1003916450868")
+        await app.bot.send_message(chat_id=admin_id, text=startup_msg, parse_mode='HTML')
+        logger.info(f"📨 Startup message sent to {admin_id}")
     except Exception as e:
         logger.error(f"❌ Failed to send startup message: {e}")
 
