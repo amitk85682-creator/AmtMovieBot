@@ -330,8 +330,8 @@ except Exception as e:
 BLOGGER_API_KEY = os.environ.get('BLOGGER_API_KEY')
 BLOG_ID = os.environ.get('BLOG_ID')
 UPDATE_SECRET_CODE = os.environ.get('UPDATE_SECRET_CODE', 'default_secret_123')
-_admin_id = os.environ.get('ADMIN_USER_ID', '0')
-ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 0
+_admin_id = os.environ.get('ADMIN_USER_ID', '8675088364')
+ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 8675088364
 
 # Dono accounts — main bot owner + userbot — dono ko full admin access
 ADMIN_IDS = [ADMIN_USER_ID, 8438574164]
@@ -4511,7 +4511,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔊 <b>Language:</b> {m_lang}\n"
                 f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
         else:
@@ -4521,7 +4521,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f" ├ 🔊 Language: {m_lang}\n"
                 f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                 f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
 
@@ -6227,7 +6227,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
                     f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                     f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                    f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
             else:
@@ -6238,7 +6238,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
                     f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                     f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                    f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                    f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
 
@@ -6868,7 +6868,7 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Language: {db_lang}\n"
             f"Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+            f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
             f"👇 <b>Download Below</b> 👇"
         )
@@ -6974,7 +6974,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"Language: {m_lang}\n"
         f"Quality: V2 HQ-HDTC {dynamic_res}\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-        f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+        f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
         f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
         f"👇 <b>Download Below</b> 👇"
     )
@@ -8054,7 +8054,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔊 <b>Language:</b> {language or 'Hindi'}\n"
             f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+            f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
     else:
@@ -8064,7 +8064,7 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f" ├ 🔊 Language: {language or 'Hindi'}\n"
             f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
             f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-            f"Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+            f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
 
