@@ -4511,7 +4511,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🔊 <b>Language:</b> {m_lang}\n"
                 f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
         else:
@@ -4521,7 +4521,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f" ├ 🔊 Language: {m_lang}\n"
                 f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                 f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
 
@@ -6227,7 +6227,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
                     f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
                     f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                    f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
             else:
@@ -6238,7 +6238,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
                     f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
                     f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                    f"<b><b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+                    f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                     f"👇 <b>Download Below</b> 👇"
                 )
 
@@ -6381,6 +6381,9 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         cast_str = await run_async(fetch_cast_from_imdb, imdb_id, 5)
 
     # --- STEP 4: DB INSERT (pm_file_listener ka EXACT ON CONFLICT logic) ---
+    if not imdb_id:  # Fix for empty string violating unique constraint
+        imdb_id = None
+
     # imdb_id bhi update hota hai — superbatch mein pehle yeh missing tha!
     conn = get_db_connection()
     if not conn:
