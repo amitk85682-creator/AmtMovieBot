@@ -699,7 +699,7 @@ async def trending_worker_loop(app, admin_id):
         await app.bot.send_message(chat_id=admin_id, text=startup_msg, parse_mode='HTML')
         logger.info(f"📨 Startup message sent to {admin_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to send startup message: {e}")
+        logger.error(f"❌ Failed to send startup message to ID {admin_id} using bot {app.bot.username if app.bot else 'Unknown'}: {e}")
 
     # Main loop
     while True:
