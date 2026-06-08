@@ -1793,6 +1793,11 @@ def migrate_channel_posts_v2():
         cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS is_restored BOOLEAN DEFAULT FALSE;")
         cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS restored_at TIMESTAMP;")
         
+        cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS movie_name TEXT;")
+        cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS imdb_id TEXT;")
+        cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS tmdb_id TEXT;")
+        cur.execute("ALTER TABLE channel_posts ADD COLUMN IF NOT EXISTS channel_name TEXT;")
+        
         conn.commit()
         cur.close()
         logger.info("✅ channel_posts table migrated to V2 successfully!")
@@ -1802,16 +1807,9 @@ def migrate_channel_posts_v2():
         close_db_connection(conn)
 
 def save_post_to_db(
-    movie_id,
-    channel_id,
-    message_id,
-    bot_username,
-    caption,
-    media_file_id=None,
-    media_type="photo",
-    keyboard_data=None,
-    topic_id=None,
-    content_type="movies"    # ✅ NAYA: Default movies
+    movie_id, channel_id, message_id, bot_username, caption,
+    media_file_id=None, media_type="photo", keyboard_data=None, topic_id=None, content_type="movies",
+    movie_name=None, imdb_id=None, tmdb_id=None, channel_name=None
 ):
     """
     Post ka full data save karo.
@@ -1822,25 +1820,38 @@ def save_post_to_db(
         return False
     try:
         cur = conn.cursor()
+        
+        if not movie_name or not imdb_id:
+            cur.execute("SELECT title, imdb_id FROM movies WHERE id = %s", (movie_id,))
+            res = cur.fetchone()
+            if res:
+                if not movie_name: movie_name = res[0]
+                if not imdb_id: imdb_id = res[1]
+
         cur.execute("""
             INSERT INTO channel_posts 
                 (movie_id, channel_id, message_id, bot_username,
                  caption, media_file_id, media_type, 
-                 keyboard_data, topic_id, content_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 keyboard_data, topic_id, content_type,
+                 movie_name, imdb_id, tmdb_id, channel_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (channel_id, message_id) DO UPDATE SET
                 caption       = EXCLUDED.caption,
                 media_file_id = EXCLUDED.media_file_id,
                 media_type    = EXCLUDED.media_type,
                 keyboard_data = EXCLUDED.keyboard_data,
                 topic_id      = EXCLUDED.topic_id,
-                content_type  = EXCLUDED.content_type
+                content_type  = EXCLUDED.content_type,
+                movie_name    = COALESCE(EXCLUDED.movie_name, channel_posts.movie_name),
+                imdb_id       = COALESCE(EXCLUDED.imdb_id, channel_posts.imdb_id),
+                tmdb_id       = COALESCE(EXCLUDED.tmdb_id, channel_posts.tmdb_id),
+                channel_name  = COALESCE(EXCLUDED.channel_name, channel_posts.channel_name)
         """, (
             movie_id, channel_id, message_id, bot_username,
             caption, media_file_id, media_type,
             json.dumps(keyboard_data) if keyboard_data else None,
-            topic_id,
-            content_type    # ✅ Save hoga
+            topic_id, content_type,
+            movie_name, imdb_id, tmdb_id, channel_name
         ))
         conn.commit()
         cur.close()
@@ -6271,6 +6282,24 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for chat_id_str in target_channels: 
                     try:
                         chat_id = int(chat_id_str)
+                        
+                        # 👇 PREVENT DUPLICATE POSTING PER CHANNEL (7 DAYS COOLDOWN) 👇
+                        db_conn = get_db_connection()
+                        skip_this_channel = False
+                        if db_conn:
+                            try:
+                                db_cur = db_conn.cursor()
+                                db_cur.execute("SELECT 1 FROM channel_posts WHERE movie_id = %s AND channel_id = %s AND posted_at >= NOW() - INTERVAL '7 days' LIMIT 1", (movie_id, chat_id))
+                                if db_cur.fetchone():
+                                    skip_this_channel = True
+                                db_cur.close()
+                            except Exception: pass
+                            close_db_connection(db_conn)
+                            
+                        if skip_this_channel:
+                            logger.info(f"⏭️ Skipping channel {chat_id} for '{title}' (already posted within the last 7 days).")
+                            continue
+
                         sent_msg = None
                         
                         # Agar humare pass pehle se ID hai, toh file upload nahi karni
@@ -6300,7 +6329,12 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 
                         # ✅ DB me save karna zaroori hai taaki baad me /restore kaam kare
                         if sent_msg:
-                            save_post_to_db(movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot", caption, uploaded_file_id or poster_url, "photo", post_keyboard.to_dict(), None, "movies")
+                            ch_name = sent_msg.chat.title if sent_msg.chat else "Unknown"
+                            save_post_to_db(
+                                movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot", caption, 
+                                uploaded_file_id or poster_url, "photo", post_keyboard.to_dict(), None, "movies",
+                                movie_name=title, imdb_id=imdb_id, tmdb_id=None, channel_name=ch_name
+                            )
                             await asyncio.sleep(1.5)
                             
                     except Exception as e:
