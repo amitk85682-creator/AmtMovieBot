@@ -6409,6 +6409,12 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         plot       = "Auto Added"
         category   = gemini_category if gemini_category else "Movies"
 
+    # 👇 NAYA LOGIC: Gemini Category Priority for Anime 👇
+    cat_lower = str(gemini_category or "").lower()
+    genre_lower = str(genre or "").lower()
+    if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower or "anime" in genre_lower or "animation" in genre_lower:
+        category = "Anime"
+
     # --- STEP 3: IMDb CAST ---
     cast_str = ""
     if imdb_id:
