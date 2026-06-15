@@ -2667,11 +2667,10 @@ async def send_admin_notification(context, user, movie_title, group_info=None):
         safe_first_name = (user.first_name or 'Unknown').replace('<', '&lt;').replace('>', '&gt;')
 
         # 🌟 Premium Mention
-        user_mention_link = f"<a href='tg://user?id={user.id}'>{safe_first_name}</a>"
         if user.username:
-            user_display = f"{user_mention_link} (<code>@{safe_username}</code>)"
+            user_display = f"<a href='https://t.me/{safe_username}'>{safe_first_name}</a>"
         else:
-            user_display = user_mention_link
+            user_display = f"<a href='tg://user?id={user.id}'>{safe_first_name}</a>"
 
         message = f"<b>━━━━━ 🎬 𝗡𝗲𝘄 𝗥𝗲𝗾𝘂𝗲𝘀𝘁! ━━━━━</b>\n\n"
         message += f"◈ Movie: <b>{safe_movie_title}</b>\n"
@@ -2730,11 +2729,10 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
             try:
                 # 🌟 Premium Mention Format
                 safe_name = (first_name or username or 'there').replace('<', '&lt;').replace('>', '&gt;')
-                user_mention_link = f"<a href='tg://user?id={user_id}'>{safe_name}</a>"
                 if username:
-                    user_display = f"{user_mention_link} (<code>@{username}</code>)"
+                    user_display = f"<a href='https://t.me/{username}'>{safe_name}</a>"
                 else:
-                    user_display = user_mention_link
+                    user_display = f"<a href='tg://user?id={user_id}'>{safe_name}</a>"
 
                 # Optional heads-up text with premium mention
                 try:
@@ -2881,7 +2879,11 @@ async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
                 notified_users_ids = []
                 user_mentions = []
                 for user_id, username, first_name, message_id in users:
-                    mention = f"[{first_name or username}](tg://user?id={user_id})"
+                    name_to_show = first_name or username
+                    if username:
+                        mention = f"[{name_to_show}](https://t.me/{username})"
+                    else:
+                        mention = f"[{name_to_show}](tg://user?id={user_id})"
                     user_mentions.append(mention)
                     notified_users_ids.append(user_id)
 
@@ -3851,12 +3853,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_val = user.id
     user_uname = user.username  # Telegram username
     
-    # 🌟 Mention banao: Clickable Name + @username
-    user_mention = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
+    # 🌟 Mention banao: Clickable Name
     if user_uname:
-        user_display = f"{user_mention} (<code>@{user_uname}</code>)"
+        user_display = f"<a href='https://t.me/{user_uname}'>{user_name}</a>"
     else:
-        user_display = user_mention
+        user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
     
     # 🌟 NAYA: Bot ka actual naam aur username nikalo
     bot_info = await context.bot.get_me()
@@ -4040,9 +4041,10 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             not_found_text = (
                 "<b>━━━━ ❌ 𝗡𝗼𝘁 𝗙𝗼𝘂𝗻𝗱 ━━━━</b>\n\n"
-                "✦ शायद स्पेलिंग में कोई गलती है या यह फ़िल्म हमारे पास अभी उपलब्ध नहीं है।\n\n"
+                "✦ माफ़ करें, मुझे कोई मिलती-जुलती फ़िल्म नहीं मिली\n\n"
                 "◈ <b><a href='https://www.google.com/'>𝗚𝗼𝗼𝗴𝗹𝗲</a></b> ☜ सर्च करें..!!\n\n"
-                "◈ मूवी की स्पेलिंग गूगल पर सर्च करके, कॉपी करे, उसके बाद यहां टाइप करें।♻️\n\n"
+                "◈ मूवी की स्पेलिंग गूगल पर सर्च करके, कॉपी करे, उसके बाद यहां टाइप करें।✔️\n\n"
+                "◈ बस मूवी का नाम + वर्ष लिखें, उसके आगे पीछे कुछ भी ना लिखे..।♻️\n\n"
                 "<b>⟐ 𝗘𝘅𝗮𝗺𝗽𝗹𝗲</b>\n\n"
                 "╭──── सही है.!‼️ ────╮\n"
                 "│\n"
@@ -4407,11 +4409,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_uname = user.username
         
         # 🌟 Mention banao
-        user_mention = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
         if user_uname:
-            user_display = f"{user_mention} (<code>@{user_uname}</code>)"
+            user_display = f"<a href='https://t.me/{user_uname}'>{user_name}</a>"
         else:
-            user_display = user_mention
+            user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
         
         bot_info = await context.bot.get_me()
         bot_name = bot_info.first_name
@@ -4487,11 +4488,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             finally: close_db_connection(conn)
 
         # 🌟 Premium Mention Format
-        user_mention_link = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
         if db_username:
-            user_mention_full = f"{user_mention_link} (<code>@{db_username}</code>)"
+            user_mention_full = f"<a href='https://t.me/{db_username}'>{first_name}</a>"
         else:
-            user_mention_full = user_mention_link
+            user_mention_full = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
 
         # ✅ FIXED: "reqA_" ki jagah "reqA" use karna hai
         if action == "reqA":
@@ -8551,20 +8551,28 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cur = conn.cursor()
         if user_input.isdigit(): # ID di hai
-            cur.execute("SELECT first_name FROM user_requests WHERE user_id = %s LIMIT 1", (int(user_input),))
+            cur.execute("SELECT first_name, username FROM user_requests WHERE user_id = %s LIMIT 1", (int(user_input),))
             target_user_id = int(user_input)
             res = cur.fetchone()
-            first_name = res[0] if res else "User"
+            if res:
+                first_name = res[0] or "User"
+                username = res[1]
+            else:
+                first_name = "User"
+                username = None
         else: # Username diya hai
-            cur.execute("SELECT user_id, first_name FROM user_requests WHERE username ILIKE %s LIMIT 1", (user_input,))
+            cur.execute("SELECT user_id, first_name, username FROM user_requests WHERE username ILIKE %s LIMIT 1", (user_input,))
             res = cur.fetchone()
             if not res:
                 await update.message.reply_text(f"❌ '{user_input}' database me nahi mila. ID try karein.")
                 return ConversationHandler.END
-            target_user_id, first_name = res
+            target_user_id, first_name, username = res
 
         # 🎨 Beautiful Premium Template with Mention
-        user_mention_link = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
+        if username:
+            user_mention_link = f"<a href='https://t.me/{username}'>{first_name}</a>"
+        else:
+            user_mention_link = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
         msg = (
             f"<b>━━━━━ 🎉 𝗡𝗲𝘄 𝗨𝗽𝗱𝗮𝘁𝗲 𝗙𝗼𝗿 𝗨𝗼𝘂! ━━━━━</b>\n\n"
             f"✦ Hey {user_mention_link}!\n\n"
