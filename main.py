@@ -335,6 +335,7 @@ ADMIN_USER_ID = int(_admin_id) if _admin_id.isdigit() else 8675088364
 
 # Dono accounts — main bot owner + userbot — dono ko full admin access
 ADMIN_IDS = [ADMIN_USER_ID, 8438574164]
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'Ownermahi')  # Admin ka Telegram username
 
 def is_admin(user_id: int) -> bool:
     """Check karo ki user owner/admin hai ya nahi (dono accounts)"""
@@ -2665,12 +2666,20 @@ async def send_admin_notification(context, user, movie_title, group_info=None):
         safe_username = user.username if user.username else 'N/A'
         safe_first_name = (user.first_name or 'Unknown').replace('<', '&lt;').replace('>', '&gt;')
 
-        message = f"🎬 New Movie Request! 🎬\n\n"
-        message += f"Movie: <b>{safe_movie_title}</b>\n"
-        message += f"User: {safe_first_name} (ID: <code>{user.id}</code>)\n"
-        if user.username: message += f"Username: @{safe_username}\n"
-        message += f"From: {'Group: '+str(group_info) if group_info else 'Private Message'}\n"
-        message += f"Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
+        # 🌟 Premium Mention
+        user_mention_link = f"<a href='tg://user?id={user.id}'>{safe_first_name}</a>"
+        if user.username:
+            user_display = f"{user_mention_link} (<code>@{safe_username}</code>)"
+        else:
+            user_display = user_mention_link
+
+        message = f"<b>━━━━━ 🎬 𝗡𝗲𝘄 𝗥𝗲𝗾𝘂𝗲𝘀𝘁! ━━━━━</b>\n\n"
+        message += f"◈ Movie: <b>{safe_movie_title}</b>\n"
+        message += f"◈ User: {user_display}\n"
+        message += f"◈ ID: <code>{user.id}</code>\n"
+        message += f"◈ From: {'Group: '+str(group_info) if group_info else 'Private Message'}\n"
+        message += f"◈ Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}\n"
+        message += f"<b>━━━━━━━━━━━━━━━━━━━</b>"
 
         # ⚡ LIFETIME BUTTONS LOGIC
         # Telegram me button data limit 64 bytes hoti hai, isliye title chota kiya hai
@@ -2719,11 +2728,25 @@ async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title
 
         for user_id, username, first_name in users_to_notify:
             try:
-                # Optional heads-up text
+                # 🌟 Premium Mention Format
+                safe_name = (first_name or username or 'there').replace('<', '&lt;').replace('>', '&gt;')
+                user_mention_link = f"<a href='tg://user?id={user_id}'>{safe_name}</a>"
+                if username:
+                    user_display = f"{user_mention_link} (<code>@{username}</code>)"
+                else:
+                    user_display = user_mention_link
+
+                # Optional heads-up text with premium mention
                 try:
                     await safe_send(context.bot.send_message(
                         chat_id=user_id,
-                        text=f"🎉 Hey {first_name or username or 'there'}! Your requested movie '{movie_title}' is now available!"
+                        text=(
+                            f"<b>━━━━━ 🎉 𝗚𝗼𝗼𝗱 𝗡𝗲𝘄𝘀! ━━━━━</b>\n\n"
+                            f"✦ Hey {user_display}!\n\n"
+                            f"◈ आपकी requested movie '<b>{movie_title}</b>' अब उपलब्ध है! 🥳\n\n"
+                            f"<b>━━━━━━━━━━━━━━━━━━━</b>"
+                        ),
+                        parse_mode='HTML'
                     ))
                 except Exception:
                     pass
@@ -2854,7 +2877,7 @@ async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
 
         for group_id, users in groups_to_notify.items():
             try:
-                notification_text = "Hey! आपकी requested movie अब आ गई है! 🥳\n\n"
+                notification_text = "<b>━━━━━ 🎉 𝗨𝗽𝗱𝗮𝘁𝗲! ━━━━━</b>\n\n✦ आपकी requested movie अब आ गई है! 🥳\n\n"
                 notified_users_ids = []
                 user_mentions = []
                 for user_id, username, first_name, message_id in users:
@@ -2862,8 +2885,8 @@ async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
                     user_mentions.append(mention)
                     notified_users_ids.append(user_id)
 
-                notification_text += ", ".join(user_mentions)
-                notification_text += f"\n\nआपकी फिल्म '{movie_title}' अब उपलब्ध है! इसे पाने के लिए, कृपया मुझे private [...]"
+                notification_text += "◈ " + ", ".join(user_mentions)
+                notification_text += f"\n\n◈ आपकी फिल्म '{movie_title}' अब उपलब्ध है! इसे पाने के लिए, कृपया मुझे private में नाम भेजें...\n\n**━━━━━━━━━━━━━━━━━━━**"
 
                 await context.bot.send_message(
                     chat_id=group_id,
@@ -3292,7 +3315,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             
             # 👇 YAHAN SE FIX SHURU HOTA HAI (HTML INLINE LINKS KE LIYE) 👇
             bot_username = context.bot.username
-            text = f"📁 <b>{title}</b>\n\n👇 <b>Your Requested Files Are Here</b>\n\n"
+            text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
             
             
             for idx, f_data in enumerate(current_files, start=1):
@@ -3348,14 +3371,16 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # --- CAPTION UPDATE WITH EXTRA INFO ---
         caption_text = (
-            f"🎬 <b>{title}</b>\n"
+            f"<b>━━━━━ 🎬 𝗙𝗶𝗹𝗲 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ━━━━━</b>\n"
+            f"✦ <b>{title}</b>\n"
             f"{extra_display}"
             f"{year}"        
             f"{genre}"       
             f"{lang_display}"  
-            f"\n🔗 <b>JOIN »</b> <a href='{FILMFYBOX_CHANNEL_URL}'>FilmfyBox</a>\n\n"
-            f"🔹 <b>Please drop the movie name, and I'll find it for you as soon as possible. 🎬✨👇</b>\n"
-            f"🔹 <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>"
+            f"\n◈ <b>JOIN »</b> <a href='{FILMFYBOX_CHANNEL_URL}'>FilmfyBox</a>\n\n"
+            f"◈ <b>Drop the movie name, I'll find it for you 🎬✨👇</b>\n"
+            f"◈ <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>\n"
+            f"<b>━━━━━━━━━━━━━━━━━━━</b>"
         )
         
         join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
@@ -3821,7 +3846,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
 
     # --- NORMAL WELCOME MESSAGE (WITH GIF & DYNAMIC GREETING) ---
-    user_name = update.effective_user.first_name
+    user = update.effective_user
+    user_name = user.first_name
+    user_id_val = user.id
+    user_uname = user.username  # Telegram username
+    
+    # 🌟 Mention banao: Clickable Name + @username
+    user_mention = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
+    if user_uname:
+        user_display = f"{user_mention} (<code>@{user_uname}</code>)"
+    else:
+        user_display = user_mention
     
     # 🌟 NAYA: Bot ka actual naam aur username nikalo
     bot_info = await context.bot.get_me()
@@ -3842,14 +3877,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 2. Premium Caption (Dynamic Bot Name ke sath)
     caption_text = (
-        f"<b>🚩 JAI SHRI RAM 🚩</b>\n\n"
-        f"Hey <b>{user_name}</b>, {greeting}\n\n"
-        f"🤖 Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
-        f"<b>⚡️ My Capabilities:</b>\n"
-        f"• Fastest auto-filtering\n"
-        f"• 24/7 uptime\n"
-        f"• Premium file processing\n\n"
-        f"Tap the buttons below to know more! 👇"
+        f"<b>━━━━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━━━━</b>\n\n"
+        f"✦ {greeting}, {user_display}!\n\n"
+        f"╭─── ❖ 𝗔𝗕𝗢𝗨𝗧 𝗠𝗘 ❖ ───╮\n"
+        f"│\n"
+        f"│  🤖 Main hoon <b>{bot_name}</b>\n"
+        f"│  𝗧𝗵𝗲 𝗠𝗼𝘀𝘁 𝗣𝗼𝘄𝗲𝗿𝗳𝘂𝗹 𝗔𝘂𝘁𝗼 𝗙𝗶𝗹𝘁𝗲𝗿 𝗕𝗼𝘁\n"
+        f"│\n"
+        f"╰──────────────────╯\n\n"
+        f"<b>⟐ 𝗠𝘆 𝗣𝗿𝗲𝗺𝗶𝘂𝗺 𝗙𝗲𝗮𝘁𝘂𝗿𝗲𝘀:</b>\n"
+        f"  ◈ ⚡ 𝗟𝗶𝗴𝗵𝘁𝗻𝗶𝗻𝗴-𝗳𝗮𝘀𝘁 Auto Filtering\n"
+        f"  ◈ 🛡️ 𝟮𝟰/𝟳 Premium Uptime\n"
+        f"  ◈ 🎬 HD/4K File Processing\n"
+        f"  ◈ 🔍 𝗦𝗺𝗮𝗿𝘁 𝗦𝗲𝗮𝗿𝗰𝗵 + AI Matching\n\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"👇 <b>𝗧𝗮𝗽 𝘁𝗵𝗲 𝗯𝘂𝘁𝘁𝗼𝗻𝘀 𝗯𝗲𝗹𝗼𝘄 𝘁𝗼 𝗲𝘅𝗽𝗹𝗼𝗿𝗲!</b> 👇"
     )
 
     # 3. Inline Buttons
@@ -3997,17 +4039,17 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
 
             not_found_text = (
-                "माफ़ करें, मुझे कोई मिलती-जुलती फ़िल्म नहीं मिली\n\n"
-                "<b><a href='https://www.google.com/'>𝗚𝗼𝗼𝗴𝗹𝗲</a></b> ☜ सर्च करें..!!\n\n"
-                "मूवी की स्पेलिंग गूगल पर सर्च करके, कॉपी करे, उसके बाद यहां टाइप करें।✔️\n\n"
-                "बस मूवी का नाम + वर्ष:::: लिखें, उसके आगे पीछे कुछ भी ना लिखे..।♻️\n\n"
-                "✐ᝰ𝗘𝘅𝗮𝗺𝗽𝗹𝗲\n\n"
-                "सही है.!‼️    \n"
-                "─────────────────────\n"
-                "𝑲𝒈𝒇 𝟐✔️ | 𝑲𝒈𝒇 𝟐 𝑴𝒐𝒗𝒊𝒆 ❌\n"
-                "─────────────────────\n"
-                "𝑨𝒔𝒖𝒓 𝑺𝟎𝟏 𝑬𝟎𝟑✔️ | 𝑨𝒔𝒖𝒓 𝑺𝒆𝒂𝒔𝒐𝒏𝟑❌\n"
-                "─────────────────────\n\n"
+                "<b>━━━━ ❌ 𝗡𝗼𝘁 𝗙𝗼𝘂𝗻𝗱 ━━━━</b>\n\n"
+                "✦ शायद स्पेलिंग में कोई गलती है या यह फ़िल्म हमारे पास अभी उपलब्ध नहीं है।\n\n"
+                "◈ <b><a href='https://www.google.com/'>𝗚𝗼𝗼𝗴𝗹𝗲</a></b> ☜ सर्च करें..!!\n\n"
+                "◈ मूवी की स्पेलिंग गूगल पर सर्च करके, कॉपी करे, उसके बाद यहां टाइप करें।♻️\n\n"
+                "<b>⟐ 𝗘𝘅𝗮𝗺𝗽𝗹𝗲</b>\n\n"
+                "╭──── सही है.!‼️ ────╮\n"
+                "│\n"
+                "│  𝑲𝒈𝒇 𝟐 ✔️  ❙  𝑲𝒈𝒇 𝟐 𝑴𝒐𝒗𝒊𝒆 ❌\n"
+                "│  𝑨𝒔𝒖𝒓 𝑺𝟎𝟏 𝑬𝟎𝟑 ✔️  ❙  𝑨𝒔𝒖𝒓 𝑺𝒆𝒂𝒔𝒐𝒏𝟑 ❌\n"
+                "│\n"
+                "╰────────────────────╯\n\n"
                 "👇 <b>सही स्पेलिंग ढूँढने और Request करने के लिए नीचे क्लिक करें:</b>"
             )
 
@@ -4036,10 +4078,11 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = create_movie_selection_keyboard(movies, page=0)
         
         msg = await update.message.reply_text(
-            f"🎬 **Found {len(movies)} results for '{query}'**\n\n"
-            "👇 Select your movie below:",
+            f"<b>━━━━━━ 🎬 𝗦𝗲𝗮𝗿𝗰𝗵 𝗥𝗲𝘀𝘂𝗹𝘁𝘀 ━━━━━━</b>\n\n"
+            f"✦ 𝗙𝗼𝘂𝗻𝗱 <b>{len(movies)}</b> results for '<b>{query}</b>'\n\n"
+            f"👇 <b>𝗦𝗲𝗹𝗲𝗰𝘁 𝘆𝗼𝘂𝗿 𝗺𝗼𝘃𝗶𝗲 𝗯𝗲𝗹𝗼𝘄:</b>",
             reply_markup=keyboard,
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         
         track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
@@ -4169,6 +4212,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat.id
     data = query.data
 
+    # ✅ NAYA: Group Authorization Check (Premium Style Alert)
+    if chat_id < 0 and query.message.reply_to_message:
+        original_user_id = query.message.reply_to_message.from_user.id
+        # Agar click karne wala original requester nahi hai
+        if user_id != original_user_id:
+            user_name = query.from_user.first_name
+            alert_text = (
+                f"✋ 𝗛𝗲𝗹𝗹𝗼 {user_name}!\n\n"
+                f"🚫 𝗧𝗵𝗶𝘀 𝗶𝘀 𝗡𝗢𝗧 𝘆𝗼𝘂𝗿 𝗺𝗼𝘃𝗶𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁.\n"
+                f"🔍 𝗣𝗹𝗲𝗮𝘀𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁 𝘆𝗼𝘂𝗿'𝘀...\n\n"
+                f"👍 𝗢𝗞"
+            )
+            await query.answer(alert_text, show_alert=True)
+            return
+
+
     # ✅ NAYA: Video wala Pages Button Popup
     if data == "ignore":
         await query.answer("THIS IS PAGES BUTTON 🔴", show_alert=False)
@@ -4243,7 +4302,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
         if data == "start_help":
-            text = "<b>🛠 HELP MENU</b>\n\nMujhe apne group me add karke Admin bana do. Main automatically files filter karna shuru kar dunga!"
+            text = (
+                "<b>━━━━━ 🛠 𝗗𝗲𝗹𝗽 𝗠𝗲𝗻𝘂 ━━━━━</b>\n\n"
+                "╭─── ❖ 𝗗𝗼𝘄 𝘁𝗼 𝗨𝘀𝗲 ❖ ───╮\n"
+                "│\n"
+                "│  ◈ Mujhe apne group me add karo\n"
+                "│  ◈ Admin bana do\n"
+                "│  ◈ Main auto files filter karunga!\n"
+                "│\n"
+                "╰─────────────────╯"
+            )
             back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="start_back")]])
             # Purani GIF delete karke naya message bhejenge (sabse safe tareeka)
             try: await query.message.delete()
@@ -4253,7 +4321,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         elif data == "start_about":
-            text = f"<b>📖 ABOUT ME</b>\n\n• <b>Developer:</b> @{ADMIN_USERNAME}\n• <b>Language:</b> Python 3\n• <b>Library:</b> python-telegram-bot"
+            text = (
+                f"<b>━━━━━ 📖 𝗔𝗯𝗼𝘂𝘁 𝗠𝗲 ━━━━━</b>\n\n"
+                f"╭─── ❖ 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ❖ ───╮\n"
+                f"│\n"
+                f"│  ◈ <b>Developer:</b> @{ADMIN_USERNAME}\n"
+                f"│  ◈ <b>Language:</b> Python 3\n"
+                f"│  ◈ <b>Library:</b> python-telegram-bot\n"
+                f"│\n"
+                f"╰─────────────────╯"
+            )
             back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 BACK", callback_data="start_back")]])
             try: await query.message.delete()
             except: pass
@@ -4324,7 +4401,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
         # Wapas Start Menu Banane ka logic
-        user_name = update.effective_user.first_name
+        user = update.effective_user
+        user_name = user.first_name
+        user_id_val = user.id
+        user_uname = user.username
+        
+        # 🌟 Mention banao
+        user_mention = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
+        if user_uname:
+            user_display = f"{user_mention} (<code>@{user_uname}</code>)"
+        else:
+            user_display = user_mention
+        
         bot_info = await context.bot.get_me()
         bot_name = bot_info.first_name
         
@@ -4341,14 +4429,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else: greeting = "Good Night 🌙"
 
         caption_text = (
-            f"<b>🚩 JAI SHRI RAM 🚩</b>\n\n"
-            f"Hey <b>{user_name}</b>, {greeting}\n\n"
-            f"🤖 Main hoon <b>{bot_name}</b>, the most powerful Auto Filter Bot with premium features.\n\n"
-            f"<b>⚡️ My Capabilities:</b>\n"
-            f"• Fastest auto-filtering\n"
-            f"• 24/7 uptime\n"
-            f"• Premium file processing\n\n"
-            f"Tap the buttons below to know more! 👇"
+            f"<b>━━━━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━━━━</b>\n\n"
+            f"✦ {greeting}, {user_display}!\n\n"
+            f"╭─── ❖ 𝗔𝗕𝗢𝗨𝗧 𝗠𝗘 ❖ ───╮\n"
+            f"│\n"
+            f"│  🤖 Main hoon <b>{bot_name}</b>\n"
+            f"│  𝗧𝗵𝗲 𝗠𝗼𝘀𝘁 𝗣𝗼𝘄𝗲𝗿𝗳𝘂𝗹 𝗔𝘂𝘁𝗼 𝗙𝗶𝗹𝘁𝗲𝗿 𝗕𝗼𝘁\n"
+            f"│\n"
+            f"╰──────────────────╯\n\n"
+            f"<b>⟐ 𝗠𝘆 𝗣𝗿𝗲𝗺𝗶𝘂𝗺 𝗙𝗲𝗮𝘁𝘂𝗿𝗲𝘀:</b>\n"
+            f"  ◈ ⚡ 𝗟𝗶𝗴𝗵𝘁𝗻𝗶𝗻𝗴-𝗳𝗮𝘀𝘁 Auto Filtering\n"
+            f"  ◈ 🛡️ 𝟮𝟰/𝟳 Premium Uptime\n"
+            f"  ◈ 🎬 HD/4K File Processing\n"
+            f"  ◈ 🔍 𝗦𝗺𝗮𝗿𝘁 𝗦𝗲𝗮𝗿𝗰𝗵 + AI Matching\n\n"
+            f"<b>━━━━━━━━━━━━━━━━━━━━━</b>\n"
+            f"👇 <b>𝗧𝗮𝗽 𝘁𝗵𝗲 𝗯𝘂𝘁𝘁𝗼𝗻𝘀 𝗯𝗲𝗹𝗼𝘄 𝘁𝗼 𝗲𝘅𝗽𝗹𝗼𝗿𝗲!</b> 👇"
         )
 
         inline_buttons = InlineKeyboardMarkup([
@@ -4376,34 +4471,48 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user_id = int(parts[1])
         movie_title = parts[2]
 
-        # User ka naam DB se nikalo taaki message personal lage
+        # User ka naam DB se nikalo + mention format banao taaki message personal lage
         conn = get_db_connection()
         first_name = "User"
+        db_username = None
         if conn:
             try:
                 cur = conn.cursor()
-                cur.execute("SELECT first_name FROM user_requests WHERE user_id = %s LIMIT 1", (target_user_id,))
+                cur.execute("SELECT first_name, username FROM user_requests WHERE user_id = %s LIMIT 1", (target_user_id,))
                 res = cur.fetchone()
-                if res: first_name = res[0] or "User"
+                if res:
+                    first_name = res[0] or "User"
+                    db_username = res[1] if len(res) > 1 else None
             except: pass
             finally: close_db_connection(conn)
+
+        # 🌟 Premium Mention Format
+        user_mention_link = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
+        if db_username:
+            user_mention_full = f"{user_mention_link} (<code>@{db_username}</code>)"
+        else:
+            user_mention_full = user_mention_link
 
         # ✅ FIXED: "reqA_" ki jagah "reqA" use karna hai
         if action == "reqA":
             user_msg = (
-                f"🎉 <b>Good News!</b> 👋\n\n"
-                f"Hello <b>{first_name}!</b> आपकी Requested Movie अब उपलब्ध है।\n\n"
+                f"<b>━━━━━ 🎉 𝗡𝗲𝘄 𝗨𝗽𝗱𝗮𝘁𝗲 𝗙𝗼𝗿 𝗨𝗼𝘂! ━━━━━</b>\n\n"
+                f"✦ Hey {user_mention_full}!\n\n"
+                f"◈ आपकी Requested Movie अब उपलब्ध है।\n\n"
                 f"🎬 File: <b>{movie_title}</b>\n\n"
                 f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
+                f"<b>━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"◈ Regards, <b>@{ADMIN_USERNAME}</b>"
             )
             btn_status = "✅ User Notified: Added"
         else:
             user_msg = (
-                f"😔 <b>Update!</b> 👋\n\n"
-                f"Hello <b>{first_name}!</b> आपकी Requested File (<b>{movie_title}</b>) अभी हमें कहीं नहीं मिल पाई है।\n\n"
+                f"<b>━━━━━ 😔 𝗨𝗽𝗱𝗮𝘁𝗲 𝗙𝗼𝗿 𝗨𝗼𝘂 ━━━━━</b>\n\n"
+                f"✦ Hey {user_mention_full}!\n\n"
+                f"◈ आपकी Requested File (<b>{movie_title}</b>) अभी हमें कहीं नहीं मिल पाई है।\n\n"
                 f"जैसे ही यह अवेलेबल होगी, हम आपको जरूर बताएंगे।\n\n"
-                f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
+                f"<b>━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"◈ Regards, <b>@{ADMIN_USERNAME}</b>"
             )
             btn_status = "❌ User Notified: Not Found"
 
@@ -8454,13 +8563,16 @@ async def notify_ask_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return ConversationHandler.END
             target_user_id, first_name = res
 
-        # 🎨 Beautiful Template
+        # 🎨 Beautiful Premium Template with Mention
+        user_mention_link = f"<a href='tg://user?id={target_user_id}'>{first_name}</a>"
         msg = (
-            f"🎉 <b>Good News!</b> 👋\n\n"
-            f"Hello <b>{first_name}!</b> आपकी Requested File अब उपलब्ध है।\n\n"
+            f"<b>━━━━━ 🎉 𝗡𝗲𝘄 𝗨𝗽𝗱𝗮𝘁𝗲 𝗙𝗼𝗿 𝗨𝗼𝘂! ━━━━━</b>\n\n"
+            f"✦ Hey {user_mention_link}!\n\n"
+            f"◈ आपकी Requested File अब उपलब्ध है।\n\n"
             f"🎬 File: <b>{movie_name}</b>\n\n"
             f"इसे पाने के लिए अभी बॉट में मूवी का नाम टाइप करें और एन्जॉय करें! 😊\n\n"
-            f"━━━━━━━━━━━━━━━━━━━\nRegards, <b>@Ownermahi</b>"
+            f"<b>━━━━━━━━━━━━━━━━━━━</b>\n"
+            f"◈ Regards, <b>@{ADMIN_USERNAME}</b>"
         )
 
         # Multi-bot send function call karo
@@ -11945,11 +12057,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     keyboard = create_movie_selection_keyboard(movies, page=0)
     
-    # Reply to user
+    # Reply to user with premium header
     msg = await update.message.reply_text(
-        f"🎬 **Found {len(movies)} results for '{text}'**\n👇 Select movie:",
+        f"<b>━━━━━━ 🎬 𝗦𝗲𝗮𝗿𝗰𝗵 𝗥𝗲𝘀𝘂𝗹𝘁𝘀 ━━━━━━</b>\n\n"
+        f"✦ 𝗙𝗼𝘂𝗻𝗱 <b>{len(movies)}</b> results for '<b>{text}</b>'\n\n"
+        f"👇 <b>𝗦𝗲𝗹𝗲𝗰𝘁 𝗺𝗼𝘃𝗶𝗲:</b>",
         reply_markup=keyboard,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     
     # Auto-delete (Optional - 2 min)
