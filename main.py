@@ -3853,11 +3853,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_val = user.id
     user_uname = user.username  # Telegram username
     
-    # 🌟 Mention banao: Clickable Name
-    if user_uname:
-        user_display = f"<a href='https://t.me/{user_uname}'>{user_name}</a>"
-    else:
-        user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
+    # 🌟 Mention banao: Clickable Name (Direct Profile Link without Web Preview)
+    user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
     
     # 🌟 NAYA: Bot ka actual naam aur username nikalo
     bot_info = await context.bot.get_me()
@@ -4408,11 +4405,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id_val = user.id
         user_uname = user.username
         
-        # 🌟 Mention banao
-        if user_uname:
-            user_display = f"<a href='https://t.me/{user_uname}'>{user_name}</a>"
-        else:
-            user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
+        ## 🌟 Mention banao (Direct Profile Link without Web Preview)
+        user_display = f"<a href='tg://user?id={user_id_val}'>{user_name}</a>"
         
         bot_info = await context.bot.get_me()
         bot_name = bot_info.first_name
