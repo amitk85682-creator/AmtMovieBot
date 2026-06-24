@@ -708,28 +708,54 @@ def get_gemini_keys():
 async def get_movie_name_from_caption(caption_text, image_bytes=None):
     """
     🎯 FULLY AI-POWERED EXTRACTION (MULTIMODAL WITH AUTO-KEY ROTATION)
+    🔧 FIXED: Ab first 5 lines bheji jaati hain + better prompt + retry logic
     """
     if not caption_text or len(caption_text.strip()) < 2:
         return {"title": "UNKNOWN", "year": "", "language": "", "extra_info": "", "category": ""}
     
-    first_line = clean_telegram_text(caption_text.split('\n')[0].strip())
-    logger.info(f"📝 Processing caption: {first_line[:100]}...")
+    # 🔧 FIX: Pehle sirf first_line jaati thi — ab first 5 lines bheji jaayengi
+    # Kyunki bahut se captions mein pehli line promo/group name hoti hai
+    caption_lines = caption_text.strip().split('\n')
+    # First 5 lines clean karke bhejo (ya jitni bhi hain)
+    cleaned_lines = []
+    for line in caption_lines[:5]:
+        cleaned = clean_telegram_text(line.strip())
+        if cleaned and len(cleaned) > 1:
+            cleaned_lines.append(cleaned)
+    
+    caption_for_ai = '\n'.join(cleaned_lines) if cleaned_lines else clean_telegram_text(caption_lines[0].strip())
+    first_line = cleaned_lines[0] if cleaned_lines else clean_telegram_text(caption_lines[0].strip())
+    
+    logger.info(f"📝 Processing caption ({len(cleaned_lines)} lines): {first_line[:100]}...")
 
     gemini_keys = get_gemini_keys()
 
     if gemini_keys:
-        prompt = f"""Extract movie/series info from this filename. Return ONLY JSON.
-Filename: "{first_line}"
-Rules:
-- title: Clean name without S01, E01, group names, quality, etc.
-- year: 4-digit year if present
-- language: Audio languages mentioned
-- extra_info: Season/episode info (e.g., "S01 E01-12 COMBINED")
-- category: 'Web Series' if season/episode found, else 'Movies'
+        # 🔧 FIX: Enhanced prompt — explicitly tells AI to ignore promo/group text
+        prompt = f"""Extract movie/series info from this file caption. Return ONLY JSON.
 
-Example:
-Input: "A Gatherer's Adventure In Isekai S01 [E01-12] COMBiNED 720p AMZN WEB-DL HEVC Multi DDP2.0 MSub KEИ !! Shubham.mkv"
+Caption:
+\"\"\"
+{caption_for_ai}
+\"\"\"
+
+IMPORTANT Rules:
+- title: The ACTUAL movie/series name. Remove S01, E01, group tags, quality info, file extensions.
+- IGNORE channel names, group promotions, @usernames, "Join" text — these are NOT the movie name.
+- If multiple lines, the movie name is usually the line with quality tags (720p, 1080p) or file extension (.mkv, .mp4).
+- year: 4-digit year if present (like 2023, 2024)
+- language: Audio languages mentioned (Hindi, English, Multi Audio, Dual Audio, etc.)
+- extra_info: Season/episode info (e.g., "S01 E01-12 COMBINED")
+- category: 'Web Series' if season/episode found, 'Anime' if anime, else 'Movies'
+
+Example 1:
+Input: "A Gatherer's Adventure In Isekai S01 [E01-12] COMBiNED 720p AMZN WEB-DL HEVC Multi DDP2.0 MSub"
 Output: {{"title": "A Gatherer's Adventure In Isekai", "year": "", "language": "Multi Audio", "extra_info": "S01 E01-12 COMBINED", "category": "Web Series"}}
+
+Example 2:
+Input: "@MovieChannel Join Now\\nPushpa 2 The Rule 2024 1080p WEB-DL Hindi DD5.1"
+Output: {{"title": "Pushpa 2 The Rule", "year": "2024", "language": "Hindi", "extra_info": "", "category": "Movies"}}
+
 JSON:"""
 
         contents = [prompt]
@@ -756,7 +782,6 @@ JSON:"""
                 
             except Exception as e:
                 error_msg = str(e).lower()
-                # 👇 Yahan ek print statement add karo taaki actual error log me dikhe
                 logger.error(f"🛑 Asli Gemini Error Key {key[:5]} par: {str(e)}")
                 
                 if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
@@ -768,6 +793,15 @@ JSON:"""
 
     # FALLBACK: Improved version
     logger.info("⚠️ Keys exhausted or failed. Using fallback extraction...")
+    
+    # 🔧 FIX: Try each cleaned line for fallback (not just first line)
+    # Sometimes the actual filename is on a different line
+    for line in cleaned_lines:
+        result = await fallback_extraction(line)
+        if result.get("title") and result["title"] != "UNKNOWN" and len(result["title"]) > 2:
+            return result
+    
+    # Last resort: try first line
     return await fallback_extraction(first_line)
 
 
@@ -2226,15 +2260,19 @@ def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
     try:
         metadata = fetch_movie_metadata(movie_title)
         if metadata:
-            title, year, poster_url, genre, imdb_id, rating = metadata  # 6 values unpack
+            # 🔧 FIX: 8 values unpack (pehle 6 thi — CRASH hoti thi!)
+            title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
             update_movie_metadata(
                 movie_id=movie_id,
                 imdb_id=imdb_id if imdb_id else None,
                 poster_url=poster_url if poster_url else None,
                 year=year if year else None,
                 genre=genre if genre else None,
-                rating=rating if rating and rating != 'N/A' else None  # Rating add करें
+                rating=rating if rating and rating != 'N/A' else None,
+                description=plot if plot else None,      # 🔧 NAYA: Plot bhi save karo
+                category=category if category else None   # 🔧 NAYA: Category bhi save karo
             )
+            logger.info(f"✅ Metadata updated for movie {movie_id}: {title}")
             return True
         return False
     except Exception as e:
@@ -2456,6 +2494,64 @@ def get_tmdb_backdrop(query, search_year=""):
     except Exception as e:
         logger.error(f"TMDB Error: {e}")
     return None
+def _find_best_tmdb_match(tmdb_results: list, search_query: str, search_year: str = ""):
+    """
+    🎯 TMDb results mein se BEST match choose karta hai — blindly first nahi.
+    Scoring: Title similarity + Year match + Popularity
+    Ye galat movie aane ka sabse bada fix hai.
+    """
+    if not tmdb_results:
+        return None
+    
+    search_lower = search_query.lower().strip()
+    best_match = None
+    best_score = -1
+    
+    for item in tmdb_results:
+        score = 0
+        
+        # 1. Title similarity score (0-100)
+        item_title = (item.get('title') or item.get('name') or '').lower().strip()
+        item_original = (item.get('original_title') or item.get('original_name') or '').lower().strip()
+        
+        # Best of title vs original_title (Hindi movies ka original_title alag hota hai)
+        title_sim = fuzz.token_set_ratio(search_lower, item_title)
+        original_sim = fuzz.token_set_ratio(search_lower, item_original)
+        similarity = max(title_sim, original_sim)
+        score += similarity  # 0-100 points
+        
+        # 2. Year match bonus (+50 points — bahut strong signal)
+        if search_year and str(search_year).strip().isdigit():
+            item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
+            if item_year == str(search_year).strip():
+                score += 50  # Year match — strong boost
+            elif item_year and abs(int(item_year) - int(search_year)) <= 1:
+                score += 20  # Off by 1 year — small boost
+        
+        # 3. Popularity bonus (popular items are usually correct)
+        popularity = item.get('popularity', 0)
+        if popularity > 50:
+            score += 10
+        elif popularity > 10:
+            score += 5
+        
+        # 4. Has poster bonus (real movies usually have posters)
+        if item.get('poster_path'):
+            score += 5
+        
+        logger.debug(f"TMDb scoring: '{item_title}' | sim={similarity} | total={score}")
+        
+        if score > best_score:
+            best_score = score
+            best_match = item
+    
+    # Minimum threshold — agar score bahut low hai toh reject karo
+    if best_score < 55:
+        logger.warning(f"⚠️ TMDb: Best match score {best_score} too low for '{search_query}', rejecting")
+        return None
+    
+    logger.info(f"✅ TMDb Best Match: '{best_match.get('title') or best_match.get('name')}' (score: {best_score})")
+    return best_match
 
 def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = ""):
     """
@@ -2468,9 +2564,10 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
     search_query = query.strip()
     is_imdb_id = bool(re.match(r'^tt\d{7,8}$', search_query))
 
+    logger.info(f"🔍 Metadata fetch for: '{search_query}' | year={search_year} | category={hint_category}")
+
     # ----- एडल्ट मोड: OMDb का उपयोग न करें (क्योंकि उसमें एडल्ट डेटा नहीं) -----
     if adult_mode:
-        # सीधे TMDb का उपयोग करें
         try:
             tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}&include_adult=true"
             if search_year and search_year.strip().isdigit():
@@ -2479,22 +2576,18 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
             if not t_resp.get('results'):
                 return None
 
-            best_match = t_resp['results'][0]
-            # वर्ष मैच करने की कोशिश
-            if search_year and str(search_year).strip().isdigit():
-                for item in t_resp['results']:
-                    item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
-                    if str(search_year).strip() == item_year:
-                        best_match = item
-                        break
+            # 🔧 FIX: Smart match instead of blindly first
+            best_match = _find_best_tmdb_match(t_resp['results'], search_query, search_year)
+            if not best_match:
+                best_match = t_resp['results'][0]  # Fallback to first if scoring rejects all
 
             title = best_match.get('title') or best_match.get('name') or search_query
             year_str = str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4]
             year = int(year_str) if year_str.isdigit() else 0
             plot = best_match.get('overview', 'No story available.')
             rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
-            category = "Adult"  # जबरदस्ती Adult
-            genre = "Romance, Drama"  # डिफ़ॉल्ट, TMDb जॉनर बाद में ला सकते हैं
+            category = "Adult"
+            genre = "Romance, Drama"
 
             path = best_match.get('poster_path')
             poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
@@ -2513,112 +2606,163 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
             logger.error(f"Adult TMDb Fetch Error: {e}")
             return None
 
-    # ----- नॉर्मल मोड (मूल कोड) -----
-    if not omdb_api_key:
-        logger.error("❌ OMDB_API_KEY missing in .env")
-        return None
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔧 FIXED: NORMAL MODE — Smart OMDb → TMDb Chain
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     try:
-        if is_imdb_id:
-            url = f"https://www.omdbapi.com/?i={search_query}&apikey={omdb_api_key}&plot=full"
-        else:
-            is_series = "series" in hint_category.lower() if hint_category else False
-            omdb_type = "series" if is_series else "movie"
-            url = f"https://www.omdbapi.com/?t={quote(search_query)}&type={omdb_type}&apikey={omdb_api_key}&plot=full"
+        omdb_resp = None
+        
+        # ━━━━━ STEP 1: OMDb Search (agar key hai toh) ━━━━━
+        if omdb_api_key and not is_imdb_id:
+            # 🔧 FIX: Pehle BINA type ke try karo (type galat hone se result miss hota tha)
+            url_no_type = f"https://www.omdbapi.com/?t={quote(search_query)}&apikey={omdb_api_key}&plot=full"
             if search_year and str(search_year).strip().isdigit():
-                url += f"&y={str(search_year).strip()}"
-
-        resp = requests.get(url, timeout=10).json()
-
-        if resp.get("Response") != "True":
-            # OMDb फेल होने पर TMDb का उपयोग करें
-            if is_series:
-                tmdb_search = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={quote(search_query)}"
+                url_no_type += f"&y={str(search_year).strip()}"
+            
+            resp = requests.get(url_no_type, timeout=10).json()
+            
+            if resp.get("Response") == "True":
+                omdb_resp = resp
             else:
-                tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}"
-            if search_year and str(search_year).strip().isdigit():
-                tmdb_search += f"&year={search_year.strip()}"
-            t_resp = requests.get(tmdb_search, timeout=10).json()
-            if not t_resp.get('results'):
-                return None
+                # 🔧 FIX: Retry WITH type parameter (agar bina type se nahi mila)
+                is_series = "series" in hint_category.lower() if hint_category else False
+                if is_series:
+                    url_with_type = f"https://www.omdbapi.com/?t={quote(search_query)}&type=series&apikey={omdb_api_key}&plot=full"
+                    if search_year and str(search_year).strip().isdigit():
+                        url_with_type += f"&y={str(search_year).strip()}"
+                    resp2 = requests.get(url_with_type, timeout=10).json()
+                    if resp2.get("Response") == "True":
+                        omdb_resp = resp2
+                        
+        elif omdb_api_key and is_imdb_id:
+            url = f"https://www.omdbapi.com/?i={search_query}&apikey={omdb_api_key}&plot=full"
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("Response") == "True":
+                omdb_resp = resp
 
-            best_match = t_resp['results'][0]
-            if search_year and str(search_year).strip().isdigit():
-                for item in t_resp['results']:
-                    item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
-                    if str(search_year).strip() == item_year:
-                        best_match = item
-                        break
+        # ━━━━━ STEP 2: OMDb se data mila — process karo ━━━━━
+        if omdb_resp:
+            title = omdb_resp.get('Title')
+            year = int(omdb_resp.get('Year', '0').split('–')[0]) if omdb_resp.get('Year') else 0
+            genre = omdb_resp.get('Genre', 'Action, Drama')
+            rating = omdb_resp.get('imdbRating', 'N/A')
+            plot = omdb_resp.get('Plot', 'No story available.')
+            imdb_id = omdb_resp.get('imdbID')
+            country = omdb_resp.get('Country', '')
+            lang = omdb_resp.get('Language', '').lower()
 
-            title = best_match.get('title') or best_match.get('name') or search_query
-            year_str = str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4]
-            year = int(year_str) if year_str.isdigit() else 0
-            plot = best_match.get('overview', 'No story available.')
-            rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
-            category = "Movies" if best_match.get('media_type') == 'movie' else "Web Series"
-            genre = "Action, Drama"
-            path = best_match.get('poster_path')
-            poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
+            # Smart category detection
+            category = "Movies"
+            omdb_type = omdb_resp.get('Type', '').lower()
+            g_low = genre.lower()
+            
+            if omdb_type == 'series':
+                category = "Web Series"
+            elif "animation" in g_low or "anime" in g_low:
+                category = "Anime"
+            elif "india" in country.lower():
+                if any(x in lang for x in ['telugu', 'tamil', 'kannada', 'malayalam']):
+                    category = "South"
+                else:
+                    category = "Bollywood"
+            else:
+                category = "Hollywood"
 
-            imdb_id = None
-            try:
-                tmdb_id = best_match.get('id')
-                media_type = best_match.get('media_type', 'movie')
-                ext_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids?api_key={tmdb_api_key}"
-                imdb_id = requests.get(ext_url, timeout=5).json().get('imdb_id')
-            except:
-                pass
+            # TMDb se HD poster laao
+            poster_url = omdb_resp.get('Poster')
+            if imdb_id and imdb_id != 'N/A':
+                try:
+                    tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
+                    t_resp = requests.get(tmdb_find, timeout=10).json()
+                    results = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
+                    if results:
+                        path = results[0].get('poster_path')
+                        if path:
+                            poster_url = f"https://image.tmdb.org/t/p/original{path}"
+                except:
+                    pass
+            else:
+                try:
+                    tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(title)}"
+                    t_resp = requests.get(tmdb_search, timeout=10).json()
+                    if t_resp.get('results'):
+                        for item in t_resp['results']:
+                            item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
+                            if str(year) == item_year and item.get('poster_path'):
+                                poster_url = f"https://image.tmdb.org/t/p/original{item['poster_path']}"
+                                break
+                        else:
+                            path = t_resp['results'][0].get('poster_path')
+                            if path:
+                                poster_url = f"https://image.tmdb.org/t/p/original{path}"
+                except:
+                    pass
 
+            logger.info(f"✅ OMDb Success: '{title}' ({year}) [{category}]")
             return title, year, poster_url, genre, imdb_id, rating, plot, category
 
-        # OMDb से डेटा सफल
-        title = resp.get('Title')
-        year = int(resp.get('Year', '0').split('–')[0]) if resp.get('Year') else 0
-        genre = resp.get('Genre', 'Action, Drama')
-        rating = resp.get('imdbRating', 'N/A')
-        plot = resp.get('Plot', 'No story available.')
-        imdb_id = resp.get('imdbID')
-        country = resp.get('Country', '')
-        lang = resp.get('Language', '').lower()
+        # ━━━━━ STEP 3: OMDb fail — TMDb SMART FALLBACK ━━━━━
+        logger.info(f"⚠️ OMDb miss for '{search_query}', trying TMDb smart search...")
+        
+        # 🔧 FIX: search/multi use karo (movie + tv dono milenge) 
+        tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}"
+        if search_year and str(search_year).strip().isdigit():
+            tmdb_search += f"&year={search_year.strip()}"
+        t_resp = requests.get(tmdb_search, timeout=10).json()
+        
+        if not t_resp.get('results'):
+            # Agar multi mein nahi mila, try TV-only search (agar series hint hai)
+            is_series = "series" in hint_category.lower() if hint_category else False
+            if is_series:
+                tmdb_tv = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={quote(search_query)}"
+                if search_year and str(search_year).strip().isdigit():
+                    tmdb_tv += f"&first_air_date_year={search_year.strip()}"
+                t_resp = requests.get(tmdb_tv, timeout=10).json()
+            
+            if not t_resp.get('results'):
+                logger.warning(f"❌ TMDb bhi fail for '{search_query}'")
+                return None
 
-        category = "Movies"
-        g_low = genre.lower()
-        if "animation" in g_low or "anime" in g_low:
-            category = "Anime"
-        elif "series" in g_low or "episode" in g_low:
+        # 🔧 FIX: Smart match — blindly first nahi lega!
+        best_match = _find_best_tmdb_match(t_resp['results'], search_query, search_year)
+        if not best_match:
+            # Agar smart match reject kar de, still try first as last resort
+            best_match = t_resp['results'][0]
+            logger.warning(f"⚠️ TMDb smart match rejected all, using first result as fallback")
+
+        title = best_match.get('title') or best_match.get('name') or search_query
+        year_str = str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4]
+        year = int(year_str) if year_str.isdigit() else 0
+        plot = best_match.get('overview', 'No story available.')
+        rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
+        
+        # Smart category from TMDb media_type
+        media_type = best_match.get('media_type', '')
+        if media_type == 'tv':
             category = "Web Series"
-        elif "india" in country.lower():
-            if any(x in lang for x in ['telugu', 'tamil', 'kannada', 'malayalam']):
-                category = "South"
-            else:
-                category = "Bollywood"
+        elif media_type == 'movie':
+            category = "Movies"
         else:
-            category = "Hollywood"
+            category = "Web Series" if ("series" in hint_category.lower() if hint_category else False) else "Movies"
+        
+        genre = "Action, Drama"  # TMDb genre IDs need separate API call, using default
+        
+        # TMDb poster
+        path = best_match.get('poster_path')
+        poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
 
-        # TMDb से HD पोस्टर लाना
-        poster_url = resp.get('Poster')
-        if imdb_id and imdb_id != 'N/A':
-            tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
-            t_resp = requests.get(tmdb_find, timeout=10).json()
-            results = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
-            if results:
-                path = results[0].get('poster_path')
-                if path:
-                    poster_url = f"https://image.tmdb.org/t/p/original{path}"
-        else:
-            tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(title)}"
-            t_resp = requests.get(tmdb_search, timeout=10).json()
-            if t_resp.get('results'):
-                for item in t_resp['results']:
-                    item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
-                    if str(year) == item_year and item.get('poster_path'):
-                        poster_url = f"https://image.tmdb.org/t/p/original{item['poster_path']}"
-                        break
-                else:
-                    path = t_resp['results'][0].get('poster_path')
-                    if path:
-                        poster_url = f"https://image.tmdb.org/t/p/original{path}"
+        # IMDb ID nikalo TMDb se
+        imdb_id = None
+        try:
+            tmdb_id = best_match.get('id')
+            mt = 'tv' if media_type == 'tv' else 'movie'
+            ext_url = f"https://api.themoviedb.org/3/{mt}/{tmdb_id}/external_ids?api_key={tmdb_api_key}"
+            imdb_id = requests.get(ext_url, timeout=5).json().get('imdb_id')
+        except:
+            pass
 
+        logger.info(f"✅ TMDb Success: '{title}' ({year}) [{category}]")
         return title, year, poster_url, genre, imdb_id, rating, plot, category
 
     except Exception as e:
@@ -3373,8 +3517,8 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # --- CAPTION UPDATE WITH EXTRA INFO ---
         caption_text = (
-            f"<b>━━━━━ 🎬 𝗙𝗶𝗹𝗲 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ━━━━━</b>\n"
             f"✦ <b>{title}</b>\n"
+            f"<b>━━━━━━━━━━━━━━━━━━━</b>"
             f"{extra_display}"
             f"{year}"        
             f"{genre}"       
