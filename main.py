@@ -3517,8 +3517,8 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         # --- CAPTION UPDATE WITH EXTRA INFO ---
         caption_text = (
+            f"<b>━━━━━ 🎬 𝗙𝗶𝗹𝗲 𝗗𝗲𝘁𝗮𝗶𝗹𝘀 ━━━━━</b>\n"
             f"✦ <b>{title}</b>\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━</b>"
             f"{extra_display}"
             f"{year}"        
             f"{genre}"       
