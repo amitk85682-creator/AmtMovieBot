@@ -64,7 +64,11 @@ api_movies_cache = FastCache(ttl_seconds=30) # 30 Seconds cache for Web App Home
 # ==================== 2. AB IMDB CHECK KAREIN (AB YE SAFE HAI) ====================
 try:
     from imdb import Cinemagoer
-    ia = Cinemagoer()
+    try:
+        ia = Cinemagoer()
+    except Exception as e:
+        logger.warning(f"Cinemagoer initialization failed: {e}")
+        ia = None
 except ImportError:
     # Ab logger define ho chuka hai, toh yeh error nahi dega
     logger.warning("imdb (cinemagoer) module not found. Run: pip install cinemagoer")
