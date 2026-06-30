@@ -3326,21 +3326,25 @@ def create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages
         if season_view:
             keyboard.append([InlineKeyboardButton("🔙 Back to Seasons", callback_data=f"back_to_seasons_{movie_id}")])
 
-        # 3. Send All बटन
-        keyboard.append([InlineKeyboardButton("🚀 SEND ALL", callback_data=f"sendall_{movie_id}")])
-        
-        # 4. Filters
+        # 3. Premium, Send All, Trending (Row 1)
         keyboard.append([
-            InlineKeyboardButton("QUALITY", callback_data=f"v_qual_{movie_id}"),
-            InlineKeyboardButton("LANGUAGE", callback_data=f"v_lang_{movie_id}"),
-            InlineKeyboardButton("SEASON", callback_data=f"v_seas_{movie_id}")
+            InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
+            InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
+            InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
         ])
         
-        # 5. Pagination
+        # 4. Filters (Row 2)
+        keyboard.append([
+            InlineKeyboardButton("📍 Qᴜᴀʟɪᴛʏ", callback_data=f"v_qual_{movie_id}"),
+            InlineKeyboardButton("🔊 Lᴀɴɢᴜᴀɢᴇ", callback_data=f"v_lang_{movie_id}"),
+            InlineKeyboardButton("🏷️ Sᴇᴀsᴏɴ", callback_data=f"v_seas_{movie_id}")
+        ])
+        
+        # 5. Pagination (Premium look)
         nav_buttons = []
-        nav_buttons.append(InlineKeyboardButton("◀️ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
+        nav_buttons.append(InlineKeyboardButton("◀️ ᴘʀᴇᴠ" if page > 1 else "ᴘᴀɢᴇ", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
         nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="ignore"))
-        nav_buttons.append(InlineKeyboardButton("NEXT ▶️" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
+        nav_buttons.append(InlineKeyboardButton("ɴᴇxᴛ ▶️" if page < total_pages else "ɴᴇxᴛ >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
         keyboard.append(nav_buttons)
 
     # ... (बाकी व्यूज जैसे language, quality, season पहले जैसे ही रहेंगे)
@@ -5468,9 +5472,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
                         extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
                         
+                        lang_name = str(file_data[4]).strip() if len(file_data) > 4 and file_data[4] else ""
+                        lang_tag = f"[{lang_name}] " if lang_name else ""
+                        
                         ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
                         
-                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {ep_tag}{quality.strip()}</a></b>\n\n"
+                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {lang_tag}{ep_tag}{quality.strip()}</a></b>\n\n"
 
             elif view_type in ["lang", "qual"]:
                 text = f"📁 <b>{title}</b>\n\n👇 <b>Select {view_type.upper()} Filter:</b>\n\n"
@@ -5481,18 +5488,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 1. MAIN MENU: Yahan normal buttons dikhenge
             if view_type == "main":
                 if filtered_qualities:
-                    keyboard.append([InlineKeyboardButton("🚀 SEND ALL", callback_data=f"sendall_{movie_id}")])
+                    keyboard.append([
+                        InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
+                        InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
+                        InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
+                    ])
+                else:
+                    keyboard.append([
+                        InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
+                        InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
+                    ])
                 
                 keyboard.append([
-                    InlineKeyboardButton("QUALITY", callback_data=f"v_qual_{movie_id}"),
-                    InlineKeyboardButton("LANGUAGE", callback_data=f"v_lang_{movie_id}"),
-                    InlineKeyboardButton("SEASON", callback_data=f"v_seas_{movie_id}")
+                    InlineKeyboardButton("📍 Qᴜᴀʟɪᴛʏ", callback_data=f"v_qual_{movie_id}"),
+                    InlineKeyboardButton("🔊 Lᴀɴɢᴜᴀɢᴇ", callback_data=f"v_lang_{movie_id}"),
+                    InlineKeyboardButton("🏷️ Sᴇᴀsᴏɴ", callback_data=f"v_seas_{movie_id}")
                 ])
                 
                 nav_buttons = []
-                nav_buttons.append(InlineKeyboardButton("◀️ PREV" if page > 1 else "PAGE", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
+                nav_buttons.append(InlineKeyboardButton("◀️ ᴘʀᴇᴠ" if page > 1 else "ᴘᴀɢᴇ", callback_data=f"vpage_{movie_id}_{page-1}" if page > 1 else "ignore"))
                 nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="ignore"))
-                nav_buttons.append(InlineKeyboardButton("NEXT ▶️" if page < total_pages else "NEXT >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
+                nav_buttons.append(InlineKeyboardButton("ɴᴇxᴛ ▶️" if page < total_pages else "ɴᴇxᴛ >", callback_data=f"vpage_{movie_id}_{page+1}" if page < total_pages else "ignore"))
                 keyboard.append(nav_buttons)
 
             # 2. SEASON MENU: 🚀 NAYA FIX - Yahan baaki kachra gayab, sirf Seasons!
