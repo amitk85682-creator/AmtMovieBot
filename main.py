@@ -4389,43 +4389,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ✅ NAYA: Video wale cool popups!
         if view_type in ["lang", "qual", "seas"]:
-            movie_data = context.user_data.get('selected_movie_data')
-            if not movie_data:
-                await query.answer("❌ Session expired. Please search again.", show_alert=True)
-                return
-                
-            qualities = movie_data.get('qualities', [])
-            items = set()
-            
-            for f in qualities:
-                if view_type == "lang":
-                    lang = f[4] if len(f) > 4 and f[4] else ""
-                    if lang and lang.strip():
-                        for l in lang.split(','):
-                            items.add(l.strip())
-                elif view_type == "qual":
-                    q = f[0] if len(f) > 0 and f[0] else ""
-                    if q and q.strip():
-                        items.add(q.strip())
-                elif view_type == "seas":
-                    extra = f[5] if len(f) > 5 and f[5] else ""
-                    if extra:
-                        s_name = extract_season_name(extra)
-                        if s_name != "Extra Files":
-                            items.add(s_name)
-                            
-            items_list = sorted(list(items))
-            if not items_list:
-                items_list = ["Not Available"]
-                
-            msg_title = {"lang": "🔊 Available Languages:", "qual": "📍 Available Qualities:", "seas": "🏷️ Available Seasons:"}[view_type]
-            alert_text = msg_title + "\n\n" + "\n".join([f"✅ {item}" for item in items_list])
-            
-            if len(alert_text) > 195:
-                alert_text = alert_text[:192] + "..."
-                
-            await query.answer(alert_text, show_alert=True)
-            return
+             await query.answer("Select a filter below 👇", show_alert=False)
 
     # ==================== NAYA: SINGLE FILE SEND ====================
     if data.startswith("send_single_"):
@@ -5411,9 +5375,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 view_type = parts[1]
                 page = 1 
                 
-                # ✅ NAYA: Video wale cool popups!
-                if view_type in ["lang", "qual", "seas"]:
-                    await query.answer("Share & Support Us ❤️", show_alert=False)
+                # ✅ NAYA: Video wale cool popups! (Removed duplicate answer call)
 
             # ==========================================
             # 🚀 SMART FILTER LOGIC (Seasons + Lang + Qual)
@@ -5579,20 +5541,52 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # 3. LANGUAGE MENU
             elif view_type == "lang":
-                keyboard.append([InlineKeyboardButton("MALAYALAM", callback_data=f"fl_lang_{movie_id}_Malayalam"), InlineKeyboardButton("TAMIL", callback_data=f"fl_lang_{movie_id}_Tamil")])
-                keyboard.append([InlineKeyboardButton("ENGLISH", callback_data=f"fl_lang_{movie_id}_English"), InlineKeyboardButton("HINDI", callback_data=f"fl_lang_{movie_id}_Hindi")])
-                keyboard.append([InlineKeyboardButton("TELUGU", callback_data=f"fl_lang_{movie_id}_Telugu"), InlineKeyboardButton("KANNADA", callback_data=f"fl_lang_{movie_id}_Kannada")])
-                keyboard.append([InlineKeyboardButton("GUJARATI", callback_data=f"fl_lang_{movie_id}_Gujarati"), InlineKeyboardButton("MARATHI", callback_data=f"fl_lang_{movie_id}_Marathi")])
-                keyboard.append([InlineKeyboardButton("PUNJABI", callback_data=f"fl_lang_{movie_id}_Punjabi")])
-                keyboard.append([InlineKeyboardButton("<< BACK TO MENU >>", callback_data=f"v_main_{movie_id}")])
+                keyboard.append([InlineKeyboardButton("⬇ SELECT LANGUAGE ⬇", callback_data="ignore")])
+                
+                languages = set()
+                for f in all_qualities:
+                    lang = f[4] if len(f) > 4 and f[4] else ""
+                    if lang and lang.strip():
+                        for l in lang.split(','):
+                            languages.add(l.strip())
+                            
+                l_list = sorted(list(languages))
+                row = []
+                for l in l_list:
+                    row.append(InlineKeyboardButton(l.upper(), callback_data=f"fl_lang_{movie_id}_{l}"))
+                    if len(row) == 2:
+                        keyboard.append(row)
+                        row = []
+                if row: keyboard.append(row)
+                
+                keyboard.append([
+                    InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all"),
+                    InlineKeyboardButton("🔼 BACK TO MENU", callback_data=f"v_main_{movie_id}")
+                ])
 
             # 4. QUALITY MENU
             elif view_type == "qual":
-                keyboard.append([InlineKeyboardButton("360P", callback_data=f"fl_qual_{movie_id}_360p"), InlineKeyboardButton("480P", callback_data=f"fl_qual_{movie_id}_480p")])
-                keyboard.append([InlineKeyboardButton("720P", callback_data=f"fl_qual_{movie_id}_720p"), InlineKeyboardButton("1080P", callback_data=f"fl_qual_{movie_id}_1080p")])
-                keyboard.append([InlineKeyboardButton("1440P", callback_data=f"fl_qual_{movie_id}_1440p"), InlineKeyboardButton("2160P", callback_data=f"fl_qual_{movie_id}_2160p")])
-                keyboard.append([InlineKeyboardButton("4K", callback_data=f"fl_qual_{movie_id}_4K")])
-                keyboard.append([InlineKeyboardButton("<< BACK TO MENU >>", callback_data=f"v_main_{movie_id}")])
+                keyboard.append([InlineKeyboardButton("⬇ SELECT QUALITY ⬇", callback_data="ignore")])
+                
+                quals = set()
+                for f in all_qualities:
+                    q = f[0] if len(f) > 0 and f[0] else ""
+                    if q and q.strip():
+                        quals.add(q.strip())
+                        
+                q_list = sorted(list(quals))
+                row = []
+                for q in q_list:
+                    row.append(InlineKeyboardButton(q.upper(), callback_data=f"fl_qual_{movie_id}_{q}"))
+                    if len(row) == 2:
+                        keyboard.append(row)
+                        row = []
+                if row: keyboard.append(row)
+                
+                keyboard.append([
+                    InlineKeyboardButton("🔄 CLEAR FILTER", callback_data=f"fl_clear_{movie_id}_all"),
+                    InlineKeyboardButton("🔼 BACK TO MENU", callback_data=f"v_main_{movie_id}")
+                ])
 
             # 👇 YAHAN disable_web_page_preview=True ADD KAR DIYA HAI 👇
             await query.edit_message_text(
