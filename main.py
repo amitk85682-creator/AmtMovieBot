@@ -3330,9 +3330,8 @@ def create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages
         if season_view:
             keyboard.append([InlineKeyboardButton("🔙 Back to Seasons", callback_data=f"back_to_seasons_{movie_id}")])
 
-        # 3. Premium, Send All, Trending (Row 1)
+        # 3. Send All, Trending (Row 1)
         keyboard.append([
-            InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
             InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
             InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
         ])
@@ -4390,7 +4389,43 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ✅ NAYA: Video wale cool popups!
         if view_type in ["lang", "qual", "seas"]:
-             await query.answer("Share & Support Us ❤️", show_alert=False)
+            movie_data = context.user_data.get('selected_movie_data')
+            if not movie_data:
+                await query.answer("❌ Session expired. Please search again.", show_alert=True)
+                return
+                
+            qualities = movie_data.get('qualities', [])
+            items = set()
+            
+            for f in qualities:
+                if view_type == "lang":
+                    lang = f[4] if len(f) > 4 and f[4] else ""
+                    if lang and lang.strip():
+                        for l in lang.split(','):
+                            items.add(l.strip())
+                elif view_type == "qual":
+                    q = f[0] if len(f) > 0 and f[0] else ""
+                    if q and q.strip():
+                        items.add(q.strip())
+                elif view_type == "seas":
+                    extra = f[5] if len(f) > 5 and f[5] else ""
+                    if extra:
+                        s_name = extract_season_name(extra)
+                        if s_name != "Extra Files":
+                            items.add(s_name)
+                            
+            items_list = sorted(list(items))
+            if not items_list:
+                items_list = ["Not Available"]
+                
+            msg_title = {"lang": "🔊 Available Languages:", "qual": "📍 Available Qualities:", "seas": "🏷️ Available Seasons:"}[view_type]
+            alert_text = msg_title + "\n\n" + "\n".join([f"✅ {item}" for item in items_list])
+            
+            if len(alert_text) > 195:
+                alert_text = alert_text[:192] + "..."
+                
+            await query.answer(alert_text, show_alert=True)
+            return
 
     # ==================== NAYA: SINGLE FILE SEND ====================
     if data.startswith("send_single_"):
@@ -5493,13 +5528,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if view_type == "main":
                 if filtered_qualities:
                     keyboard.append([
-                        InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
                         InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
                         InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
                     ])
                 else:
                     keyboard.append([
-                        InlineKeyboardButton("👑 Pʀᴇᴍɪᴜᴍ ↗️", url=FILMFYBOX_CHANNEL_URL),
                         InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
                     ])
                 
