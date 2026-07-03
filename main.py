@@ -253,6 +253,14 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
     ])
 
     # --- 7. POST SEND (Anti-Block Mode) ---
+    # 👇 GLOBAL DUPLICATE CHECK — 7 din me kahi bhi post hui ho to skip
+    if is_movie_posted_recently(movie_id, days=7):
+        await update.message.reply_text(
+            f"⏭️ **{title}** pehle se 7 din ke andar post ho chuki hai. Skipping.",
+            parse_mode='Markdown'
+        )
+        return
+
     try:
         # Pehle image download karne ki koshish karo
         downloaded_poster = await get_poster_bytes(final_photo)
@@ -1904,6 +1912,29 @@ def save_post_to_db(
         return False
 
 
+# ==================== GLOBAL DUPLICATE POST CHECK ====================
+def is_movie_posted_recently(movie_id, days=7):
+    """Check if movie was posted to ANY channel within last N days.
+    Ye function globally check karta hai — kisi bhi channel me post hui ho to True return karega.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return False
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM channel_posts WHERE movie_id = %s AND posted_at >= NOW() - INTERVAL '7 days' LIMIT 1",
+            (movie_id,)
+        )
+        result = cur.fetchone()
+        cur.close()
+        return result is not None
+    except Exception:
+        return False
+    finally:
+        close_db_connection(conn)
+
+
 # 👇👇👇 START COPY HERE (New Function) 👇👇👇
 def get_db_connection():
     """Pool se connection lene wala naya function"""
@@ -3254,10 +3285,14 @@ def get_movie_options_keyboard(movie_title, url, movie_id=None, file_info=None):
 
     return InlineKeyboardMarkup(keyboard)
 
-def create_movie_selection_keyboard(movies, page=0, movies_per_page=5):
+def create_movie_selection_keyboard(movies, page=0, movies_per_page=5, requester_id=None):
+    """Movie selection keyboard. requester_id set karo to group me buttons locked honge sirf us user ke liye."""
     start_idx = page * movies_per_page
     end_idx = start_idx + movies_per_page
     current_movies = movies[start_idx:end_idx]
+
+    # Group buttons ke liye user_id suffix
+    u_suffix = f"_u{requester_id}" if requester_id else ""
 
     keyboard = []
 
@@ -3271,20 +3306,20 @@ def create_movie_selection_keyboard(movies, page=0, movies_per_page=5):
             movie_id, title = movie[0], movie[1]
 
         button_text = title if len(title) <= 40 else title[:37] + "..."
-        keyboard.append([InlineKeyboardButton(f"🎬 {button_text}", callback_data=f"movie_{movie_id}")])
+        keyboard.append([InlineKeyboardButton(f"🎬 {button_text}", callback_data=f"movie_{movie_id}{u_suffix}")])
 
     total_pages = (len(movies) + movies_per_page - 1) // movies_per_page
     nav_buttons = []
 
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}"))
+        nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}{u_suffix}"))
     if end_idx < len(movies):
-        nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}"))
+        nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}{u_suffix}"))
 
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_selection")])
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_selection{u_suffix}")])
     return InlineKeyboardMarkup(keyboard)
 
 def get_all_movie_qualities(movie_id):
@@ -4362,20 +4397,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat.id
     data = query.data
 
-    # ✅ NAYA: Group Authorization Check (Premium Style Alert)
-    if chat_id < 0 and query.message.reply_to_message:
-        original_user_id = query.message.reply_to_message.from_user.id
-        # Agar click karne wala original requester nahi hai
-        if user_id != original_user_id:
-            user_name = query.from_user.first_name
-            alert_text = (
-                f"✋ 𝗛𝗲𝗹𝗹𝗼 {user_name}!\n\n"
-                f"🚫 𝗧𝗵𝗶𝘀 𝗶𝘀 𝗡𝗢𝗧 𝘆𝗼𝘂𝗿 𝗺𝗼𝘃𝗶𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁.\n"
-                f"🔍 𝗣𝗹𝗲𝗮𝘀𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁 𝘆𝗼𝘂𝗿'𝘀...\n\n"
-                f"👍 𝗢𝗞"
-            )
-            await query.answer(alert_text, show_alert=True)
-            return
+    # ✅ IMPROVED: Group Authorization Check using callback_data embedded user_id
+    # Agar callback_data me _u{user_id} suffix hai, to check karo ki click karne wala wahi user hai
+    if chat_id < 0 and "_u" in data:
+        # Extract requester user_id from callback_data (e.g., movie_123_u987654321)
+        try:
+            u_part = data.split("_u")[-1]  # "987654321"
+            original_user_id = int(u_part)
+            if user_id != original_user_id:
+                user_name = query.from_user.first_name
+                alert_text = (
+                    f"✋ 𝗛𝗲𝗹𝗹𝗼 {user_name}!\n\n"
+                    f"🚫 𝗧𝗵𝗶𝘀 𝗶𝘀 𝗡𝗢𝗧 𝘆𝗼𝘂𝗿 𝗺𝗼𝘃𝗶𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁.\n"
+                    f"🔍 𝗣𝗹𝗲𝗮𝘀𝗲 𝗿𝗲𝗾𝘂𝗲𝘀𝘁 𝘆𝗼𝘂𝗿'𝘀...\n\n"
+                    f"👍 𝗢𝗞"
+                )
+                await query.answer(alert_text, show_alert=True)
+                return
+        except (ValueError, IndexError):
+            pass  # Agar parsing fail ho to ignore karo
 
 
     # ✅ NAYA: Video wala Pages Button Popup
@@ -4812,6 +4852,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"{query.message.text}\n\n❌ Error: No BROADCAST_CHANNELS found in env.")
             return
 
+        # 👇 GLOBAL DUPLICATE CHECK — 7 din me kahi bhi post hui ho to skip
+        if is_movie_posted_recently(movie_id, days=7):
+            await query.edit_message_text(f"⏭️ **{m_title}** pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='Markdown')
+            return
+
         sent_count = 0
         last_error = ""
         telegram_photo_id = None 
@@ -5174,7 +5219,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # ==================== MOVIE SELECTION ====================
         if query.data.startswith("movie_"):
-            movie_id = int(query.data.replace("movie_", ""))
+            # Strip _u{user_id} suffix if present (group buttons)
+            movie_data_part = re.sub(r'_u\d+$', '', query.data)
+            movie_id = int(movie_data_part.replace("movie_", ""))
 
             conn = get_db_connection()
             cur = conn.cursor()
@@ -5746,7 +5793,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ==================== PAGINATION ====================
         elif query.data.startswith("page_"):
-            page = int(query.data.replace("page_", ""))
+            # Strip _u{user_id} suffix if present (group buttons)
+            page_data_part = re.sub(r'_u\d+$', '', query.data)
+            page = int(page_data_part.replace("page_", ""))
 
             if 'search_results' not in context.user_data:
                 await query.edit_message_text("❌ Search results expired. Please search again.")
@@ -5755,8 +5804,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             movies = context.user_data['search_results']
             search_query = context.user_data.get('search_query', 'your search')
 
+            # Group me user_id wapas pass karo taaki naye page ke buttons bhi locked rahen
+            requester_id = None
+            if "_u" in query.data:
+                try:
+                    requester_id = int(query.data.split("_u")[-1])
+                except (ValueError, IndexError):
+                    pass
+
             selection_text = f"🎬 **Found {len(movies)} movies matching '{search_query}'**\n\nPlease select the movie you want:"
-            keyboard = create_movie_selection_keyboard(movies, page=page)
+            keyboard = create_movie_selection_keyboard(movies, page=page, requester_id=requester_id)
 
             await query.edit_message_text(
                 selection_text,
@@ -5764,7 +5821,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
 
-        elif query.data == "cancel_selection":
+        elif query.data.startswith("cancel_selection"):
             await query.edit_message_text("❌ Selection cancelled.")
             keys_to_clear = ['search_results', 'search_query', 'selected_movie_data', 'awaiting_request', 'pending_request']
             for key in keys_to_clear:
@@ -6571,28 +6628,16 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_media = photo_to_send
             
             uploaded_file_id = None # Isme Telegram ki File ID store hogi
+
+            # 👇 GLOBAL DUPLICATE CHECK — Agar kisi bhi channel me 7 din me post ho chuki hai to skip 👇
+            if is_movie_posted_recently(movie_id, days=7):
+                logger.info(f"⏭️ Skipping '{title}' (already posted within the last 7 days in some channel).")
+                continue
             
             if target_channels:
                 for chat_id_str in target_channels: 
                     try:
                         chat_id = int(chat_id_str)
-                        
-                        # 👇 PREVENT DUPLICATE POSTING PER CHANNEL (7 DAYS COOLDOWN) 👇
-                        db_conn = get_db_connection()
-                        skip_this_channel = False
-                        if db_conn:
-                            try:
-                                db_cur = db_conn.cursor()
-                                db_cur.execute("SELECT 1 FROM channel_posts WHERE movie_id = %s AND channel_id = %s AND posted_at >= NOW() - INTERVAL '7 days' LIMIT 1", (movie_id, chat_id))
-                                if db_cur.fetchone():
-                                    skip_this_channel = True
-                                db_cur.close()
-                            except Exception: pass
-                            close_db_connection(db_conn)
-                            
-                        if skip_this_channel:
-                            logger.info(f"⏭️ Skipping channel {chat_id} for '{title}' (already posted within the last 7 days).")
-                            continue
 
                         sent_msg = None
                         
@@ -7340,6 +7385,12 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data.pop('waiting_for_poster', None)
         return
 
+    # 👇 GLOBAL DUPLICATE CHECK — 7 din me kahi bhi post hui ho to skip
+    if is_movie_posted_recently(movie_id, days=7):
+        await status_msg.edit_text(f"⏭️ <b>{m_title}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='HTML')
+        context.user_data.pop('waiting_for_poster', None)
+        return
+
     sent_count = 0
     for chat_id_str in target_channels:
         try:
@@ -7414,17 +7465,20 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 4. Find Movie in DB
         movie_id = None
+        movie_category = ""
         conn = get_db_connection()
 
         if conn:
             try:
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT id FROM movies WHERE title ILIKE %s LIMIT 1",
+                    "SELECT id, category FROM movies WHERE title ILIKE %s LIMIT 1",
                     (f"%{query_text}%",)
                 )
                 row = cur.fetchone()
-                movie_id = row[0] if row else None
+                if row:
+                    movie_id = row[0]
+                    movie_category = row[1] or ""
                 cur.close()
             except Exception as e:
                 logger.error(f"DB Error: {e}")
@@ -7488,12 +7542,21 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<b>👇 Download Below</b>"
         )
 
-        # 8. Send to Channels
-        channels_str = os.environ.get('BROADCAST_CHANNELS', '')
-        target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+        # 8. Send to Channels (Anime → Anime Channel, Baaki → BROADCAST_CHANNELS)
+        cat_lower = str(movie_category).lower()
+        if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+            target_channels = [ANIME_CHANNEL_ID]
+        else:
+            channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+            target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
 
         if not target_channels:
             await message.reply_text("❌ No BROADCAST_CHANNELS configured in .env")
+            return
+
+        # 👇 GLOBAL DUPLICATE CHECK — 7 din me kahi bhi post hui ho to skip
+        if movie_id and is_movie_posted_recently(movie_id, days=7):
+            await message.reply_text(f"⏭️ <b>{query_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='HTML')
             return
 
         sent_count = 0
@@ -12248,7 +12311,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['search_results'] = movies
     context.user_data['search_query'] = text
 
-    keyboard = create_movie_selection_keyboard(movies, page=0)
+    # 🔒 Group me user_id pass karo taaki sirf requester hi buttons click kar sake
+    requester_id = update.effective_user.id
+    keyboard = create_movie_selection_keyboard(movies, page=0, requester_id=requester_id)
     
     # Reply to user with premium header
     msg = await update.message.reply_text(
