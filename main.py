@@ -3545,12 +3545,14 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             track_message_for_deletion(context, chat_id, msg.message_id, 60)
             return
 
+    target_chat_id = update.effective_user.id if (url or file_id) else chat_id
+
     try:
         warning_msg = None
         if send_warning:
             try:
                 warning_msg = await safe_send(context.bot.copy_message(
-                    chat_id=chat_id,
+                    chat_id=target_chat_id,
                     from_chat_id=-1003893346701,
                     message_id=3384
                 ))
@@ -3586,7 +3588,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     from_chat_id = f"@{parts[-2]}"
 
                 sent_msg = await safe_send(context.bot.copy_message(
-                    chat_id=chat_id,
+                    chat_id=target_chat_id,
                     from_chat_id=from_chat_id,
                     message_id=msg_id,
                     caption=caption_text,
@@ -3600,7 +3602,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             clean_file_id = str(file_id).strip()
             try:
                 sent_msg = await safe_send(context.bot.send_video(
-                    chat_id=chat_id,
+                    chat_id=target_chat_id,
                     video=clean_file_id,
                     caption=caption_text,
                     parse_mode='HTML',
@@ -3609,7 +3611,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             except telegram.error.BadRequest:
                 try:
                     sent_msg = await safe_send(context.bot.send_document(
-                        chat_id=chat_id,
+                        chat_id=target_chat_id,
                         document=clean_file_id,
                         caption=caption_text,
                         parse_mode='HTML',
@@ -3620,7 +3622,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         if not sent_msg and url and "http" in url and "t.me" not in url:
              sent_msg = await context.bot.send_message(
-                chat_id=chat_id,
+                chat_id=target_chat_id,
                 text=f"🎬 <b>{title}</b>\n\n🔗 <b>Watch/Download:</b> {url}",
                 parse_mode='HTML',
                 reply_markup=join_keyboard
@@ -3633,15 +3635,22 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             messages_to_delete.append(warning_msg.message_id)
 
         if messages_to_delete:
-            track_message_for_deletion(context, chat_id, messages_to_delete[0], 60) 
+            track_message_for_deletion(context, target_chat_id, messages_to_delete[0], 60) 
             if len(messages_to_delete) > 1:
-                track_message_for_deletion(context, chat_id, messages_to_delete[1], 60)
+                track_message_for_deletion(context, target_chat_id, messages_to_delete[1], 60)
         elif not sent_msg:
-            await context.bot.send_message(chat_id=chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
+            await context.bot.send_message(chat_id=target_chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
 
+    except telegram.error.Forbidden:
+        if update.callback_query:
+            try:
+                await update.callback_query.answer("⚠️ Please START the bot in PM first to receive files!", show_alert=True)
+            except:
+                pass
+        logger.warning(f"User {target_chat_id} blocked or hasn't started the bot.")
     except Exception as e:
         logger.error(f"Critical Error in send_movie: {e}")
-        try: await context.bot.send_message(chat_id=chat_id, text="❌ System Error.")
+        try: await context.bot.send_message(chat_id=target_chat_id, text="❌ System Error.")
         except: pass
 
 # ==================== TELEGRAM BOT HANDLERS ====================
@@ -4985,11 +4994,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 2. END: WARNING FILE BHEJO (Ek hi baar)
         try:
             warning_msg = await context.bot.copy_message(
-                chat_id=chat_id,
+                chat_id=update.effective_user.id,
                 from_chat_id=-1003893346701, # Apka Channel ID
                 message_id=3384              # Warning File Message ID
             )
-            track_message_for_deletion(context, chat_id, warning_msg.message_id, 60)
+            track_message_for_deletion(context, update.effective_user.id, warning_msg.message_id, 60)
+        except telegram.error.Forbidden:
+            pass # Already handled in send_movie_to_user
         except Exception as e:
             logger.error(f"Failed to send final warning file: {e}")
 
