@@ -3702,9 +3702,23 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             err_msg = await context.bot.send_message(chat_id=target_chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
             track_message_for_deletion(context, target_chat_id, err_msg.message_id, 30)
 
-        if update.callback_query and sent_msg:
+        if sent_msg and update.callback_query:
             try:
                 await update.callback_query.answer("✅ File Sent!\n⚠️ Ye file aur message 1 minute baad delete ho jayegi.", show_alert=True)
+            except:
+                pass
+        elif sent_msg and not update.callback_query:
+            # 🛡️ PM search / Deep link — no callback popup available, so text warning bhejo
+            try:
+                warn_text_msg = await context.bot.send_message(
+                    chat_id=target_chat_id,
+                    text=(
+                        "⚠️ <b>𝗔𝘂𝘁𝗼-𝗗𝗲𝗹𝗲𝘁𝗲 𝗡𝗼𝘁𝗶𝗰𝗲</b>\n\n"
+                        "◈ ऊपर भेजी गयी file <b>1 minute</b> बाद auto-delete हो जाएगी।\n"
+                    ),
+                    parse_mode='HTML'
+                )
+                track_message_for_deletion(context, target_chat_id, warn_text_msg.message_id, 55)
             except:
                 pass
 
@@ -4137,7 +4151,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 2. Premium Caption (Dynamic Bot Name ke sath)
     caption_text = (
-        f"<b>━━━━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━━━━</b>\n\n"
+        f"<b>━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━</b>\n\n"
         f"✦ {greeting}, {user_display}!\n\n"
         f"╭─── ❖ 𝗔𝗕𝗢𝗨𝗧 𝗠𝗘 ❖ ───╮\n"
         f"│\n"
