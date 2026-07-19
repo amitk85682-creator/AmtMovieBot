@@ -159,7 +159,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     query = """
         SELECT id, title, year, rating, genre, 
-               poster_url, description, category 
+               poster_url, description, category, seasons_data 
         FROM movies
     """
 
@@ -191,7 +191,19 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # --- 2. DATA UNPACK ---
-    movie_id, title, year, rating, genre, poster_url, description, category = movie_data
+    movie_id, title, year, rating, genre, poster_url, description, category, seasons_data = movie_data
+    
+    import re
+    if movie_search_name and seasons_data:
+        season_match = re.search(r'(?i)season\s*(\d+)|s(\d+)', movie_search_name)
+        if season_match:
+            s_num = season_match.group(1) or season_match.group(2)
+            s_num_str = str(int(s_num))
+            if s_num_str in seasons_data:
+                s_info = seasons_data[s_num_str]
+                if s_info.get("year"): year = s_info["year"]
+                if s_info.get("poster"): poster_url = s_info["poster"]
+                title = f"{title} (Season {s_num_str})"
 
     # --- 3. TARGET CHANNEL SELECTION ---
     cat_lower = str(category or "").lower()
@@ -1479,7 +1491,7 @@ async def add_messages_to_db_queue(context, chat_id, message_ids, delay):
                 cur = conn.cursor()
                 for msg_id in message_ids:
                     cur.execute(
-                        "INSERT INTO auto_delete_queue (bot_username, chat_id, message_id, delete_at) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO auto_delete_queue (bot_username, chat_id, message_id, delete_at) VALUES (%s, %s, %s, %s, %s)",
                         (bot_username, chat_id, msg_id, delete_time)
                     )
                 conn.commit()
@@ -1532,7 +1544,8 @@ def setup_database():
                 rating TEXT,
 
                 description TEXT,
-                category TEXT
+                category TEXT,
+                seasons_data JSONB DEFAULT '{}'::jsonb
             )
         """)
 
@@ -1677,6 +1690,7 @@ def migrate_add_imdb_columns():
         # Important: quote column name with double quotes in SQL
         cur.execute('ALTER TABLE movies ADD COLUMN IF NOT EXISTS "cast" TEXT;')
         cur.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS trailer_key TEXT;")
+        cur.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS seasons_data JSONB DEFAULT '{}'::jsonb;")
         
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_imdb_id ON movies (imdb_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_year ON movies (year);")
@@ -1881,7 +1895,7 @@ def save_post_to_db(
                  caption, media_file_id, media_type, 
                  keyboard_data, topic_id, content_type,
                  movie_name, imdb_id, tmdb_id, channel_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (channel_id, message_id) DO UPDATE SET
                 caption       = EXCLUDED.caption,
                 media_file_id = EXCLUDED.media_file_id,
@@ -2210,7 +2224,8 @@ def update_movie_metadata(
     genre: str = None,
     rating: str = None,
     description: str = None,
-    category: str = None
+    category: str = None,
+    seasons_data: dict = None
 ):
     conn = None
     try:
@@ -2232,6 +2247,9 @@ def update_movie_metadata(
         if rating: add("rating", rating)
         if description: add("description", description)
         if category: add("category", category)
+        if seasons_data is not None:
+            import json
+            add("seasons_data", json.dumps(seasons_data))
 
         if not updates:
             return False
@@ -2264,7 +2282,7 @@ def store_user_request(user_id, username, first_name, movie_title, group_id=None
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO user_requests (user_id, username, first_name, movie_title, group_id, message_id)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT user_requests_unique_constraint DO UPDATE
                 SET requested_at = EXCLUDED.requested_at
         """, (user_id, username, first_name, movie_title, group_id, message_id))
@@ -2296,7 +2314,7 @@ def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
         metadata = fetch_movie_metadata(movie_title)
         if metadata:
             # 🔧 FIX: 8 values unpack (pehle 6 thi — CRASH hoti thi!)
-            title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
+            title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
             update_movie_metadata(
                 movie_id=movie_id,
                 imdb_id=imdb_id if imdb_id else None,
@@ -2305,7 +2323,8 @@ def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
                 genre=genre if genre else None,
                 rating=rating if rating and rating != 'N/A' else None,
                 description=plot if plot else None,      # 🔧 NAYA: Plot bhi save karo
-                category=category if category else None   # 🔧 NAYA: Category bhi save karo
+                category=category if category else None,
+                seasons_data=seasons_data if seasons_data else {}
             )
             logger.info(f"✅ Metadata updated for movie {movie_id}: {title}")
             return True
@@ -2636,7 +2655,7 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
             except:
                 pass
 
-            return title, year, poster_url, genre, imdb_id, rating, plot, category
+            return title, year, poster_url, genre, imdb_id, rating, plot, category, {}
         except Exception as e:
             logger.error(f"Adult TMDb Fetch Error: {e}")
             return None
@@ -2734,8 +2753,29 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
                 except:
                     pass
 
+            
+            seasons_data = {}
+            try:
+                tmdb_id = None
+                if category in ["Web Series", "Anime", "Adult"]:
+                    if not tmdb_id and imdb_id:
+                        tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
+                        t_resp = requests.get(tmdb_find, timeout=10).json()
+                        tv_res = t_resp.get('tv_results', [])
+                        if tv_res: tmdb_id = tv_res[0].get('id')
+                    if tmdb_id:
+                        tv_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}", timeout=10).json()
+                        for s in tv_details.get('seasons', []):
+                            s_num = str(s.get('season_number', ''))
+                            if s_num and str(s_num) != "0":
+                                s_year = str(s.get('air_date', ''))[:4]
+                                s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
+                                seasons_data[str(s_num)] = {"year": int(s_year) if s_year.isdigit() else 0, "poster": s_poster}
+            except Exception as e:
+                logger.error(f"Seasons Fetch Error: {e}")
+                
             logger.info(f"✅ OMDb Success: '{title}' ({year}) [{category}]")
-            return title, year, poster_url, genre, imdb_id, rating, plot, category
+            return title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data
 
         # ━━━━━ STEP 3: OMDb fail — TMDb SMART FALLBACK ━━━━━
         logger.info(f"⚠️ OMDb miss for '{search_query}', trying TMDb smart search...")
@@ -2797,8 +2837,22 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
         except:
             pass
 
+        
+        seasons_data = {}
+        try:
+            if category in ["Web Series", "Anime", "Adult"] and tmdb_id:
+                tv_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}", timeout=10).json()
+                for s in tv_details.get('seasons', []):
+                    s_num = str(s.get('season_number', ''))
+                    if s_num and str(s_num) != "0":
+                        s_year = str(s.get('air_date', ''))[:4]
+                        s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
+                        seasons_data[str(s_num)] = {"year": int(s_year) if s_year.isdigit() else 0, "poster": s_poster}
+        except Exception as e:
+            logger.error(f"Seasons Fetch Error: {e}")
+            
         logger.info(f"✅ TMDb Success: '{title}' ({year}) [{category}]")
-        return title, year, poster_url, genre, imdb_id, rating, plot, category
+        return title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data
 
     except Exception as e:
         logger.error(f"Metadata Fetch Error: {e}")
@@ -6066,7 +6120,7 @@ def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map
     try:
         cur.execute("""
             INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (movie_id, label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id))
         conn.commit()
         cur.close()
@@ -6202,7 +6256,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text("❌ IMDb से डेटा नहीं मिला। API Key चेक करें।")
             return
         
-        title, year, poster, genre, imdb_id_f, rating, plot, category = data
+        title, year, poster, genre, imdb_id_f, rating, plot, category, seasons_data = data
         
         # 2. Cast/Stars लाना
         cast_str = await run_async(fetch_cast_from_imdb, imdb_id_f, 5)
@@ -6215,7 +6269,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🎯 NAYA LOGIC: Title ki jagah IMDb ID par conflict check karega
         cur.execute("""
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             ON CONFLICT (imdb_id) DO UPDATE SET 
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url, 
@@ -6324,7 +6378,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cur.execute(
             """
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             ON CONFLICT (title) DO UPDATE 
             SET year = EXCLUDED.year, 
                 genre = EXCLUDED.genre, 
@@ -6748,7 +6802,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
     # --- STEP 2: TMDB + IMDb METADATA ---
     metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, False, gemini_category)
     if metadata:
-        title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
+        title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
     else:
         title      = movie_name
         year       = int(movie_year) if movie_year and str(movie_year).isdigit() else 0
@@ -6784,7 +6838,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         cur.execute(
             """
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast")
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (title) DO UPDATE
             SET imdb_id      = COALESCE(EXCLUDED.imdb_id,      movies.imdb_id),
                 poster_url   = COALESCE(EXCLUDED.poster_url,   movies.poster_url),
@@ -8189,7 +8243,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     INSERT INTO movies 
                     (title, url, imdb_id, poster_url, year, genre, rating, 
                      description, category, language, extra_info, "cast") 
-                    VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (title, imdb_id, poster_url, year, genre, rating, 
                       plot, category, movie_lang, movie_extra, cast_str))
@@ -8699,7 +8753,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     is_unreleased = EXCLUDED.is_unreleased,
                     url = '', 
@@ -8714,7 +8768,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     url = EXCLUDED.url, 
                     file_id = EXCLUDED.file_id,
@@ -8734,7 +8788,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     url = EXCLUDED.url, 
                     file_id = NULL,
@@ -8970,7 +9024,7 @@ Movie3 file_id_here
 
                 if any(url_or_id.startswith(prefix) for prefix in ["BQAC", "BAAC", "CAAC", "AQAC"]):
                     cur.execute(
-                        "INSERT INTO movies (title, url, file_id) VALUES (%s, %s, %s) ON CONFLICT (title) DO UPDATE SET url = EXCLUDED.url, file_id = EXCLUDED.file_id",
+                        "INSERT INTO movies (title, url, file_id) VALUES (%s, %s, %s, %s) ON CONFLICT (title) DO UPDATE SET url = EXCLUDED.url, file_id = EXCLUDED.file_id",
                         (title.strip(), "", url_or_id.strip())
                     )
                 else:
@@ -9493,7 +9547,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
                 cur = conn.cursor()
                 # Hum save kar rahe hain ki is movie ka post is channel me is ID par hai
                 cur.execute(
-                    "INSERT INTO channel_posts (movie_id, channel_id, message_id, bot_username) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO channel_posts (movie_id, channel_id, message_id, bot_username) VALUES (%s, %s, %s, %s, %s)",
                     (movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot") # Current Main Bot Username
                 )
                 conn.commit()
@@ -10063,7 +10117,7 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
                 # ✅ FETCH CORRECT METADATA (6 Values)
                 metadata = fetch_movie_metadata(title)
                 if metadata:
-                    new_title, year, poster_url, genre, imdb_id, rating, plot, category = metadata
+                    new_title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
 
                     # Only update if we found something useful
                     if genre or poster_url or year > 0:
@@ -10574,7 +10628,7 @@ def get_movie_details(movie_id):
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, title, year, poster_url, rating, genre, description, category, language, "cast", trailer_key
+            SELECT id, title, year, poster_url, rating, genre, description, category, language, "cast", trailer_key, seasons_data
             FROM movies WHERE id = %s
         """, (movie_id,))
         row = cur.fetchone()
@@ -10592,7 +10646,8 @@ def get_movie_details(movie_id):
             'category': row[7] if row[7] else 'Movie',
             'language': row[8] if row[8] else '',
             'cast': row[9] if row[9] else '',
-            'trailer_key': row[10] if row[10] else None
+            'trailer_key': row[10] if row[10] else None,
+            'seasons_data': row[11] if len(row) > 11 and row[11] else {}
         }
 
         # Get files
