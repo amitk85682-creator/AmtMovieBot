@@ -1491,7 +1491,7 @@ async def add_messages_to_db_queue(context, chat_id, message_ids, delay):
                 cur = conn.cursor()
                 for msg_id in message_ids:
                     cur.execute(
-                        "INSERT INTO auto_delete_queue (bot_username, chat_id, message_id, delete_at) VALUES (%s, %s, %s, %s, %s)",
+                        "INSERT INTO auto_delete_queue (bot_username, chat_id, message_id, delete_at) VALUES (%s, %s, %s, %s)",
                         (bot_username, chat_id, msg_id, delete_time)
                     )
                 conn.commit()
@@ -1895,7 +1895,7 @@ def save_post_to_db(
                  caption, media_file_id, media_type, 
                  keyboard_data, topic_id, content_type,
                  movie_name, imdb_id, tmdb_id, channel_name)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (channel_id, message_id) DO UPDATE SET
                 caption       = EXCLUDED.caption,
                 media_file_id = EXCLUDED.media_file_id,
@@ -2282,7 +2282,7 @@ def store_user_request(user_id, username, first_name, movie_title, group_id=None
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO user_requests (user_id, username, first_name, movie_title, group_id, message_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT ON CONSTRAINT user_requests_unique_constraint DO UPDATE
                 SET requested_at = EXCLUDED.requested_at
         """, (user_id, username, first_name, movie_title, group_id, message_id))
@@ -3597,6 +3597,12 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             # 👆 FIX KHATAM 👆
             
             track_message_for_deletion(context, chat_id, msg.message_id, 60)
+            
+            if update.callback_query:
+                try:
+                    await update.callback_query.answer("⚠️ Ye message 1 minute baad delete ho jayegi.", show_alert=True)
+                except:
+                    pass
             return
 
     target_chat_id = update.effective_user.id if (url or file_id) else chat_id
@@ -3693,7 +3699,14 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             if len(messages_to_delete) > 1:
                 track_message_for_deletion(context, target_chat_id, messages_to_delete[1], 60)
         elif not sent_msg:
-            await context.bot.send_message(chat_id=target_chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
+            err_msg = await context.bot.send_message(chat_id=target_chat_id, text="❌ Error: File not found or Bot needs Admin rights in Source Channel.")
+            track_message_for_deletion(context, target_chat_id, err_msg.message_id, 30)
+
+        if update.callback_query and sent_msg:
+            try:
+                await update.callback_query.answer("✅ File Sent!\n⚠️ Ye file aur message 1 minute baad delete ho jayegi.", show_alert=True)
+            except:
+                pass
 
     except telegram.error.Forbidden:
         if update.callback_query:
@@ -4516,7 +4529,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file_id=file_id_to_send, 
                 send_warning=True  # Single file click → ek baar GIF bhejna zaroori hai
             )
-            await query.answer("✅ File Sent!", show_alert=False)
         except Exception as e:
             await query.answer("❌ Error sending file.", show_alert=True)
             logger.error(f"Single file send error: {e}")
@@ -6120,7 +6132,7 @@ def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map
     try:
         cur.execute("""
             INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (movie_id, label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id))
         conn.commit()
         cur.close()
@@ -6269,7 +6281,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🎯 NAYA LOGIC: Title ki jagah IMDb ID par conflict check karega
         cur.execute("""
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             ON CONFLICT (imdb_id) DO UPDATE SET 
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url, 
@@ -6378,7 +6390,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cur.execute(
             """
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             ON CONFLICT (title) DO UPDATE 
             SET year = EXCLUDED.year, 
                 genre = EXCLUDED.genre, 
@@ -6838,7 +6850,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
         cur.execute(
             """
             INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast")
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (title) DO UPDATE
             SET imdb_id      = COALESCE(EXCLUDED.imdb_id,      movies.imdb_id),
                 poster_url   = COALESCE(EXCLUDED.poster_url,   movies.poster_url),
@@ -8243,7 +8255,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     INSERT INTO movies 
                     (title, url, imdb_id, poster_url, year, genre, rating, 
                      description, category, language, extra_info, "cast") 
-                    VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (title, imdb_id, poster_url, year, genre, rating, 
                       plot, category, movie_lang, movie_extra, cast_str))
@@ -8753,7 +8765,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     is_unreleased = EXCLUDED.is_unreleased,
                     url = '', 
@@ -8768,7 +8780,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     url = EXCLUDED.url, 
                     file_id = EXCLUDED.file_id,
@@ -8788,7 +8800,7 @@ async def add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute(
                 """
                 INSERT INTO movies (title, url, file_id, is_unreleased) 
-                VALUES (%s, %s, %s, %s, %s) 
+                VALUES (%s, %s, %s, %s) 
                 ON CONFLICT (title) DO UPDATE SET 
                     url = EXCLUDED.url, 
                     file_id = NULL,
@@ -9024,7 +9036,7 @@ Movie3 file_id_here
 
                 if any(url_or_id.startswith(prefix) for prefix in ["BQAC", "BAAC", "CAAC", "AQAC"]):
                     cur.execute(
-                        "INSERT INTO movies (title, url, file_id) VALUES (%s, %s, %s, %s) ON CONFLICT (title) DO UPDATE SET url = EXCLUDED.url, file_id = EXCLUDED.file_id",
+                        "INSERT INTO movies (title, url, file_id) VALUES (%s, %s, %s) ON CONFLICT (title) DO UPDATE SET url = EXCLUDED.url, file_id = EXCLUDED.file_id",
                         (title.strip(), "", url_or_id.strip())
                     )
                 else:
@@ -9547,7 +9559,7 @@ async def notify_user_with_media(update: Update, context: ContextTypes.DEFAULT_T
                 cur = conn.cursor()
                 # Hum save kar rahe hain ki is movie ka post is channel me is ID par hai
                 cur.execute(
-                    "INSERT INTO channel_posts (movie_id, channel_id, message_id, bot_username) VALUES (%s, %s, %s, %s, %s)",
+                    "INSERT INTO channel_posts (movie_id, channel_id, message_id, bot_username) VALUES (%s, %s, %s, %s)",
                     (movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot") # Current Main Bot Username
                 )
                 conn.commit()
@@ -9635,37 +9647,46 @@ async def broadcast_with_media(update: Update, context: ContextTypes.DEFAULT_TYP
 
         for user_id, first_name, username in all_users:
             try:
+                sent_msg = None
+                text_msg = None
                 if optional_message:
-                    await context.bot.send_message(
+                    text_msg = await context.bot.send_message(
                         chat_id=user_id,
                         text=optional_message
                     )
 
                 if replied_message.document:
-                    await context.bot.send_document(
+                    sent_msg = await context.bot.send_document(
                         chat_id=user_id,
                         document=replied_message.document.file_id,
                         reply_markup=join_keyboard
                     )
                 elif replied_message.video:
-                    await context.bot.send_video(
+                    sent_msg = await context.bot.send_video(
                         chat_id=user_id,
                         video=replied_message.video.file_id,
                         reply_markup=join_keyboard
                     )
                 elif replied_message.audio:
-                    await context.bot.send_audio(
+                    sent_msg = await context.bot.send_audio(
                         chat_id=user_id,
                         audio=replied_message.audio.file_id,
                         reply_markup=join_keyboard
                     )
                 elif replied_message.photo:
                     photo = replied_message.photo[-1]
-                    await context.bot.send_photo(
+                    sent_msg = await context.bot.send_photo(
                         chat_id=user_id,
                         photo=photo.file_id,
                         reply_markup=join_keyboard
                     )
+
+                # 🛡️ AUTO-DELETE: Copyright Protection — 60 sec baad file delete
+                delete_ids = []
+                if sent_msg: delete_ids.append(sent_msg.message_id)
+                if text_msg: delete_ids.append(text_msg.message_id)
+                if delete_ids:
+                    asyncio.create_task(delete_messages_after_delay(context, user_id, delete_ids, 60))
 
                 success_count += 1
                 await asyncio.sleep(0.1)
@@ -9743,21 +9764,26 @@ async def quick_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for user_id, first_name, username in target_users:
             try:
+                sent_msg = None
                 caption = f"🎬 {query}" if not query.startswith('@') else None
                 if replied_message.document:
-                    await context.bot.send_document(
+                    sent_msg = await context.bot.send_document(
                         chat_id=user_id,
                         document=replied_message.document.file_id,
                         caption=caption,
                         reply_markup=join_keyboard
                     )
                 elif replied_message.video:
-                    await context.bot.send_video(
+                    sent_msg = await context.bot.send_video(
                         chat_id=user_id,
                         video=replied_message.video.file_id,
                         caption=caption,
                         reply_markup=join_keyboard
                     )
+
+                # 🛡️ AUTO-DELETE: Copyright Protection — 60 sec baad file delete
+                if sent_msg:
+                    track_message_for_deletion(context, user_id, sent_msg.message_id, 60)
 
                 success_count += 1
 
