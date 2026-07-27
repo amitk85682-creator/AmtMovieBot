@@ -2768,9 +2768,26 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
                         for s in tv_details.get('seasons', []):
                             s_num = str(s.get('season_number', ''))
                             if s_num and str(s_num) != "0":
-                                s_year = str(s.get('air_date', ''))[:4]
+                                s_air_date = str(s.get('air_date', ''))
+                                s_year = s_air_date[:4]
                                 s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
-                                seasons_data[str(s_num)] = {"year": int(s_year) if s_year.isdigit() else 0, "poster": s_poster}
+                                episode_count = s.get('episode_count', 0)
+                                episodes_info = {}
+                                try:
+                                    season_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{s_num}?api_key={tmdb_api_key}"
+                                    season_details = requests.get(season_url, timeout=5).json()
+                                    for ep in season_details.get('episodes', []):
+                                        ep_num = str(ep.get('episode_number'))
+                                        episodes_info[ep_num] = {'air_date': ep.get('air_date', '')}
+                                except Exception as ep_e:
+                                    logger.error(f"Episode fetch error: {ep_e}")
+                                seasons_data[str(s_num)] = {
+                                    "year": int(s_year) if s_year.isdigit() else 0,
+                                    "poster": s_poster,
+                                    "air_date": s_air_date,
+                                    "episode_count": episode_count,
+                                    "episodes": episodes_info
+                                }
             except Exception as e:
                 logger.error(f"Seasons Fetch Error: {e}")
                 
@@ -2845,9 +2862,26 @@ def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "
                 for s in tv_details.get('seasons', []):
                     s_num = str(s.get('season_number', ''))
                     if s_num and str(s_num) != "0":
-                        s_year = str(s.get('air_date', ''))[:4]
+                        s_air_date = str(s.get('air_date', ''))
+                        s_year = s_air_date[:4]
                         s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
-                        seasons_data[str(s_num)] = {"year": int(s_year) if s_year.isdigit() else 0, "poster": s_poster}
+                        episode_count = s.get('episode_count', 0)
+                        episodes_info = {}
+                        try:
+                            season_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{s_num}?api_key={tmdb_api_key}"
+                            season_details = requests.get(season_url, timeout=5).json()
+                            for ep in season_details.get('episodes', []):
+                                ep_num = str(ep.get('episode_number'))
+                                episodes_info[ep_num] = {'air_date': ep.get('air_date', '')}
+                        except Exception as ep_e:
+                            logger.error(f"Episode fetch error: {ep_e}")
+                        seasons_data[str(s_num)] = {
+                            "year": int(s_year) if s_year.isdigit() else 0,
+                            "poster": s_poster,
+                            "air_date": s_air_date,
+                            "episode_count": episode_count,
+                            "episodes": episodes_info
+                        }
         except Exception as e:
             logger.error(f"Seasons Fetch Error: {e}")
             
@@ -3478,10 +3512,12 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
     extra_display = "" # NAYA: Info (Ep) dikhane ke liye
 
     # ✅ OPTIMIZATION: Agar data pehle se diya gaya hai, to DB connect mat karo
+    seasons_data_db = None
     if pre_fetched_meta:
         db_genre = pre_fetched_meta.get('genre')
         db_year = pre_fetched_meta.get('year')
         db_lang = pre_fetched_meta.get('language')
+        seasons_data_db = pre_fetched_meta.get('seasons_data')
         
         if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
         if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
@@ -3493,10 +3529,10 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if conn:
             try:
                 cur = conn.cursor()
-                cur.execute("SELECT genre, year, language FROM movies WHERE id = %s", (movie_id,))
+                cur.execute("SELECT genre, year, language, seasons_data FROM movies WHERE id = %s", (movie_id,))
                 result = cur.fetchone()
                 if result:
-                    db_genre, db_year, db_lang = result
+                    db_genre, db_year, db_lang, seasons_data_db = result
                     if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
                     if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
                     if db_lang and db_lang.strip(): lang_display = f"🔊 <b>Language:</b> {db_lang}\n"
@@ -3536,6 +3572,28 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     else:
                         extra_display = f"📌 <b>Info:</b> {extra_val}\n"
                         
+                    # SMART FIX: Update year based on seasons_data if specific season/episode year is available
+                    if ("S" in ext or "SEASON" in ext) and seasons_data_db:
+                        try:
+                            s_match = re.search(r'(?i)(?:S|SEASON\s*)0*(\d+)', ext)
+                            e_match = re.search(r'(?i)(?:E|EPISODE\s*)0*(\d+)', ext)
+                            if s_match:
+                                s_num = str(int(s_match.group(1)))
+                                if isinstance(seasons_data_db, dict) and s_num in seasons_data_db:
+                                    s_data = seasons_data_db[s_num]
+                                    specific_year = s_data.get('year') or (s_data.get('air_date', '')[:4] if s_data.get('air_date') else None)
+                                    
+                                    if e_match and 'episodes' in s_data:
+                                        e_num = str(int(e_match.group(1)))
+                                        ep_info = s_data['episodes'].get(e_num)
+                                        if ep_info and ep_info.get('air_date'):
+                                            specific_year = ep_info['air_date'][:4]
+                                            
+                                    if specific_year and str(specific_year).isdigit() and int(specific_year) > 0:
+                                        year = f"📅 <b>Year:</b> {specific_year}\n"
+                        except Exception as parse_e:
+                            logger.error(f"Error parsing season date: {parse_e}")
+                            
                 cur.close()
             except Exception:
                 pass
@@ -3715,6 +3773,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     text=(
                         "⚠️ <b>𝗔𝘂𝘁𝗼-𝗗𝗲𝗹𝗲𝘁𝗲 𝗡𝗼𝘁𝗶𝗰𝗲</b>\n\n"
                         "◈ ऊपर भेजी गयी file <b>1 minute</b> बाद auto-delete हो जाएगी।\n"
+                        "◈ कृपया file को <b>forward/save</b> कर लें। 🔄"
                     ),
                     parse_mode='HTML'
                 )
@@ -4151,7 +4210,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 2. Premium Caption (Dynamic Bot Name ke sath)
     caption_text = (
-        f"<b>━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━</b>\n\n"
+        f"<b>━━━━━━━ 🚩 𝐉𝐀𝐈 𝐒𝐇𝐑𝐈 𝐑𝐀𝐌 🚩 ━━━━━━━</b>\n\n"
         f"✦ {greeting}, {user_display}!\n\n"
         f"╭─── ❖ 𝗔𝗕𝗢𝗨𝗧 𝗠𝗘 ❖ ───╮\n"
         f"│\n"
@@ -6293,9 +6352,10 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🛑 "cast" quoted and year is integer
         # 🎯 NAYA LOGIC: Title ki jagah IMDb ID par conflict check karega
+        import json
         cur.execute("""
-            INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast") 
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast", seasons_data) 
+            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             ON CONFLICT (imdb_id) DO UPDATE SET 
             title = EXCLUDED.title,
             poster_url = EXCLUDED.poster_url, 
@@ -6304,9 +6364,10 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rating = EXCLUDED.rating, 
             description = EXCLUDED.description, 
             category = EXCLUDED.category, 
-            "cast" = EXCLUDED."cast"
+            "cast" = EXCLUDED."cast",
+            seasons_data = EXCLUDED.seasons_data
             RETURNING id
-        """, (title, imdb_id_f, poster, year, genre, rating, plot, category, "Hindi", cast_str))
+        """, (title, imdb_id_f, poster, year, genre, rating, plot, category, "Hindi", cast_str, json.dumps(seasons_data) if seasons_data else '{}'))
         
         movie_id = cur.fetchone()[0]
         
