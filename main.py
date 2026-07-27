@@ -3640,7 +3640,8 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
                 
                 # ✅ NAYA: HTML wala Neela (Inline) link
-                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
+                real_idx = all_qualities.index(f_data)
+                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
                 
             keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
             
@@ -5412,7 +5413,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 ep_tag = f"[{extra_info}] " if extra_info else ""
                 # ✅ CLEAN HTML LINK: Naruto bot jaisa neela text!
-                file_list_text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {ep_tag}{quality}</a></b>\n\n"
+                real_idx = qualities.index(file_data)
+                file_list_text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{file_size} | {title} {ep_tag}{quality}</a></b>\n\n"
 
             selection_text = file_list_text
             
@@ -5675,7 +5677,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
                         
-                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{idx-1}'>{file_size} | {title} {lang_tag}{ep_tag}{quality.strip()}</a></b>\n\n"
+                        real_idx = all_qualities.index(file_data)
+                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{file_size} | {title} {lang_tag}{ep_tag}{quality.strip()}</a></b>\n\n"
 
             elif view_type in ["lang", "qual"]:
                 text = f"📁 <b>{title}</b>\n\n👇 <b>Select {view_type.upper()} Filter:</b>\n\n"
