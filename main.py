@@ -3455,7 +3455,7 @@ def create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages
 
         # 3. Send All, Trending (Row 1)
         keyboard.append([
-            InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
+            InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}_{page}"),
             InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
         ])
         
@@ -5080,9 +5080,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_genre_selection(update, context)
         return
     
-    # === SEND ALL FILES LOGIC (HIGHLY OPTIMIZED) ===
+    # === SEND ALL FILES LOGIC (CURRENT PAGE ONLY) ===
     if query.data.startswith("sendall_"):
-        movie_id = int(query.data.split("_")[1])
+        parts = query.data.split("_")
+        movie_id = int(parts[1])
+        # Page number callback data se lo, nahi mila toh 1 assume karo
+        current_page = int(parts[2]) if len(parts) > 2 else 1
         chat_id = update.effective_chat.id
 
         # ✅ FAST FETCH: Ek hi bar mein sab nikal lo
@@ -5121,13 +5124,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("❌ No files found!", show_alert=True)
             return
 
-        await query.answer(f"🚀 Sending {len(qualities)} files...")
-        status_msg = await query.message.reply_text(f"🚀 **Sending {len(qualities)} files...**", parse_mode='Markdown')
+        # 🚀 CURRENT PAGE KI FILES NIKALO (limit = 10 per page)
+        limit = 10
+        start_idx = (current_page - 1) * limit
+        end_idx = start_idx + limit
+        page_files = qualities[start_idx:end_idx]
+
+        if not page_files:
+            await query.answer("❌ Is page par koi file nahi hai!", show_alert=True)
+            return
+
+        await query.answer(f"🚀 Sending {len(page_files)} files (Page {current_page})...")
+        status_msg = await query.message.reply_text(f"🚀 **Sending {len(page_files)} files (Page {current_page})...**", parse_mode='Markdown')
         
-        # 1. LOOP: FILES BHEJO
+        # 1. LOOP: SIRF CURRENT PAGE KI FILES BHEJO
         count = 0
-        # 👇 NAYA BULLETPROOF CODE 👇
-        for file_data in qualities:
+        for file_data in page_files:
             url = file_data[1]
             file_id = file_data[2]
             
@@ -5142,20 +5154,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Send All Error: {e}")
 
-        # 2. END: WARNING FILE BHEJO (Ek hi baar)
-        try:
-            warning_msg = await context.bot.copy_message(
-                chat_id=update.effective_user.id,
-                from_chat_id=-1003893346701, # Apka Channel ID
-                message_id=3384              # Warning File Message ID
-            )
-            track_message_for_deletion(context, update.effective_user.id, warning_msg.message_id, 60)
-        except telegram.error.Forbidden:
-            pass # Already handled in send_movie_to_user
-        except Exception as e:
-            logger.error(f"Failed to send final warning file: {e}")
-
-        await status_msg.edit_text(f"✅ **Sent {count} Files!**", parse_mode='Markdown')
+        await status_msg.edit_text(f"✅ **Sent {count}/{len(page_files)} Files (Page {current_page})!**", parse_mode='Markdown')
         track_message_for_deletion(context, chat_id, status_msg.message_id, 30)
         return
     
@@ -5701,7 +5700,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if view_type == "main":
                 if filtered_qualities:
                     keyboard.append([
-                        InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}"),
+                        InlineKeyboardButton("🔶 Sᴇɴᴅ Aʟʟ 🔶", callback_data=f"sendall_{movie_id}_{page}"),
                         InlineKeyboardButton("⚡ Tʀᴇɴᴅɪɴɢ", url=FILMFYBOX_GROUP_URL)
                     ])
                 else:
