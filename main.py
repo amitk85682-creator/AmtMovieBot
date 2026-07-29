@@ -3668,15 +3668,16 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     try:
         warning_msg = None
-        if send_warning:
-            try:
-                warning_msg = await safe_send(context.bot.copy_message(
-                    chat_id=target_chat_id,
-                    from_chat_id=-1003893346701,
-                    message_id=3384
-                ))
-            except Exception as e:
-                logger.error(f"Warning file send failed: {e}")
+        # ❌ WARNING STICKER DISABLED — Ab yahan se koi sticker nahi jayega
+        # if send_warning:
+        #     try:
+        #         warning_msg = await safe_send(context.bot.copy_message(
+        #             chat_id=target_chat_id,
+        #             from_chat_id=-1003893346701,
+        #             message_id=3384
+        #         ))
+        #     except Exception as e:
+        #         logger.error(f"Warning file send failed: {e}")
         
         # --- CAPTION UPDATE WITH EXTRA INFO ---
         caption_text = (
@@ -4055,7 +4056,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     movie_id = int(parts[1])
                     file_index = int(parts[2])
                     
-                    status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ <b>Fetching file...</b>", parse_mode='HTML')
+                    # ✅ STICKER bhejo "Fetching file" text ki jagah
+                    status_msg = await safe_send(context.bot.copy_message(
+                        chat_id=chat_id,
+                        from_chat_id=-1003893346701,
+                        message_id=8675
+                    ))
                     
                     qualities = get_all_movie_qualities(movie_id)
                     if qualities and len(qualities) > file_index:
@@ -4092,7 +4098,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     movie_id = int(parts[1])
                     file_index = int(parts[2])
                     
-                    status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ **Fetching file...**", parse_mode='Markdown')
+                    # ✅ STICKER bhejo "Fetching file" text ki jagah
+                    status_msg = await safe_send(context.bot.copy_message(
+                        chat_id=chat_id,
+                        from_chat_id=-1003893346701,
+                        message_id=8675
+                    ))
                     
                     # File ka data nikalo
                     qualities = get_all_movie_qualities(movie_id)
