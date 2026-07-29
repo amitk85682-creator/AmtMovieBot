@@ -4170,15 +4170,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title = res[0] if res else "Requested File"
                         
                         # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
-                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
-                        try: await status_msg.delete() 
-                        except: pass
+                        # copy_message return karta hai MessageId object, toh directly delete_message use karenge
+                        try: 
+                            if status_msg:
+                                await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+                                await asyncio.sleep(0.4) # Telegram UI ko saaf hone ka time dega
+                        except Exception as e: 
+                            logger.error(f"Sticker delete error: {e}")
                         
                         # Tera premium thumbnail wala function!
                         await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                     else:
-                        try: await status_msg.delete()
-                        except: pass
+                        # Agar file na mile toh bhi sticker delete karna zaruri hai
+                        try: 
+                            if status_msg:
+                                await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+                        except: 
+                            pass
                         await context.bot.send_message(chat_id=chat_id, text="❌ File not found or expired.")
                     return
                 except Exception as e:
@@ -4190,7 +4198,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     movie_id = int(payload.split('_')[1])
                     
-                    # ✅ FIX 3: send_message use karein
+                    # ✅ FIX 3: send_message use karein (Ye normal Message object deta hai, toh .delete() chalega)
                     status_msg = await context.bot.send_message(
                         chat_id=chat_id,
                         text=f"🎬 Deep link detected!\nMovie ID: {movie_id}\nFetching... Please wait ⏳"
