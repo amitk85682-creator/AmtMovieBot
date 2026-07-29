@@ -3341,9 +3341,11 @@ async def handle_genre_selection(update: Update, context:  ContextTypes.DEFAULT_
         )
 # ==================== KEYBOARD MARKUPS ====================
 def get_main_keyboard():
+    WEB_APP_URL = "https://flimfybox-bot-yht0.onrender.com/webapp"
     keyboard = [
         ['🔍 Search Movies'],
         ['📂 Browse by Genre', '🙋 Request Movie'],
+        [KeyboardButton("🔥 Trending", web_app=WebAppInfo(url=WEB_APP_URL))],
         ['📊 My Stats', '❓ Help']
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -3542,8 +3544,50 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             finally:
                 close_db_connection(conn)
 
+
     # 👇 NAYA CODE: Yahan hum us ek specific file ka info 'movie_files' table se nikalenge! 👇
-    if url or file_id:
+    # ⚡ OPTIMIZATION: Agar extra_info pre_fetched_meta mein already hai (Send All se), toh DB call skip karo
+    pre_extra = pre_fetched_meta.get('extra_info', '') if pre_fetched_meta else ''
+    if pre_extra and pre_extra.strip():
+        extra_val = pre_extra.strip()
+        ext = extra_val.upper()
+        
+        edition_keywords = ["UNCUT", "EXTENDED", "CUT", "UNRATED", "REMASTERED", "EDITION"]
+        
+        if any(word in ext for word in edition_keywords):
+            extra_display = f"📌 <b>Edition:</b> {extra_val}\n"
+        elif "S" in ext and "E" in ext:
+            extra_display = f"📌 <b>Season & Episode:</b> {extra_val}\n"
+        elif "S" in ext:
+            extra_display = f"📌 <b>Season:</b> {extra_val}\n"
+        elif "E" in ext:
+            extra_display = f"📌 <b>Episode:</b> {extra_val}\n"
+        else:
+            extra_display = f"📌 <b>Info:</b> {extra_val}\n"
+            
+        # SMART FIX: Update year based on seasons_data
+        if ("S" in ext or "SEASON" in ext) and seasons_data_db:
+            try:
+                s_match = re.search(r'(?i)(?:S|SEASON\s*)0*(\d+)', ext)
+                e_match = re.search(r'(?i)(?:E|EPISODE\s*)0*(\d+)', ext)
+                if s_match:
+                    s_num = str(int(s_match.group(1)))
+                    if isinstance(seasons_data_db, dict) and s_num in seasons_data_db:
+                        s_data = seasons_data_db[s_num]
+                        specific_year = s_data.get('year') or (s_data.get('air_date', '')[:4] if s_data.get('air_date') else None)
+                        
+                        if e_match and 'episodes' in s_data:
+                            e_num = str(int(e_match.group(1)))
+                            ep_info = s_data['episodes'].get(e_num)
+                            if ep_info and ep_info.get('air_date'):
+                                specific_year = ep_info['air_date'][:4]
+                                
+                        if specific_year and str(specific_year).isdigit() and int(specific_year) > 0:
+                            year = f"📅 <b>Year:</b> {specific_year}\n"
+            except Exception as parse_e:
+                logger.error(f"Error parsing season date: {parse_e}")
+    
+    elif url or file_id:
         conn = get_db_connection()
         if conn:
             try:
@@ -4077,12 +4121,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         close_db_connection(conn)
                         title = res[0] if res else "Requested File"
                         
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
-                        
+                        # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
+                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
                         try: await status_msg.delete() 
                         except: pass
+                        
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                     else:
-                        await status_msg.edit_text("❌ File not found or expired.")
+                        try: await status_msg.delete()
+                        except: pass
+                        await context.bot.send_message(chat_id=chat_id, text="❌ File not found or expired.")
                     return
                 except Exception as e:
                     logger.error(f"File click error: {e}")
@@ -4121,13 +4169,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         close_db_connection(conn)
                         title = res[0] if res else "Requested File"
                         
-                        # Tera premium thumbnail wala function!
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
-                        
+                        # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
+                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
                         try: await status_msg.delete() 
                         except: pass
+                        
+                        # Tera premium thumbnail wala function!
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                     else:
-                        await status_msg.edit_text("❌ File not found or expired.")
+                        try: await status_msg.delete()
+                        except: pass
+                        await context.bot.send_message(chat_id=chat_id, text="❌ File not found or expired.")
                     return
                 except Exception as e:
                     logger.error(f"File click error: {e}")
@@ -5088,17 +5140,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_page = int(parts[2]) if len(parts) > 2 else 1
         chat_id = update.effective_chat.id
 
-        # ✅ FAST FETCH: Ek hi bar mein sab nikal lo
+        # ✅ FAST FETCH: Ek hi bar mein sab nikal lo (seasons_data bhi le lo extra DB calls bachane ke liye)
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT title, genre, year, language FROM movies WHERE id = %s", (movie_id,))
+        cur.execute("SELECT title, genre, year, language, seasons_data FROM movies WHERE id = %s", (movie_id,))
         res = cur.fetchone()
         cur.close()
         close_db_connection(conn)
 
         if res:
-            title, db_genre, db_year, db_lang = res
-            pre_fetched_meta = {'genre': db_genre, 'year': db_year, 'language': db_lang}
+            title, db_genre, db_year, db_lang, db_seasons = res
+            pre_fetched_meta = {'genre': db_genre, 'year': db_year, 'language': db_lang, 'seasons_data': db_seasons}
         else:
             title = "Movie"
             pre_fetched_meta = {}
@@ -5138,18 +5190,24 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_msg = await query.message.reply_text(f"🚀 **Sending {len(page_files)} files (Page {current_page})...**", parse_mode='Markdown')
         
         # 1. LOOP: SIRF CURRENT PAGE KI FILES BHEJO
+        # ⚡ SPEED FIX: extra_info bhi pre_fetched_meta mein pass karo + sleep kam kiya
         count = 0
         for file_data in page_files:
             url = file_data[1]
             file_id = file_data[2]
             
+            # Har file ka extra_info directly qualities tuple se nikal lo (DB call nahi lagegi)
+            file_extra_info = str(file_data[5]).strip() if len(file_data) > 5 and file_data[5] else ""
+            file_meta = dict(pre_fetched_meta)  # Copy banao taaki original change na ho
+            file_meta['extra_info'] = file_extra_info  # Ye pass karo taaki send_movie_to_user DB na hit kare
+            
             try:
                 await send_movie_to_user(
                     update, context, movie_id, title, url, file_id, 
                     send_warning=False,
-                    pre_fetched_meta=pre_fetched_meta
+                    pre_fetched_meta=file_meta
                 )
-                await asyncio.sleep(1.2) 
+                await asyncio.sleep(0.3)  # ⚡ 1.2s → 0.3s (safe_send mein flood protection already hai)
                 count += 1
             except Exception as e:
                 logger.error(f"Send All Error: {e}")
