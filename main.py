@@ -4107,52 +4107,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         message_id=8675
                     ))
                     
-                    qualities = get_all_movie_qualities(movie_id)
-                    if qualities and len(qualities) > file_index:
-                        file_data = qualities[file_index]
-                        url = file_data[1]
-                        file_id = file_data[2]
-                        
-                        conn = get_db_connection()
-                        cur = conn.cursor()
-                        cur.execute("SELECT title FROM movies WHERE id = %s", (movie_id,))
-                        res = cur.fetchone()
-                        cur.close()
-                        close_db_connection(conn)
-                        title = res[0] if res else "Requested File"
-                        
-                        # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
-                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
-                        try: await status_msg.delete() 
-                        except: pass
-                        
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
-                    else:
-                        try: await status_msg.delete()
-                        except: pass
-                        await context.bot.send_message(chat_id=chat_id, text="❌ File not found or expired.")
-                    return
-                except Exception as e:
-                    logger.error(f"File click error: {e}")
-                    await context.bot.send_message(chat_id=chat_id, text="❌ Invalid File Link")
-                    return
-                    
-            # --- CASE 1: DIRECT MOVIE ID (movie_123) ---
-            
-            # --- CASE NAYA: DIRECT FILE CLICK FROM TEXT LINK ---
-            if payload.startswith("file_"):
-                try:
-                    parts = payload.split('_')
-                    movie_id = int(parts[1])
-                    file_index = int(parts[2])
-                    
-                    # ✅ STICKER bhejo "Fetching file" text ki jagah
-                    status_msg = await safe_send(context.bot.copy_message(
-                        chat_id=chat_id,
-                        from_chat_id=-1003893346701,
-                        message_id=8675
-                    ))
-                    
                     # File ka data nikalo
                     qualities = get_all_movie_qualities(movie_id)
                     if qualities and len(qualities) > file_index:
@@ -4170,22 +4124,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title = res[0] if res else "Requested File"
                         
                         # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
-                        # copy_message return karta hai MessageId object, toh directly delete_message use karenge
-                        try: 
+                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
+                        try:
                             if status_msg:
                                 await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-                                await asyncio.sleep(0.4) # Telegram UI ko saaf hone ka time dega
-                        except Exception as e: 
-                            logger.error(f"Sticker delete error: {e}")
+                        except Exception as e:
+                            logger.error(f"Failed to delete status message: {e}")
                         
                         # Tera premium thumbnail wala function!
                         await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
                     else:
-                        # Agar file na mile toh bhi sticker delete karna zaruri hai
-                        try: 
+                        try:
                             if status_msg:
                                 await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-                        except: 
+                        except Exception:
                             pass
                         await context.bot.send_message(chat_id=chat_id, text="❌ File not found or expired.")
                     return
@@ -4193,12 +4145,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.error(f"File click error: {e}")
                     await context.bot.send_message(chat_id=chat_id, text="❌ Invalid File Link")
                     return
-            
+                    
+            # --- CASE 1: DIRECT MOVIE ID (movie_123) ---
             if payload.startswith("movie_"):
                 try:
                     movie_id = int(payload.split('_')[1])
                     
-                    # ✅ FIX 3: send_message use karein (Ye normal Message object deta hai, toh .delete() chalega)
+                    # ✅ FIX 3: send_message use karein
                     status_msg = await context.bot.send_message(
                         chat_id=chat_id,
                         text=f"🎬 Deep link detected!\nMovie ID: {movie_id}\nFetching... Please wait ⏳"
