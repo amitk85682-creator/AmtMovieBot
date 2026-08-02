@@ -7601,6 +7601,213 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     await status_msg.edit_text(f"✅ <b>Posted successfully to {sent_count} channels!</b>", parse_mode='HTML')
     context.user_data.pop('waiting_for_poster', None)
 
+POST_QUERY_MEDIA_GROUPS = defaultdict(list)
+POST_QUERY_TASKS = {}
+
+async def collect_post_query_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    message = update.message
+    if not message or not message.media_group_id:
+        return
+        
+    mg_id = message.media_group_id
+    POST_QUERY_MEDIA_GROUPS[mg_id].append(message)
+    
+    if mg_id not in POST_QUERY_TASKS:
+        POST_QUERY_TASKS[mg_id] = asyncio.create_task(process_post_query_album(mg_id, update, context))
+
+async def process_post_query_album(mg_id: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await asyncio.sleep(2.5)  # Wait for all album parts to arrive
+    
+    messages = POST_QUERY_MEDIA_GROUPS.pop(mg_id, [])
+    POST_QUERY_TASKS.pop(mg_id, None)
+    
+    if not messages:
+        return
+        
+    # Find the message with the caption
+    caption_msg = None
+    for msg in messages:
+        if msg.caption and msg.caption.startswith('/post_query'):
+            caption_msg = msg
+            break
+            
+    if not caption_msg:
+        # Not a post query album, just ignore
+        return
+
+    # Now we process the album
+    caption_text = caption_msg.caption
+    raw_input = caption_text.replace('/post_query', '').strip()
+    
+    if ',' in raw_input:
+        parts = raw_input.split(',', 1)
+        query_text = parts[0].strip()
+        custom_msg = parts[1].strip()
+    else:
+        query_text = raw_input
+        custom_msg = ""
+
+    if not query_text:
+        await caption_msg.reply_text("❌ Movie name missing")
+        return
+
+    # Find Movie in DB
+    movie_id = None
+    movie_category = ""
+    conn = get_db_connection()
+
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, category FROM movies WHERE title ILIKE %s LIMIT 1",
+                (f"%{query_text}%",)
+            )
+            row = cur.fetchone()
+            if row:
+                movie_id = row[0]
+                movie_category = row[1] or ""
+            cur.close()
+        except Exception as e:
+            logger.error(f"DB Error: {e}")
+        finally:
+            close_db_connection(conn)
+
+    # Generate Secure Links
+    bot1 = "FlimfyBox_SearchBot"
+    bot2 = "urmoviebot"
+    bot3 = "FlimfyBoxBot"
+    
+    if movie_id:
+        secure_link = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
+        link1 = secure_link
+        link2 = secure_link
+        link3 = secure_link
+    else:
+        import re
+        safe_query = re.sub(r'[^a-zA-Z0-9_-]', '', query_text.replace(' ', '_'))
+        link_param = f"q_{safe_query}"[:64]
+        
+        link1 = f"https://t.me/{bot1}?start={link_param}"
+        link2 = f"https://t.me/{bot2}?start={link_param}"
+        link3 = f"https://t.me/{bot3}?start={link_param}"
+
+    # Build Keyboard
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Download Now", url=link1),
+            InlineKeyboardButton("Download Now", url=link2),
+        ],
+        [InlineKeyboardButton("Download Now", url=link3)],
+        [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+    ])
+
+    # Build Caption
+    channel_caption = f"🎬 <b>{query_text}</b>\n"
+    if custom_msg:
+        channel_caption += f"✨ <b>{custom_msg}</b>\n\n"
+    else:
+        channel_caption += "\n"
+    
+    channel_caption += (
+        "➖➖➖➖➖➖➖\n"
+        f"<b>Support:</b> <a href='https://t.me/+dxaCr_cMmGpkYTFl'>Join Chat</a>\n"
+        "➖➖➖➖➖➖➖\n"
+        "<b>👇 Download Below</b>"
+    )
+
+    # Send to Channels
+    cat_lower = str(movie_category).lower()
+    if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+        target_channels = [ANIME_CHANNEL_ID]
+    else:
+        channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+        target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+
+    if not target_channels:
+        await caption_msg.reply_text("❌ No BROADCAST_CHANNELS configured in .env")
+        return
+
+    if movie_id and is_movie_posted_recently(movie_id, days=7):
+        await caption_msg.reply_text(f"⏭️ <b>{query_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='HTML')
+        return
+
+    # Build the media group for sending
+    from telegram import InputMediaPhoto, InputMediaVideo
+    media_group = []
+    
+    # Sort messages by message_id to keep original order
+    messages.sort(key=lambda x: x.message_id)
+    
+    for m in messages:
+        if m.photo:
+            media_group.append(InputMediaPhoto(media=m.photo[-1].file_id))
+        elif m.video:
+            media_group.append(InputMediaVideo(media=m.video.file_id))
+            
+    if not media_group:
+        return
+
+    sent_count = 0
+    failed_list = []
+
+    for chat_id_str in target_channels:
+        try:
+            chat_id = int(chat_id_str)
+            logger.info(f"📤 Sending Album to {chat_id}...")
+
+            # 1. Send the album WITHOUT caption
+            album_msgs = await context.bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group
+            )
+            
+            # 2. Send the separate caption message with keyboard
+            sent_msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text=channel_caption,
+                reply_markup=keyboard,
+                parse_mode='HTML'
+            )
+
+            # 3. Save post to db for restore
+            if sent_msg and movie_id:
+                try:
+                    # Saving just the first image of the album to db for reference
+                    first_file_id = media_group[0].media
+                    save_post_to_db(
+                        movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",
+                        channel_caption, first_file_id, "photo", keyboard.to_dict(), None, "movies"
+                    )
+                except Exception as save_err:
+                    logger.warning(f"Album DB save failed (non-critical): {save_err}")
+
+            if sent_msg:
+                sent_count += 1
+
+        except Exception as e:
+            failed_list.append(f"{chat_id_str}: {str(e)[:30]}")
+            logger.error(f"Error sending album to {chat_id_str}: {e}")
+
+    # Final Report
+    report = f"✅ <b>Post Processed (Album: {len(media_group)} items)</b>\n\n"
+    report += f"📤 <b>Sent:</b> {sent_count}/{len(target_channels)}\n"
+    report += f"❌ <b>Failed:</b> {len(failed_list)}\n\n"
+    report += f"🎬 <b>Movie:</b> {query_text}\n"
+    report += f"📝 <b>Extra:</b> {custom_msg or 'None'}"
+
+    if failed_list:
+        report += "\n\n<b>Errors:</b>\n"
+        for err in failed_list[:3]:
+            report += f"• {err}\n"
+
+    await caption_msg.reply_text(report, parse_mode='HTML')
+
+
 async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     ✅ FIXED: Smart Post Generator with proper error handling
@@ -7615,6 +7822,10 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Check Media
         if not (message.photo or message.video):
             await message.reply_text("❌ Photo ya Video bhejo caption ke sath")
+            return
+
+        if message.media_group_id:
+            # Media groups are handled by collect_post_query_album instead
             return
 
         caption_text = message.caption or ""
@@ -12700,6 +12911,8 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("addalias", add_alias))
     application.add_handler(CommandHandler("aliases", list_aliases))
     application.add_handler(CommandHandler("aliasbulk", bulk_add_aliases))
+    # Add handler to collect media groups in private chats for post_query albums
+    application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & filters.ChatType.PRIVATE, collect_post_query_album), group=-1)
     application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & filters.CaptionRegex(r'^/post_query'), admin_post_query))
     application.add_handler(MessageHandler(filters.Regex(r'^/post18'), admin_post_18))
     application.add_handler(CommandHandler("fixbuttons", update_buttons_command))
