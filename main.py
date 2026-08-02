@@ -7619,6 +7619,48 @@ async def collect_post_query_album(update: Update, context: ContextTypes.DEFAULT
     if mg_id not in POST_QUERY_TASKS:
         POST_QUERY_TASKS[mg_id] = asyncio.create_task(process_post_query_album(mg_id, update, context))
 
+def create_image_collage(image_bytes_list):
+    from PIL import Image, ImageOps
+    import math
+    images = []
+    for img_bytes in image_bytes_list:
+        try:
+            img = Image.open(BytesIO(img_bytes)).convert("RGB")
+            images.append(img)
+        except Exception as e:
+            logger.error(f"Failed to open image for collage: {e}")
+            
+    if not images:
+        return None
+        
+    num_images = len(images)
+    if num_images > 4:
+        images = images[:4]
+        num_images = 4
+        
+    cols = 2 if num_images >= 2 else 1
+    rows = math.ceil(num_images / cols)
+    
+    cell_size = 600
+    
+    collage_w = cols * cell_size
+    collage_h = rows * cell_size
+    
+    collage = Image.new("RGB", (collage_w, collage_h), color=(255, 255, 255))
+    
+    for i, img in enumerate(images):
+        row = i // cols
+        col = i % cols
+        
+        fitted_img = ImageOps.fit(img, (cell_size, cell_size), method=Image.Resampling.LANCZOS)
+        collage.paste(fitted_img, (col * cell_size, row * cell_size))
+        
+    output = BytesIO()
+    output.name = "collage.jpg"
+    collage.save(output, format='JPEG', quality=90)
+    output.seek(0)
+    return output
+
 async def process_post_query_album(mg_id: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(2.5)  # Wait for all album parts to arrive
     
@@ -7736,20 +7778,32 @@ async def process_post_query_album(mg_id: str, update: Update, context: ContextT
         await caption_msg.reply_text(f"⏭️ <b>{query_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='HTML')
         return
 
-    # Build the media group for sending
-    from telegram import InputMediaPhoto, InputMediaVideo
-    media_group = []
-    
-    # Sort messages by message_id to keep original order
+    # Build the collage
     messages.sort(key=lambda x: x.message_id)
     
-    for m in messages:
-        if m.photo:
-            media_group.append(InputMediaPhoto(media=m.photo[-1].file_id))
-        elif m.video:
-            media_group.append(InputMediaVideo(media=m.video.file_id))
-            
-    if not media_group:
+    if any(m.video for m in messages):
+        await caption_msg.reply_text("❌ Videos wale album supported nahi hain. Sirf images ka album ya single video bhejein.")
+        return
+
+    photo_msgs = [m for m in messages if m.photo]
+    if not photo_msgs:
+        return
+
+    status_msg = await caption_msg.reply_text("⏳ Generating image collage, please wait...")
+
+    image_bytes_list = []
+    for m in photo_msgs:
+        try:
+            file = await context.bot.get_file(m.photo[-1].file_id)
+            img_bytes = await file.download_as_bytearray()
+            image_bytes_list.append(img_bytes)
+        except Exception as e:
+            logger.error(f"Error downloading image for collage: {e}")
+
+    collage_bytesio = await run_async(create_image_collage, image_bytes_list)
+    
+    if not collage_bytesio:
+        await status_msg.edit_text("❌ Failed to create image collage.")
         return
 
     sent_count = 0
@@ -7758,30 +7812,27 @@ async def process_post_query_album(mg_id: str, update: Update, context: ContextT
     for chat_id_str in target_channels:
         try:
             chat_id = int(chat_id_str)
-            logger.info(f"📤 Sending Album to {chat_id}...")
-
-            # 1. Send the album WITHOUT caption
-            album_msgs = await context.bot.send_media_group(
-                chat_id=chat_id,
-                media=media_group
-            )
+            logger.info(f"📤 Sending Collage to {chat_id}...")
             
-            # 2. Send the separate caption message with keyboard
-            sent_msg = await context.bot.send_message(
+            # Reset the pointer of the BytesIO object for each upload
+            collage_bytesio.seek(0)
+            
+            # Send single photo with caption and keyboard
+            sent_msg = await context.bot.send_photo(
                 chat_id=chat_id,
-                text=channel_caption,
+                photo=collage_bytesio,
+                caption=channel_caption,
                 reply_markup=keyboard,
                 parse_mode='HTML'
             )
 
-            # 3. Save post to db for restore
+            # Save post to db for restore
             if sent_msg and movie_id:
                 try:
-                    # Saving just the first image of the album to db for reference
-                    first_file_id = media_group[0].media
+                    # Save the collage photo to db
                     save_post_to_db(
                         movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",
-                        channel_caption, first_file_id, "photo", keyboard.to_dict(), None, "movies"
+                        channel_caption, sent_msg.photo[-1].file_id, "photo", keyboard.to_dict(), None, "movies"
                     )
                 except Exception as save_err:
                     logger.warning(f"Album DB save failed (non-critical): {save_err}")
@@ -7791,10 +7842,12 @@ async def process_post_query_album(mg_id: str, update: Update, context: ContextT
 
         except Exception as e:
             failed_list.append(f"{chat_id_str}: {str(e)[:30]}")
-            logger.error(f"Error sending album to {chat_id_str}: {e}")
+            logger.error(f"Error sending collage to {chat_id_str}: {e}")
+
+    await status_msg.delete()
 
     # Final Report
-    report = f"✅ <b>Post Processed (Album: {len(media_group)} items)</b>\n\n"
+    report = f"✅ <b>Post Processed (Collage: {len(photo_msgs)} images)</b>\n\n"
     report += f"📤 <b>Sent:</b> {sent_count}/{len(target_channels)}\n"
     report += f"❌ <b>Failed:</b> {len(failed_list)}\n\n"
     report += f"🎬 <b>Movie:</b> {query_text}\n"
