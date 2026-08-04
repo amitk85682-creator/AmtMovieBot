@@ -947,6 +947,361 @@ def normalize_episodes(text):
     
     return text
     
+# =================================================================================
+# EVIDENCE ENGINE - PHASE 1 FOUNDATION
+# =================================================================================
+
+_EVIDENCE_KEYS = ("title", "year", "language", "extra_info", "category")
+
+
+def _valid_evidence_title(value):
+    value = str(value or "").strip()
+    return bool(
+        value
+        and value.upper() not in {"UNKNOWN", "UNKNOWN_MOVIE", "FILE", "DOCUMENT", "VIDEO"}
+        and len(value) >= 2
+    )
+
+
+def _normalize_evidence_dict(data):
+    """Gemini/local parser output ko stable five-field dictionary mein normalize karta hai."""
+    data = data if isinstance(data, dict) else {}
+    normalized = {}
+    for key in _EVIDENCE_KEYS:
+        value = data.get(key, "")
+        if value is None:
+            value = ""
+        normalized[key] = str(value).strip()
+    if not normalized["category"]:
+        normalized["category"] = "Movies"
+    return normalized
+
+
+def _merge_csv_values(primary, secondary):
+    """Languages jaise comma/plus separated values ko order preserve karke merge karta hai."""
+    items = []
+    seen = set()
+    for raw in (primary, secondary):
+        if not raw:
+            continue
+        for item in re.split(r'\s*(?:,|\+|\||/)\s*', str(raw)):
+            item = item.strip()
+            if not item:
+                continue
+            key = item.casefold()
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
+    return ", ".join(items)
+
+
+def _merge_extra_info(primary, secondary):
+    first = str(primary or "").strip()
+    second = str(secondary or "").strip()
+    if not first:
+        return second
+    if not second:
+        return first
+    if first.casefold() == second.casefold() or second.casefold() in first.casefold():
+        return first
+    if first.casefold() in second.casefold():
+        return second
+    return f"{first} {second}".strip()
+
+
+def _local_evidence_fallback(caption_evidence, filename_evidence):
+    """Gemini unavailable/invalid ho to deterministic, field-wise safe merge."""
+    cap = _normalize_evidence_dict(caption_evidence)
+    fn = _normalize_evidence_dict(filename_evidence)
+
+    cap_title_ok = _valid_evidence_title(cap.get("title"))
+    fn_title_ok = _valid_evidence_title(fn.get("title"))
+    title = cap["title"] if cap_title_ok else fn["title"] if fn_title_ok else "UNKNOWN"
+
+    category = cap.get("category") or fn.get("category") or "Movies"
+    for candidate in (cap.get("category", ""), fn.get("category", "")):
+        if str(candidate).casefold() in {"web series", "series", "anime"}:
+            category = candidate
+            break
+
+    return {
+        "title": title,
+        "year": cap.get("year") or fn.get("year") or "",
+        "language": _merge_csv_values(cap.get("language"), fn.get("language")),
+        "extra_info": _merge_extra_info(cap.get("extra_info"), fn.get("extra_info")),
+        "category": category,
+    }
+
+
+def _get_message_filename(message):
+    """Raw Telegram message object se original media filename nikalta hai."""
+    for attr in ("document", "video", "audio", "animation"):
+        media = getattr(message, attr, None)
+        if media:
+            return getattr(media, "file_name", "") or ""
+    return ""
+
+
+async def extract_same_file_evidence(message):
+    """Same Telegram file ka raw caption, raw filename aur dono local parser results."""
+    caption_raw = (getattr(message, "caption", None) or getattr(message, "text", None) or "").strip()
+    filename_raw = _get_message_filename(message).strip()
+
+    caption_evidence = await fallback_extraction(caption_raw) if caption_raw else {}
+    filename_evidence = await fallback_extraction(filename_raw) if filename_raw else {}
+
+    return {
+        "caption_raw": caption_raw,
+        "filename_raw": filename_raw,
+        "caption_evidence": _normalize_evidence_dict(caption_evidence),
+        "filename_evidence": _normalize_evidence_dict(filename_evidence),
+    }
+
+
+async def reconcile_evidence_with_gemini(
+    caption_evidence: dict,
+    filename_evidence: dict,
+    caption_raw: str = "",
+    filename_raw: str = "",
+) -> dict:
+    """
+    Caption aur raw Telegram filename SAME file ke do evidence sources hain.
+    Gemini sirf identity reconcile karta hai; TMDB/IMDb lookup baad mein code karta hai.
+    """
+    fallback = _local_evidence_fallback(caption_evidence, filename_evidence)
+    gemini_keys = get_gemini_keys()
+    if not gemini_keys:
+        return fallback
+
+    evidence_bundle = {
+        "source_context": (
+            "Caption and Telegram filename below belong to the exact same media file. "
+            "The Telegram filename may be truncated."
+        ),
+        "caption_source": {
+            "raw_text": caption_raw or "",
+            "locally_extracted": _normalize_evidence_dict(caption_evidence),
+        },
+        "telegram_filename_source": {
+            "raw_text": filename_raw or "",
+            "locally_extracted": _normalize_evidence_dict(filename_evidence),
+        },
+    }
+
+    prompt = f"""You are a movie/series identity reconciliation engine.
+
+You are receiving TWO evidence sources from the EXACT SAME Telegram media file:
+1. The message caption and its locally extracted fields.
+2. The raw Telegram filename and its locally extracted fields.
+
+The local extraction is only a hint and can be incomplete or wrong. Read the raw strings too.
+The Telegram filename is commonly truncated near the end. The caption can contain promotions.
+Reconcile both sources into ONE identity that will later be searched by application code on TMDB/IMDb.
+Do NOT claim that you searched TMDB/IMDb. Do NOT invent details absent from both sources.
+
+Rules:
+- Return ONLY one valid JSON object; no markdown or explanation.
+- Output keys must be exactly: title, year, language, extra_info, category.
+- title: clean official-looking title only; remove quality, codec, group names and file extension.
+- year: four digits only when supported by evidence; otherwise empty string.
+- language: merge supported audio languages; preserve qualifiers such as Hindi (Line).
+- extra_info: only season, episode, part, combined/complete, or edition information.
+- category: Movies, Web Series, or Anime.
+- If filename is visibly cut and caption is complete, prefer the caption for missing fields.
+- If caption has promotional junk and filename is cleaner, prefer the filename for identity.
+- Never treat these as two different titles.
+
+Same-file evidence bundle:
+{json.dumps(evidence_bundle, ensure_ascii=False, indent=2)}
+
+Required JSON example:
+{{"title":"Movie Name","year":"2026","language":"Hindi (Line), English","extra_info":"","category":"Movies"}}
+"""
+
+    last_error = None
+    for key in gemini_keys:
+        try:
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel('gemini-flash-latest')
+            response = await run_async(model.generate_content, prompt)
+            response_text = (getattr(response, "text", "") or "").strip()
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if not json_match:
+                raise ValueError("Gemini returned no JSON object")
+
+            parsed = json.loads(json_match.group())
+            if not isinstance(parsed, dict):
+                raise ValueError("Gemini JSON was not an object")
+
+            final_data = _normalize_evidence_dict(parsed)
+            for field in _EVIDENCE_KEYS:
+                if not final_data.get(field):
+                    final_data[field] = fallback.get(field, "")
+            if not _valid_evidence_title(final_data.get("title")):
+                final_data["title"] = fallback.get("title", "UNKNOWN")
+
+            logger.info(
+                "✅ Evidence reconciliation success: %s (%s)",
+                final_data.get("title"),
+                final_data.get("year") or "no year",
+            )
+            return final_data
+        except Exception as exc:
+            last_error = exc
+            error_msg = str(exc).lower()
+            if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
+                logger.warning("⚠️ Evidence Gemini key quota exhausted; trying next key")
+            else:
+                logger.warning("⚠️ Evidence Gemini key failed; trying next key: %s", exc)
+
+    logger.error("Evidence Engine reconciliation failed on all keys: %s", last_error)
+    return fallback
+
+
+async def process_file_with_evidence_engine(message) -> dict:
+    """Normal auto-batch ke liye local caption+filename extraction, phir one Gemini reconciliation."""
+    evidence = await extract_same_file_evidence(message)
+    return await reconcile_evidence_with_gemini(
+        evidence["caption_evidence"],
+        evidence["filename_evidence"],
+        caption_raw=evidence["caption_raw"],
+        filename_raw=evidence["filename_raw"],
+    )
+
+
+def _canonical_evidence_title(title):
+    """Superbatch grouping ke liye conservative canonical title."""
+    value = clean_telegram_text(str(title or "")).casefold()
+    value = re.sub(r'\b(19|20)\d{2}\b', ' ', value)
+    value = re.sub(r'[^\w\s]', ' ', value)
+    value = re.sub(r'\s+', ' ', value).strip()
+    return value
+
+
+def _evidence_record_score(record):
+    """Best representative file choose karne ke liye completeness score."""
+    cap = record.get("caption_evidence", {}) or {}
+    fn = record.get("filename_evidence", {}) or {}
+    score = 0
+    if _valid_evidence_title(cap.get("title")): score += 35
+    if cap.get("year"): score += 15
+    if cap.get("language"): score += 12
+    if cap.get("extra_info"): score += 10
+    if record.get("caption"): score += min(len(str(record.get("caption"))), 220) / 20
+    if _valid_evidence_title(fn.get("title")): score += 18
+    if fn.get("year"): score += 8
+    if record.get("file_name"): score += 4
+    return score
+
+
+def _best_local_identity(record):
+    merged = _local_evidence_fallback(
+        record.get("caption_evidence", {}),
+        record.get("filename_evidence", {}),
+    )
+    title = merged.get("title") or "Unknown_Movie"
+    year = str(merged.get("year") or "").strip()
+    return title, year, _canonical_evidence_title(title)
+
+
+def _build_superbatch_groups(files):
+    """
+    Conservative local grouping:
+    exact canonical title + compatible year first; fuzzy merge only when one
+    unambiguous very-high-confidence match exists. Ambiguous remakes stay separate.
+    """
+    prepared = []
+    for index, record in enumerate(files):
+        title, year, canonical = _best_local_identity(record)
+        record["display_title"] = f"{title} ({year})" if year else title
+        prepared.append((record, title, year, canonical, index))
+
+    prepared.sort(key=lambda item: (bool(item[2]), _evidence_record_score(item[0])), reverse=True)
+    groups = []
+
+    for record, title, year, canonical, original_index in prepared:
+        compatible = []
+        for group in groups:
+            group_year = group["year"]
+            years_ok = not year or not group_year or year == group_year
+            if not years_ok:
+                continue
+            if canonical and canonical == group["canonical"]:
+                compatible.append((100, group))
+            elif canonical and group["canonical"]:
+                similarity = fuzz.token_set_ratio(canonical, group["canonical"])
+                if similarity >= 96:
+                    compatible.append((similarity, group))
+
+        compatible.sort(key=lambda item: item[0], reverse=True)
+        selected = None
+        if len(compatible) == 1:
+            selected = compatible[0][1]
+        elif len(compatible) > 1 and compatible[0][0] >= compatible[1][0] + 3:
+            selected = compatible[0][1]
+
+        if selected is None:
+            selected = {
+                "canonical": canonical or f"unknown-{original_index}",
+                "year": year,
+                "display_title": record.get("display_title") or title,
+                "files": [],
+            }
+            groups.append(selected)
+        elif not selected["year"] and year:
+            selected["year"] = year
+            selected["display_title"] = f"{title} ({year})"
+
+        selected["files"].append(record)
+
+    grouped = {}
+    for idx, group in enumerate(groups, 1):
+        key = f"{group['canonical']}_{group['year'] or 'unknown'}_{idx}"
+        grouped[key] = group["files"]
+    return grouped
+
+
+def _select_representative_file(movie_files):
+    return max(movie_files, key=_evidence_record_score)
+
+
+def _split_quality_label(label):
+    text = str(label or "").strip()
+    lower = text.casefold()
+    resolution = ""
+    if "4k" in lower or "2160p" in lower:
+        resolution = "4K"
+    else:
+        match = re.search(r'\b(1080p|720p|576p|480p|360p)\b', text, re.IGNORECASE)
+        if match:
+            resolution = match.group(1).lower()
+
+    source = ""
+    for candidate in (
+        "WEB-DL", "BluRay", "Remux", "WEBRip", "HDRip", "HDTV",
+        "HDTC", "HDTS", "PreDVD", "DVDScr", "HDCAM", "CAMRip",
+    ):
+        if candidate.casefold() in lower:
+            source = candidate
+            break
+    return resolution, source
+
+
+def _merge_quality_labels(caption_label, filename_label):
+    """Resolution/source separately merge; explicit caption field has priority."""
+    cap_res, cap_source = _split_quality_label(caption_label)
+    fn_res, fn_source = _split_quality_label(filename_label)
+    resolution = cap_res or fn_res or "HD"
+    source = cap_source or fn_source
+
+    if cap_res and fn_res and cap_res.casefold() != fn_res.casefold():
+        logger.warning("⚠️ Caption/filename resolution conflict: %s vs %s; caption preferred", cap_res, fn_res)
+    if cap_source and fn_source and cap_source.casefold() != fn_source.casefold():
+        logger.warning("⚠️ Caption/filename source conflict: %s vs %s; caption preferred", cap_source, fn_source)
+
+    return f"{resolution}{' ' + source if source else ''}".strip()
+
+
 async def fallback_extraction(caption_text):
     """
     SMART FALLBACK: Improved regex-based extraction for both movies and web series.
@@ -6573,44 +6928,40 @@ async def superbatch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def _collect_superbatch_file(message):
+    """Telegram file ka raw data + local evidence ek consistent record mein collect karta hai."""
+    if not message or not (message.document or message.video or message.audio):
+        return None
+
+    media = message.document or message.video or message.audio
+    evidence = await extract_same_file_evidence(message)
+    thumb = getattr(media, "thumbnail", None) or getattr(media, "thumb", None)
+
+    return {
+        "file_id": getattr(media, "file_id", None),
+        "file_unique_id": getattr(media, "file_unique_id", None),
+        "file_name": evidence["filename_raw"] or getattr(media, "file_name", None) or "File",
+        "file_size": getattr(media, "file_size", 0) or 0,
+        "caption": evidence["caption_raw"],
+        "thumb_id": getattr(thumb, "file_id", None) if thumb else None,
+        "message_obj": message,
+        "caption_evidence": evidence["caption_evidence"],
+        "filename_evidence": evidence["filename_evidence"],
+    }
+
+
 async def superbatch_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Super batch me aayi hui files ko chupchap memory me save karega"""
-    if not SUPER_BATCH_SESSION['active'] or update.effective_user.id != SUPER_BATCH_SESSION['admin_id']:
+    """Compatibility listener; active wiring pm_file_listener ko use karti hai."""
+    if not SUPER_BATCH_SESSION.get('active') or update.effective_user.id != SUPER_BATCH_SESSION.get('admin_id'):
         return
-
-    message = update.effective_message
-    if not (message.document or message.video or message.audio): return
-    
-    caption = message.caption or message.text or ""
-    file_id = None
-    file_name = "File"
-    file_size = 0
-    thumb_id = None
-    
-    if message.document:
-        file_id = message.document.file_id
-        file_name = message.document.file_name
-        file_size = message.document.file_size
-        if message.document.thumbnail: thumb_id = message.document.thumbnail.file_id
-    elif message.video:
-        file_id = message.video.file_id
-        file_name = message.video.file_name
-        file_size = message.video.file_size
-        if message.video.thumbnail: thumb_id = message.video.thumbnail.file_id
-
-    # Queue me save karo
-    SUPER_BATCH_SESSION['files'].append({
-        'file_id': file_id,
-        'file_name': file_name,
-        'file_size': file_size,
-        'caption': caption,
-        'thumb_id': thumb_id,
-        'message_obj': message
-    })
-    
+    record = await _collect_superbatch_file(update.effective_message)
+    if not record:
+        return
+    SUPER_BATCH_SESSION['files'].append(record)
     count = len(SUPER_BATCH_SESSION['files'])
     if count % 10 == 0:
-        await message.reply_text(f"📥 Received {count} files so far...")
+        await update.effective_message.reply_text(f"📥 Received {count} files so far...")
+
 
 async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -6635,17 +6986,10 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 **{len(files)} files group ho rahi hain...**", parse_mode='Markdown'
     )
 
-    # ── STEP 1: GROUPING (Ab sirf Regex use hoga, Gemini nahi) ────────────────
-    grouped_movies = defaultdict(list)
-    for f in files:
-        raw_text = f['caption'] if f['caption'] else f['file_name']
-        
-        # AI function (get_movie_name_from_caption) को हटाकर 
-        # fallback_extraction का इस्तेमाल करें
-        basic_data = await fallback_extraction(raw_text) 
-        
-        temp_title = basic_data.get('title', 'Unknown_Movie').lower().strip()
-        grouped_movies[temp_title].append(f)
+    # ── STEP 1: CONSERVATIVE LOCAL GROUPING ─────────────────────────────
+    # Gemini grouping ke baad identity reconcile karega. Isliye grouping yahan
+    # exact/very-high-confidence aur ambiguity-safe rules se hoti hai.
+    grouped_movies = _build_superbatch_groups(files)
 
     total_movies = len(grouped_movies)
     await status_msg.edit_text(f"✅ **Files grouped into {total_movies} unique movies!**\n\n🚀 Auto-Processing & Posting starts now...", parse_mode='Markdown')
@@ -6655,29 +6999,37 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     movies_posted_list = []         # 👈 NAYA: Jo movies post hui unki list
     channels = get_storage_channels()
 
-    for i, (temp_title, movie_files) in enumerate(grouped_movies.items(), 1):
+    for i, (group_key, movie_files) in enumerate(grouped_movies.items(), 1):
         try:
-            await status_msg.edit_text(f"⚙️ Processing Movie {i}/{total_movies}...\n🎬 Name: `{temp_title}`")
-            
-            first_file = movie_files[0]
+            representative = _select_representative_file(movie_files)
+            display_name = representative.get('display_title', group_key)
+            await status_msg.edit_text(f"⚙️ Processing Movie {i}/{total_movies}...\n🎬 Name: `{display_name}`")
+
             image_bytes = None
-            if first_file['thumb_id']:
+            if representative.get('thumb_id'):
                 try:
-                    # tg_file = await context.bot.get_file(first_file['thumb_id'])
-                    # image_bytes = bytes(await tg_file.download_as_bytearray())
-                    # 🛑 TEMPORARY BYPASS: API bachane ke liye Gemini ko image nahi de rahe
+                    # Thumbnail multimodal analysis abhi intentionally disabled hai.
                     image_bytes = None
-                except Exception: pass
-            
-            # 🎯 CORE ENGINE — pm_file_listener ka WAHI powerful pipeline!
-            # Duplicate code nahi, ek hi engine — same accuracy, same DB logic
+                except Exception:
+                    image_bytes = None
+
+            # Exactly ONE Gemini reconciliation per finalized group, using the
+            # most complete same-file caption+filename evidence packet.
+            reconciled_data = await reconcile_evidence_with_gemini(
+                representative.get('caption_evidence', {}),
+                representative.get('filename_evidence', {}),
+                caption_raw=representative.get('caption', ''),
+                filename_raw=representative.get('file_name', ''),
+            )
+
             result = await _core_movie_processor(
-                first_file['caption'] or first_file['file_name'],
-                image_bytes
+                representative.get('caption') or representative.get('file_name') or display_name,
+                image_bytes,
+                reconciled_data=reconciled_data,
             )
 
             if not result:
-                logger.warning(f"Superbatch: '{temp_title}' process nahi ho paya, skip kar raha hoon.")
+                logger.warning(f"Superbatch: '{display_name}' process nahi ho paya, skip kar raha hoon.")
                 continue
 
             movie_id   = result['movie_id']
@@ -6703,21 +7055,22 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'language':    movie_lang,
             })
 
-            # ── STEP 3: Har file ke liye _pm_save_file (pm_file_listener Phase 2) ─
+            # ── STEP 3: Har file ke liye unified Phase 2 saver ───────────────
             saved_labels = []
-            for f in movie_files:
-                label = await _pm_save_file(f['message_obj'], context)
-                if label:
-                    saved_labels.append(label)
-                await asyncio.sleep(0.5)
-
-            # BATCH_SESSION reset karo
-            BATCH_SESSION.update({'active': False, 'movie_id': None, 'movie_title': None,
-                                  'file_count': 0, 'admin_id': None, 'year': '',
-                                  'category': '', 'language': ''})
+            try:
+                for f in movie_files:
+                    label = await _pm_save_file(f['message_obj'], context)
+                    if label:
+                        saved_labels.append(label)
+                    await asyncio.sleep(0.5)
+            finally:
+                # Koi file error kare tab bhi next movie ke liye session leak na ho.
+                BATCH_SESSION.update({'active': False, 'movie_id': None, 'movie_title': None,
+                                      'file_count': 0, 'admin_id': None, 'year': '',
+                                      'category': '', 'language': ''})
 
             if not saved_labels:
-                logger.warning(f"Superbatch: '{temp_title}' — koi file save nahi ho paya")
+                logger.warning(f"Superbatch: '{display_name}' — koi file save nahi ho paya")
                 continue
             total_files_saved += len(saved_labels)
 
@@ -6904,12 +7257,16 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #         → DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
 #         → Returns dict with movie_id aur saari details
 # ==============================================================================
-async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dict:
+async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconciled_data: dict = None) -> dict:
     """
     Ek jagah se sab kuch. Returns movie dict ya None agar fail ho.
     """
-    # --- STEP 1: GEMINI AI ---
-    ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
+    # --- STEP 1: Reconciled identity (ya legacy Gemini fallback) ---
+    if reconciled_data:
+        ai_data = reconciled_data
+    else:
+        ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
+        
     movie_name = ai_data.get("title", "UNKNOWN")
     movie_year = ai_data.get("year", "")
     movie_lang = ai_data.get("language", "")
@@ -7004,93 +7361,123 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None) -> dic
 # ==============================================================================
 async def _pm_save_file(message, context) -> str | None:
     """
-    Ek file ko storage channels mein copy karo aur DB mein save karo.
-    BATCH_SESSION pehle se set hona chahiye (_core_movie_processor ke baad).
-    Returns: quality label (str) on success, None on failure.
+    Unified Phase 2 saver. Gemini bilkul use nahi hota.
+    Caption aur raw filename separately parse hote hain, field-wise merge hota hai,
+    downgrade upload se PEHLE block hota hai, phir storage copy + DB upsert hota hai.
     """
+    media = message.document or message.video
+    if not media:
+        logger.error("_pm_save_file: Unsupported media type")
+        return None
+
+    movie_id = BATCH_SESSION.get('movie_id')
+    if not movie_id:
+        logger.error("_pm_save_file: BATCH_SESSION movie_id missing")
+        return None
+
+    file_name = getattr(media, 'file_name', None) or "File"
+    file_size = getattr(media, 'file_size', 0) or 0
+    file_unique_id = getattr(media, 'file_unique_id', None)
+    file_size_str = get_readable_file_size(file_size)
+    current_lang = BATCH_SESSION.get('language', '')
+    raw_caption = message.caption or message.text or ""
+
+    # Independent local extraction; no Gemini in Phase 2.
+    cap_data = await fallback_extraction(raw_caption) if raw_caption else {}
+    fn_data = await fallback_extraction(file_name) if file_name else {}
+    cap_clean = strip_caption_junk(raw_caption) if raw_caption else ""
+
+    cap_label = generate_quality_label(cap_clean, file_size_str, current_lang) if cap_clean else ""
+    fn_label = generate_quality_label(file_name, file_size_str, current_lang) if file_name else ""
+    label = _merge_quality_labels(cap_label, fn_label)
+    f_lang = _merge_csv_values(cap_data.get('language'), fn_data.get('language'))
+    f_extra = _merge_extra_info(cap_data.get('extra_info'), fn_data.get('extra_info'))
+
+    # Downgrade check BEFORE copying to channels, taaki rejected orphan uploads na banein.
+    precheck_conn = get_db_connection()
+    if not precheck_conn:
+        return None
+    try:
+        rejected, existing = is_downgrade(movie_id, label, precheck_conn)
+    except Exception as exc:
+        logger.error("_pm_save_file pre-upload downgrade check failed: %s", exc)
+        return None
+    finally:
+        close_db_connection(precheck_conn)
+
+    if rejected:
+        logger.info("🛡️ _pm_save_file: REJECTED '%s' — DB already has better '%s'", label, existing)
+        return None
+
     channels = get_storage_channels()
     if not channels:
         logger.error("_pm_save_file: No STORAGE_CHANNELS found")
         return None
 
     backup_map = {}
-    success_uploads = 0
     for chat_id in channels:
         try:
             sent = await message.copy(chat_id=chat_id)
             backup_map[str(chat_id)] = sent.message_id
-            success_uploads += 1
             await asyncio.sleep(0.3)
-        except Exception as e:
-            logger.error(f"_pm_save_file upload failed for {chat_id}: {e}")
+        except Exception as exc:
+            logger.error("_pm_save_file upload failed for %s: %s", chat_id, exc)
 
-    if success_uploads == 0:
+    if not backup_map:
         logger.error("_pm_save_file: All uploads failed")
         return None
 
-    main_channel_id = channels[0]
-    main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
+    main_channel_id = next((cid for cid in channels if str(cid) in backup_map), None)
+    main_message_id = backup_map.get(str(main_channel_id)) if main_channel_id is not None else None
+    main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{main_message_id}"
 
-    file_name = (message.document.file_name if message.document
-                 else message.video.file_name if message.video
-                 else "File")
-    file_size = (message.document.file_size if message.document
-                 else message.video.file_size if message.video
-                 else 0)
-    file_unique_id = (message.document.file_unique_id if message.document
-                      else message.video.file_unique_id if message.video
-                      else message.photo[-1].file_unique_id if message.photo else None)
-
-    # Thumbnail update BATCH_SESSION mein (poster ke liye)
-    if message.video and message.video.thumbnail:
-        BATCH_SESSION['extracted_thumb'] = message.video.thumbnail.file_id
-    elif message.document and message.document.thumbnail:
-        BATCH_SESSION['extracted_thumb'] = message.document.thumbnail.file_id
-
-    file_size_str = get_readable_file_size(file_size)
-    current_lang  = BATCH_SESSION.get('language', '')
-
-    # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
-    text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
-    label = generate_quality_label(text_for_detection, file_size_str, current_lang)
-
-    # ✅ FIXED: Sirf regex/fallback use karo baaki files ke liye taaki AI Key bache!
-    ai_data = await fallback_extraction(text_for_detection)
-    f_lang = ai_data.get('language', '')
-    f_extra = ai_data.get('extra_info', '')
+    thumb = getattr(media, 'thumbnail', None) or getattr(media, 'thumb', None)
+    if thumb:
+        BATCH_SESSION['extracted_thumb'] = getattr(thumb, 'file_id', None)
 
     conn = get_db_connection()
     if not conn:
+        for chat_id, message_id in backup_map.items():
+            try:
+                await context.bot.delete_message(chat_id=int(chat_id), message_id=message_id)
+            except Exception:
+                pass
         return None
+
     try:
-        # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
-        rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
-        if rejected:
-            logger.info(f"🛡️ _pm_save_file: REJECTED '{label}' — DB already has better '{existing}'")
-            close_db_connection(conn)
-            return None  # File save nahi hogi, skip karo
-
-        upsert_movie_file(conn, BATCH_SESSION['movie_id'], label, file_size_str, main_url,
-                          json.dumps(backup_map), f_lang, f_extra, file_unique_id)
+        upsert_movie_file(
+            conn, movie_id, label, file_size_str, main_url,
+            json.dumps(backup_map), f_lang, f_extra, file_unique_id,
+        )
         BATCH_SESSION['file_count'] = BATCH_SESSION.get('file_count', 0) + 1
-        logger.info(f"_pm_save_file saved: {BATCH_SESSION.get('movie_title')} — {label} [{file_size_str}]")
+        logger.info(
+            "_pm_save_file saved: %s — %s [%s]",
+            BATCH_SESSION.get('movie_title'), label, file_size_str,
+        )
 
-        # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
         try:
-            deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
+            deleted, deleted_labels = auto_upgrade_delete(movie_id, label, conn)
             if deleted > 0:
                 BATCH_SESSION['file_count'] = max(0, BATCH_SESSION.get('file_count', 0) - deleted)
-                logger.info(f"🔄 _pm_save_file: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
-        except Exception as ue:
-            logger.error(f"Auto-Upgrade error in _pm_save_file: {ue}")
-    except Exception as e:
-        logger.error(f"_pm_save_file DB error: {e}")
-        if conn: conn.rollback()
+                logger.info("🔄 _pm_save_file: %s old print(s) deleted: %s", deleted, deleted_labels)
+        except Exception as exc:
+            logger.error("Auto-Upgrade error in _pm_save_file: %s", exc)
+
+        return label
+    except Exception as exc:
+        logger.error("_pm_save_file DB error: %s", exc)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        for chat_id, message_id in backup_map.items():
+            try:
+                await context.bot.delete_message(chat_id=int(chat_id), message_id=message_id)
+            except Exception:
+                pass
         return None
     finally:
         close_db_connection(conn)
-
-    return label
 
 
 async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7105,49 +7492,18 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==========================================
     if SUPER_BATCH_SESSION.get('active'):
         if not (update.effective_user and update.effective_user.id == SUPER_BATCH_SESSION.get('admin_id')):
-            return  # Sirf admin ki files
+            return
 
-        message = update.effective_message
-        if message and (message.document or message.video or message.audio):
-            caption = message.caption or message.text or ""
-            file_id = None
-            file_name = "File"
-            file_size = 0
-            thumb_id = None
-
-            if message.document:
-                file_id = message.document.file_id
-                file_name = message.document.file_name or "document"
-                file_size = message.document.file_size or 0
-                if message.document.thumbnail:
-                    thumb_id = message.document.thumbnail.file_id
-            elif message.video:
-                file_id = message.video.file_id
-                file_name = message.video.file_name or "video"
-                file_size = message.video.file_size or 0
-                if message.video.thumbnail:
-                    thumb_id = message.video.thumbnail.file_id
-            elif message.audio:
-                file_id = message.audio.file_id
-                file_name = message.audio.file_name or "audio"
-                file_size = message.audio.file_size or 0
-
-            SUPER_BATCH_SESSION['files'].append({
-                'file_id': file_id,
-                'file_name': file_name,
-                'file_size': file_size,
-                'caption': caption,
-                'thumb_id': thumb_id,
-                'message_obj': message
-            })
-
+        record = await _collect_superbatch_file(update.effective_message)
+        if record:
+            SUPER_BATCH_SESSION['files'].append(record)
             count = len(SUPER_BATCH_SESSION['files'])
             if count % 10 == 0:
-                await message.reply_text(
+                await update.effective_message.reply_text(
                     f"📥 **{count} files mil gayi hain!**\nJab sab bhej do, `/superdone` karo.",
-                    parse_mode='Markdown'
+                    parse_mode='Markdown',
                 )
-        return  # Superbatch mode mein normal processing nahi karni
+        return
 
     # 1. VIP Payment Check (Safe for channels)
     if context.user_data and context.user_data.get('payment_step') == 'screenshot' and update.message and update.message.photo:
@@ -7229,12 +7585,19 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ==========================================
         if not BATCH_SESSION.get('active'):
 
-            raw_caption = message.caption or message.text
-            if not raw_caption:
-                await message.reply_text("❌ **Batch Off!**\nFile ke sath CAPTION mein movie naam likho.", parse_mode='Markdown')
+            raw_caption = message.caption or message.text or ""
+            raw_filename = _get_message_filename(message)
+            if not raw_caption and not raw_filename:
+                await message.reply_text(
+                    "❌ **Batch Off!**\nCaption ya Telegram filename mein movie identity nahi mili.",
+                    parse_mode='Markdown',
+                )
                 return
 
-            status_msg = await message.reply_text("🧠 Gemini → TMDB → IMDb pipeline chal raha hai...", quote=True)
+            status_msg = await message.reply_text(
+                "🧠 Caption + Filename Evidence → Gemini → TMDB/IMDb pipeline chal raha hai...",
+                quote=True,
+            )
 
             # Thumbnail extract karo BATCH_SESSION ke liye (poster backup)
             image_bytes = None
@@ -7253,8 +7616,14 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Thumbnail extract error: {e}")
 
-            # 🎯 CORE ENGINE — ek hi jagah se Gemini+TMDB+IMDb+DB
-            result = await _core_movie_processor(raw_caption, image_bytes)
+            # Same file ke caption aur raw Telegram filename ko local parser se
+            # separately extract karke Gemini ek baar reconcile karega.
+            reconciled_data = await process_file_with_evidence_engine(message)
+            result = await _core_movie_processor(
+                raw_caption or raw_filename,
+                image_bytes,
+                reconciled_data=reconciled_data,
+            )
 
             if not result:
                 await status_msg.edit_text("❌ Movie naam extract nahi ho paya.\n\n`/batch Movie Name` use karein.")
@@ -7303,97 +7672,22 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         upload_status = await message.reply_text("⏳ Uploading file...", quote=True)
         # ... (Baaki ka Phase 2 ka code aapka same rahega)
 
-        channels = get_storage_channels()
-        if not channels:
-            await upload_status.edit_text("❌ No STORAGE_CHANNELS found")
-            return
-
-        backup_map = {}
-
-        # PM se aayi file — storage channels mein copy karo (normal flow)
-        success_uploads = 0
-        for chat_id in channels:
-            try:
-                sent = await message.copy(chat_id=chat_id)
-                backup_map[str(chat_id)] = sent.message_id
-                success_uploads += 1
-            except Exception as e:
-                logger.error(f"Upload failed: {e}")
-
-        if success_uploads == 0:
-            await upload_status.edit_text("❌ Upload fail ho gaya.")
-            return
-
-        main_channel_id = channels[0]
-        main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
-
-        file_name = message.document.file_name if message.document else (message.video.file_name if message.video else "File")
-        file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
-        file_unique_id = (message.document.file_unique_id if message.document
-                          else message.video.file_unique_id if message.video
-                          else message.photo[-1].file_unique_id if message.photo else None)
+        # 📤 PHASE 2: UNIFIED FILE SAVING
+        label = await _pm_save_file(message, context)
         
-        # 👇👇👇 NAYA CODE: File/Video se Poster (Thumbnail) nikalna 👇👇👇
-        if message.video and message.video.thumbnail:
-            BATCH_SESSION['extracted_thumb'] = message.video.thumbnail.file_id
-        elif message.document and message.document.thumbnail:
-            BATCH_SESSION['extracted_thumb'] = message.document.thumbnail.file_id
-        # 👆👆👆 ---------------------------------------------------- 👆👆👆
-
-        file_size_str = get_readable_file_size(file_size)
-        current_lang = BATCH_SESSION.get('language', '')
-        
-        # 👇 NAYA FIX: Telegram file name cut kar deta hai, isliye Caption check karenge 👇
-        # 🧹 Caption Clean: Links, @usernames, promotions hatao before quality detection
-        text_for_detection = strip_caption_junk(message.caption) if message.caption else file_name
-        
-        label = generate_quality_label(text_for_detection, file_size_str, current_lang)
-        
-        main_channel_id = channels[0]
-        main_url = f"https://t.me/c/{str(main_channel_id).replace('-100', '')}/{backup_map.get(str(main_channel_id))}"
-
-        # 🚀 FIX: Same Gemini AI jo Phase 1 mein use hua (consistent extraction)
-        ai_data = await fallback_extraction(text_for_detection)
-        f_lang = ai_data.get('language', '')
-        f_extra = ai_data.get('extra_info', '')
-
-        conn = get_db_connection()
-        if conn:
-            try:
-                # 🛡️ Anti-Downgrade Shield: Pehle check karo ki DB mein better file toh nahi hai
-                rejected, existing = is_downgrade(BATCH_SESSION['movie_id'], label, conn)
-                if rejected:
-                    logger.info(f"🛡️ Phase2: REJECTED '{label}' — DB already has better '{existing}'")
-                    await upload_status.edit_text(
-                        f"🛡️ **Downgrade Blocked!**\n"
-                        f"❌ `{label}` save nahi hua\n"
-                        f"✅ DB mein pehle se better print hai: `{existing}`",
-                        parse_mode='Markdown'
-                    )
-                    close_db_connection(conn)
-                    return
-
-                upsert_movie_file(conn, BATCH_SESSION['movie_id'], label, file_size_str, main_url,
-                                  json.dumps(backup_map), f_lang, f_extra, file_unique_id)
-                BATCH_SESSION['file_count'] += 1
-
-                # 🔄 Auto-Upgrade: पुरानी घटिया prints delete करो
-                upgrade_msg = ""
-                try:
-                    deleted, deleted_labels = auto_upgrade_delete(BATCH_SESSION['movie_id'], label, conn)
-                    if deleted > 0:
-                        BATCH_SESSION['file_count'] = max(0, BATCH_SESSION['file_count'] - deleted)
-                        upgrade_msg = f"\n🔄 Upgraded! {deleted} पुरानी print(s) auto-deleted"
-                        logger.info(f"🔄 Phase2: {deleted} पुरानी print(s) auto-deleted: {deleted_labels}")
-                except Exception as ue:
-                    logger.error(f"Auto-Upgrade error in Phase2: {ue}")
-
-                movie_title = BATCH_SESSION.get('movie_title', 'Movie')
-                await upload_status.edit_text(f"✅ **Saved:** `{movie_title} {label}` [{file_size_str}]\n🔢 Total Files: {BATCH_SESSION['file_count']}{upgrade_msg}", parse_mode='Markdown')
-            except Exception as e:
-                await upload_status.edit_text(f"❌ DB Save Failed: {e}")
-            finally:
-                close_db_connection(conn)
+        if label:
+            file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
+            file_size_str = get_readable_file_size(file_size)
+            movie_title = BATCH_SESSION.get('movie_title', 'Movie')
+            await upload_status.edit_text(
+                f"✅ **Saved:** `{movie_title} {label}` [{file_size_str}]\n🔢 Total Files: {BATCH_SESSION.get('file_count', 0)}", 
+                parse_mode='Markdown'
+            )
+        else:
+            await upload_status.edit_text(
+                "❌ **Save Failed or Blocked!**\nYa toh error aaya, ya DB mein pehle se better print (downgrade) hai. Logs check karein.", 
+                parse_mode='Markdown'
+            )
     
 async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not BATCH_SESSION.get('active'): 
@@ -7603,6 +7897,19 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 POST_QUERY_MEDIA_GROUPS = defaultdict(list)
 POST_QUERY_TASKS = {}
+GLOBAL_ALBUM_CACHE = {}
+
+async def global_album_cacher(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not msg.media_group_id:
+        return
+    mg_id = msg.media_group_id
+    if mg_id not in GLOBAL_ALBUM_CACHE:
+        if len(GLOBAL_ALBUM_CACHE) > 500:
+            GLOBAL_ALBUM_CACHE.pop(next(iter(GLOBAL_ALBUM_CACHE)))
+        GLOBAL_ALBUM_CACHE[mg_id] = []
+    GLOBAL_ALBUM_CACHE[mg_id].append(msg)
+
 
 async def collect_post_query_album(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -8078,6 +8385,186 @@ async def admin_post_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Critical error in post_query: {e}", exc_info=True)
+
+
+async def admin_post_query_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Reply-based /post_query mode.
+    Command format: /post_query Custom Movie Name (as a reply to a media message)
+    """
+    try:
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
+            return
+
+        message = update.message
+        # Check if it's a reply
+        if not message.reply_to_message:
+            return
+
+        replied_msg = message.reply_to_message
+        if not (replied_msg.photo or replied_msg.video):
+            # Ignore if not replying to media
+            return
+
+        command_text = message.text or ""
+        if not command_text.startswith('/post_query'):
+            return
+
+        query_text = command_text.replace('/post_query', '', 1).strip()
+        if not query_text:
+            await message.reply_text("❌ Movie name missing. Use: /post_query Custom Movie Name")
+            return
+
+        # 1. Database Lookup
+        movie_id = None
+        movie_category = ""
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id, category FROM movies WHERE title ILIKE %s LIMIT 1",
+                    (f"%{query_text}%",)
+                )
+                row = cur.fetchone()
+                if row:
+                    movie_id = row[0]
+                    movie_category = row[1] or ""
+                cur.close()
+            except Exception as e:
+                logger.error(f"DB Error: {e}")
+            finally:
+                close_db_connection(conn)
+
+        # 2. Generate Secure Links
+        bot1 = "FlimfyBox_SearchBot"
+        bot2 = "urmoviebot"
+        bot3 = "FlimfyBoxBot"
+        
+        if movie_id:
+            secure_link = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
+            link1 = secure_link
+            link2 = secure_link
+            link3 = secure_link
+        else:
+            import re
+            safe_query = re.sub(r'[^a-zA-Z0-9_-]', '', query_text.replace(' ', '_'))
+            link_param = f"q_{safe_query}"[:64]
+            link1 = f"https://t.me/{bot1}?start={link_param}"
+            link2 = f"https://t.me/{bot2}?start={link_param}"
+            link3 = f"https://t.me/{bot3}?start={link_param}"
+
+        # 3. Build Keyboard
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Download Now", url=link1),
+                InlineKeyboardButton("Download Now", url=link2),
+            ],
+            [InlineKeyboardButton("Download Now", url=link3)],
+            [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+        ])
+
+        # 4. Target Channels
+        cat_lower = str(movie_category).lower()
+        if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+            target_channels = [ANIME_CHANNEL_ID]
+        else:
+            channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+            target_channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+
+        if not target_channels:
+            await message.reply_text("❌ No BROADCAST_CHANNELS configured in .env")
+            return
+
+        # 5. Global Duplicate Check
+        if movie_id and is_movie_posted_recently(movie_id, days=7):
+            await message.reply_text(f"⏭️ <b>{query_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.", parse_mode='HTML')
+            return
+
+        # 6. Copy Media Logic
+        is_album = bool(replied_msg.media_group_id)
+        sent_count = 0
+        failed_list = []
+
+        if is_album:
+            mg_id = replied_msg.media_group_id
+            if mg_id not in GLOBAL_ALBUM_CACHE:
+                await message.reply_text("❌ Album not found in cache. Please forward the album to the bot again and then reply.")
+                return
+                
+            album_messages = GLOBAL_ALBUM_CACHE[mg_id]
+            album_messages.sort(key=lambda x: x.message_id)
+            ordered_message_ids = [m.message_id for m in album_messages]
+            
+            # Find caption index in original album
+            caption_index = -1
+            for i, m in enumerate(album_messages):
+                if m.caption:
+                    caption_index = i
+                    break
+            
+            if caption_index == -1:
+                caption_index = 0
+
+            for chat_id_str in target_channels:
+                try:
+                    chat_id = int(chat_id_str)
+                    copied = await context.bot.copy_messages(
+                        chat_id=chat_id,
+                        from_chat_id=replied_msg.chat_id,
+                        message_ids=ordered_message_ids
+                    )
+                    
+                    if copied and len(copied) > caption_index:
+                        await context.bot.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=copied[caption_index].message_id,
+                            reply_markup=keyboard
+                        )
+                    sent_count += 1
+                except Exception as e:
+                    failed_list.append(f"{chat_id_str}: {str(e)[:30]}")
+                    logger.error(f"Error copying album to {chat_id_str}: {e}")
+                    
+        else:
+            # Single photo/video
+            for chat_id_str in target_channels:
+                try:
+                    chat_id = int(chat_id_str)
+                    await context.bot.copy_message(
+                        chat_id=chat_id,
+                        from_chat_id=replied_msg.chat_id,
+                        message_id=replied_msg.message_id,
+                        reply_markup=keyboard
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    failed_list.append(f"{chat_id_str}: {str(e)[:30]}")
+                    logger.error(f"Error copying media to {chat_id_str}: {e}")
+
+        # Final Report
+        media_type = 'album' if is_album else ('video' if replied_msg.video else 'photo')
+        report = f"✅ <b>Post Processed ({media_type.capitalize()}) [Reply Mode]</b>\n\n"
+        report += f"📤 <b>Sent:</b> {sent_count}/{len(target_channels)}\n"
+        report += f"❌ <b>Failed:</b> {len(failed_list)}\n\n"
+        report += f"🎬 <b>Movie:</b> {query_text}"
+
+        if failed_list:
+            report += "\n\n<b>Errors:</b>\n"
+            for err in failed_list[:3]:
+                report += f"• {err}\n"
+
+        await message.reply_text(report, parse_mode='HTML')
+        
+        # Delete the command message
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.error(f"Critical error in admin_post_query_text: {e}", exc_info=True)
         await message.reply_text(f"❌ Error: {str(e)[:100]}")
 
 # ==========================================
@@ -12965,8 +13452,10 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("aliases", list_aliases))
     application.add_handler(CommandHandler("aliasbulk", bulk_add_aliases))
     # Add handler to collect media groups in private chats for post_query albums
+    application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & filters.ChatType.PRIVATE, global_album_cacher), group=-2)
     application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & filters.ChatType.PRIVATE, collect_post_query_album), group=-1)
     application.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO) & filters.CaptionRegex(r'^/post_query'), admin_post_query))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^/post_query'), admin_post_query_text))
     application.add_handler(MessageHandler(filters.Regex(r'^/post18'), admin_post_18))
     application.add_handler(CommandHandler("fixbuttons", update_buttons_command))
     application.add_handler(CommandHandler("restore", restore_posts_command))
