@@ -7526,14 +7526,41 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
         
     movie_name = ai_data.get("title", "UNKNOWN")
-    movie_year = ai_data.get("year", "")
-    movie_lang = ai_data.get("language", "")
-    gemini_category = ai_data.get("category", "")
+movie_year = str(ai_data.get("year", "") or "").strip()
+movie_lang = ai_data.get("language", "")
+movie_extra = str(ai_data.get("extra_info", "") or "").strip()
+gemini_category = ai_data.get("category", "")
+
+# Series ke season ko preserve karo: S03, S3, Season 3
+season_number = None
+season_match = re.search(
+    r'(?i)\b(?:s(?:eason)?\s*0*(\d{1,2})|season\s*0*(\d{1,2}))\b',
+    f"{movie_extra} {raw_text}",
+)
+
+if season_match:
+    season_number = int(
+        season_match.group(1) or season_match.group(2)
+    )
+
+    if not movie_extra:
+        movie_extra = f"S{season_number:02d}"
 
     if movie_name == "UNKNOWN" or len(movie_name) < 2:
         return None
 
     # --- STEP 2: TMDB + IMDb METADATA ---
+    category_hint_lower = str(gemini_category or "").lower()
+
+    is_season_upload = bool(season_number) and any(
+    word in category_hint_lower
+    for word in ("series", "web", "tv", "anime")
+    )
+
+    # (2026) Season 3 ka year ho sakta hai, original show ka nahi.
+    # Isliye TMDB search ko 2026 se restrict nahi karenge.
+    metadata_search_year = "" if is_season_upload else movie_year
+    
     metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, False, gemini_category)
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
