@@ -7216,6 +7216,10 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             movie_lang = result['movie_lang']
             poster_url = result['poster_url']
             imdb_id    = result['imdb_id']
+            extra_info = result.get('extra_info') or ''
+            season_number = result.get('season_number')
+            season_release_date = result.get('season_release_date')
+            season_release_year = result.get('season_release_year')
 
             # Brain ko meaningful upgrade samajhne ke liye save se PEHLE quality history.
             previous_quality_labels = _get_movie_quality_labels(movie_id)
@@ -7273,11 +7277,40 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     poster_url and poster_url != 'N/A' and str(poster_url).startswith('http')
                 )
 
+                is_series_candidate = (
+                    content_type in {'Web Series', 'Anime'}
+                    and bool(season_number)
+                )
+
+                effective_release_year = (
+                    season_release_year
+                    if is_series_candidate and season_release_year
+                    else year
+                )
+
                 candidate = {
                     'candidate_id': movie_id,
                     'title': title,
                     'content_type': content_type,
-                    'release_year': year or None,
+
+                    'original_release_year': year or None,
+                    'release_year': effective_release_year or None,
+                    'release_date': (
+                        season_release_date
+                        if is_series_candidate
+                        else None
+                    ),
+
+                    'season_number': season_number,
+                    'season_label': (
+                        f'Season {season_number}'
+                        if season_number
+                        else None
+                    ),
+                    'season_release_year': season_release_year,
+                    'latest_season_release_date': season_release_date,
+                    'extra_info': extra_info or None,
+
                     'current_quality': current_quality,
                     'previous_quality': previous_quality,
                     'languages': movie_lang or None,
@@ -7526,25 +7559,25 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
         
     movie_name = ai_data.get("title", "UNKNOWN")
-movie_year = str(ai_data.get("year", "") or "").strip()
-movie_lang = ai_data.get("language", "")
-movie_extra = str(ai_data.get("extra_info", "") or "").strip()
-gemini_category = ai_data.get("category", "")
+    movie_year = str(ai_data.get("year", "") or "").strip()
+    movie_lang = ai_data.get("language", "")
+    movie_extra = str(ai_data.get("extra_info", "") or "").strip()
+    gemini_category = ai_data.get("category", "")
 
-# Series ke season ko preserve karo: S03, S3, Season 3
-season_number = None
-season_match = re.search(
-    r'(?i)\b(?:s(?:eason)?\s*0*(\d{1,2})|season\s*0*(\d{1,2}))\b',
-    f"{movie_extra} {raw_text}",
-)
-
-if season_match:
-    season_number = int(
-        season_match.group(1) or season_match.group(2)
+    # Series ke season ko preserve karo: S03, S3, Season 3
+    season_number = None
+    season_match = re.search(
+        r'(?i)\b(?:s(?:eason)?\s*0*(\d{1,2})|season\s*0*(\d{1,2}))\b',
+        f"{movie_extra} {raw_text}",
     )
 
-    if not movie_extra:
-        movie_extra = f"S{season_number:02d}"
+    if season_match:
+        season_number = int(
+            season_match.group(1) or season_match.group(2)
+        )
+
+        if not movie_extra:
+            movie_extra = f"S{season_number:02d}"
 
     if movie_name == "UNKNOWN" or len(movie_name) < 2:
         return None
@@ -7553,15 +7586,22 @@ if season_match:
     category_hint_lower = str(gemini_category or "").lower()
 
     is_season_upload = bool(season_number) and any(
-    word in category_hint_lower
-    for word in ("series", "web", "tv", "anime")
+        word in category_hint_lower
+        for word in ("series", "web", "tv", "anime")
     )
 
     # (2026) Season 3 ka year ho sakta hai, original show ka nahi.
     # Isliye TMDB search ko 2026 se restrict nahi karenge.
     metadata_search_year = "" if is_season_upload else movie_year
-    
-    metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, False, gemini_category)
+
+    metadata = await run_async(
+        fetch_movie_metadata,
+        movie_name,
+        metadata_search_year,
+        movie_lang,
+        False,
+        gemini_category,
+    )
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
     else:
@@ -7573,6 +7613,30 @@ if season_match:
         rating     = "N/A"
         plot       = "Auto Added"
         category   = gemini_category if gemini_category else "Movies"
+        seasons_data = {}
+
+    # TMDB se selected season ki actual release date
+    season_info = (
+        seasons_data.get(str(season_number), {})
+        if season_number
+        else {}
+    )
+
+    season_release_date = str(
+        season_info.get("air_date") or ""
+    ).strip() or None
+
+    season_release_year = None
+
+    if (
+        season_release_date
+        and re.match(r"^\d{4}-\d{2}-\d{2}$", season_release_date)
+    ):
+        season_release_year = int(season_release_date[:4])
+
+    elif season_number and movie_year.isdigit():
+        # Exact date nahi mili, caption ka 2026 season year maana jayega
+        season_release_year = int(movie_year)
 
     # 👇 NAYA LOGIC: Gemini Category Priority for Anime 👇
     cat_lower = str(gemini_category or "").lower()
@@ -7613,24 +7677,40 @@ if season_match:
                 "cast"       = COALESCE(EXCLUDED."cast",       movies."cast")
             RETURNING id
             """,
-            (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, "", cast_str)
+            (
+                title,
+                imdb_id,
+                poster_url,
+                year,
+                genre,
+                rating,
+                plot,
+                category,
+                movie_lang,
+                movie_extra,
+                cast_str,
+            )
         )
         movie_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
 
         return {
-            'movie_id':   movie_id,
-            'title':      title,
-            'year':       year,
-            'genre':      genre,
-            'rating':     rating,
-            'plot':       plot,
-            'category':   category,
+            'movie_id': movie_id,
+            'title': title,
+            'year': year,
+            'genre': genre,
+            'rating': rating,
+            'plot': plot,
+            'category': category,
             'movie_lang': movie_lang,
             'poster_url': poster_url,
-            'imdb_id':    imdb_id,
-            'cast_str':   cast_str,
+            'imdb_id': imdb_id,
+            'cast_str': cast_str,
+            'extra_info': movie_extra,
+            'season_number': season_number,
+            'season_release_date': season_release_date,
+            'season_release_year': season_release_year,
         }
     except Exception as e:
         logger.error(f"_core_movie_processor DB Error: {e}")
