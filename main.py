@@ -422,6 +422,13 @@ messages_to_auto_delete = defaultdict(list)
 BATCH_SESSION = {'active': False, 'movie_id': None, 'movie_title': None, 'file_count': 0, 'admin_id': None}
 SUPER_BATCH_SESSION = {'active': False, 'admin_id': None, 'files': []}
 
+# ==================== 🧠 ACTIVEPIECES EDITORIAL BRAIN ====================
+# Fail-closed design: Superbatch files DB mein save hongi, lekin Telegram channel
+# par tab tak auto-post nahi hoga jab tak editorial Brain ka action layer ready na ho.
+ACTIVEPIECES_BRAIN_WEBHOOK_URL = os.environ.get('ACTIVEPIECES_BRAIN_WEBHOOK_URL', '').strip()
+SUPERBATCH_BRAIN_HOLD = os.environ.get('SUPERBATCH_BRAIN_HOLD', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 # Validate required environment variables
 if not TELEGRAM_BOT_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable is not set")
@@ -6909,6 +6916,164 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if conn: close_db_connection(conn)
 
 # ============================================================================
+# 🧠 SUPERBATCH → ACTIVEPIECES BRAIN GATE
+# ============================================================================
+
+def _get_movie_quality_labels(movie_id: int) -> list[str]:
+    """Movie ke existing DB quality labels return karta hai (save se pehle history)."""
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT quality FROM movie_files WHERE movie_id = %s ORDER BY id ASC",
+            (movie_id,),
+        )
+        rows = cur.fetchall() or []
+        cur.close()
+        return [str(row[0]).strip() for row in rows if row and row[0]]
+    except Exception as exc:
+        logger.warning(f"Brain quality history lookup failed for movie_id={movie_id}: {exc}")
+        return []
+    finally:
+        close_db_connection(conn)
+
+
+def _get_movie_editorial_history(movie_id: int, title: str) -> dict:
+    """Main DB se factual demand/post history nikalta hai; missing data invent nahi karta."""
+    conn = get_db_connection()
+    if not conn:
+        return {
+            'requests_last_7_days': 0,
+            'last_posted_at': None,
+            'days_since_last_post': None,
+        }
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM user_requests
+            WHERE requested_at >= NOW() - INTERVAL '7 days'
+              AND LOWER(movie_title) = LOWER(%s)
+            """,
+            (title,),
+        )
+        request_row = cur.fetchone()
+        requests_7d = int(request_row[0] or 0) if request_row else 0
+
+        cur.execute(
+            "SELECT MAX(posted_at) FROM channel_posts WHERE movie_id = %s",
+            (movie_id,),
+        )
+        posted_row = cur.fetchone()
+        last_posted = posted_row[0] if posted_row else None
+        cur.close()
+
+        days_since = None
+        last_posted_iso = None
+        if last_posted:
+            if last_posted.tzinfo is None:
+                last_posted_utc = pytz.UTC.localize(last_posted)
+            else:
+                last_posted_utc = last_posted.astimezone(pytz.UTC)
+            now_utc = datetime.now(pytz.UTC)
+            days_since = max(0, (now_utc - last_posted_utc).days)
+            last_posted_iso = last_posted_utc.astimezone(pytz.timezone('Asia/Kolkata')).isoformat()
+
+        return {
+            'requests_last_7_days': requests_7d,
+            'last_posted_at': last_posted_iso,
+            'days_since_last_post': days_since,
+        }
+    except Exception as exc:
+        logger.warning(f"Brain editorial history lookup failed for movie_id={movie_id}: {exc}")
+        return {
+            'requests_last_7_days': 0,
+            'last_posted_at': None,
+            'days_since_last_post': None,
+        }
+    finally:
+        close_db_connection(conn)
+
+
+def _get_channel_context_for_brain() -> dict:
+    """Aaj ke channel post count aur last post time ka factual snapshot."""
+    now_ist = datetime.now(pytz.timezone('Asia/Kolkata'))
+    start_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc_naive = start_ist.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    conn = get_db_connection()
+    if not conn:
+        return {
+            'posts_today': 0,
+            'last_post_time': None,
+            'feed_pressure': 'unknown',
+        }
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*), MAX(posted_at) FROM channel_posts WHERE posted_at >= %s",
+            (start_utc_naive,),
+        )
+        row = cur.fetchone() or (0, None)
+        cur.close()
+        posts_today = int(row[0] or 0)
+        last_post = row[1]
+        last_post_time = None
+        if last_post:
+            if last_post.tzinfo is None:
+                last_post = pytz.UTC.localize(last_post)
+            last_post_time = last_post.astimezone(pytz.timezone('Asia/Kolkata')).strftime('%H:%M')
+
+        if posts_today >= 6:
+            pressure = 'high'
+        elif posts_today >= 3:
+            pressure = 'medium'
+        else:
+            pressure = 'low'
+
+        return {
+            'posts_today': posts_today,
+            'last_post_time': last_post_time,
+            'feed_pressure': pressure,
+        }
+    except Exception as exc:
+        logger.warning(f"Brain channel context lookup failed: {exc}")
+        return {
+            'posts_today': 0,
+            'last_post_time': None,
+            'feed_pressure': 'unknown',
+        }
+    finally:
+        close_db_connection(conn)
+
+
+async def _send_superbatch_to_editorial_brain(payload: dict) -> tuple[bool, str]:
+    """Published Activepieces webhook ko batch bhejta hai. Fail hua toh posting HOLD rahegi."""
+    if not ACTIVEPIECES_BRAIN_WEBHOOK_URL:
+        return False, 'ACTIVEPIECES_BRAIN_WEBHOOK_URL environment variable missing'
+
+    timeout = aiohttp.ClientTimeout(total=25)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                ACTIVEPIECES_BRAIN_WEBHOOK_URL,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+            ) as response:
+                response_text = await response.text()
+                if 200 <= response.status < 300:
+                    return True, response_text[:500]
+                return False, f'HTTP {response.status}: {response_text[:500]}'
+    except asyncio.TimeoutError:
+        return False, 'Activepieces webhook timeout'
+    except Exception as exc:
+        return False, str(exc)
+
+
+# ============================================================================
 # 🚀 SUPER BATCH SYSTEM (Smart Grouping + Auto Post)
 # ============================================================================
 
@@ -6992,11 +7157,20 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     grouped_movies = _build_superbatch_groups(files)
 
     total_movies = len(grouped_movies)
-    await status_msg.edit_text(f"✅ **Files grouped into {total_movies} unique movies!**\n\n🚀 Auto-Processing & Posting starts now...", parse_mode='Markdown')
+    if SUPERBATCH_BRAIN_HOLD:
+        progress_line = "🧠 Processing & saving starts now. Channel posting is on HOLD until Brain decides."
+    else:
+        progress_line = "🚀 Auto-Processing & Posting starts now..."
+    await status_msg.edit_text(
+        f"✅ **Files grouped into {total_movies} unique movies!**\n\n{progress_line}",
+        parse_mode='Markdown',
+    )
 
     success_movies = 0
     total_files_saved = 0           # 👈 NAYA: Kitni files save hui uski ginti
-    movies_posted_list = []         # 👈 NAYA: Jo movies post hui unki list
+    movies_posted_list = []         # Legacy direct-post mode list
+    brain_candidates = []           # One complete batch Activepieces ko end mein jayega
+    batch_id = f"SB_{datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(3)}"
     channels = get_storage_channels()
 
     for i, (group_key, movie_files) in enumerate(grouped_movies.items(), 1):
@@ -7043,6 +7217,9 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             poster_url = result['poster_url']
             imdb_id    = result['imdb_id']
 
+            # Brain ko meaningful upgrade samajhne ke liye save se PEHLE quality history.
+            previous_quality_labels = _get_movie_quality_labels(movie_id)
+
             # ── STEP 2: BATCH_SESSION set karo (Phase 1 jaisa) ──────────────────
             BATCH_SESSION.update({
                 'active':      True,
@@ -7078,6 +7255,49 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # generate_basic_aliases() bhi hata diya — DB clean rahega
             aliases = []
             alias_count = 0
+
+            # ── BRAIN GATE: DB save complete, ab candidate queue banao ──────────
+            if SUPERBATCH_BRAIN_HOLD:
+                history = _get_movie_editorial_history(movie_id, title)
+                category_lower = str(category or '').lower()
+                if 'series' in category_lower or 'web' in category_lower or 'tv' in category_lower:
+                    content_type = 'Web Series'
+                elif 'anime' in category_lower or 'animation' in category_lower:
+                    content_type = 'Anime'
+                else:
+                    content_type = 'Movie'
+
+                current_quality = ', '.join(saved_labels) if saved_labels else None
+                previous_quality = ', '.join(previous_quality_labels) if previous_quality_labels else None
+                raw_photo_available = bool(
+                    poster_url and poster_url != 'N/A' and str(poster_url).startswith('http')
+                )
+
+                candidate = {
+                    'candidate_id': movie_id,
+                    'title': title,
+                    'content_type': content_type,
+                    'release_year': year or None,
+                    'current_quality': current_quality,
+                    'previous_quality': previous_quality,
+                    'languages': movie_lang or None,
+                    'first_time_added': not bool(previous_quality_labels),
+                    'requests_last_7_days': history.get('requests_last_7_days', 0),
+                    'last_posted_at': history.get('last_posted_at'),
+                    'days_since_last_post': history.get('days_since_last_post'),
+                    'category': category or None,
+                    'genre': genre or None,
+                    'rating': rating or None,
+                    'poster_available': raw_photo_available,
+                    'imdb_id': imdb_id or None,
+                }
+                brain_candidates.append(candidate)
+                success_movies += 1
+                logger.info(
+                    f"🧠 Brain queued: movie_id={movie_id}, title={title!r}, batch_id={batch_id}"
+                )
+                # IMPORTANT: Brain decision se pehle Telegram channel post bilkul nahi.
+                continue
             
             # --- POSTER PROCESSING (Landscape Blur Effect) ---
             raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
@@ -7224,7 +7444,45 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"SuperBatch Movie Error: {e}")
             continue
 
-    # 📝 NAYA: List format banana
+    # ── BRAIN HOLD MODE: poora batch ek saath Activepieces ko bhejo ───────
+    if SUPERBATCH_BRAIN_HOLD:
+        now_ist = datetime.now(pytz.timezone('Asia/Kolkata'))
+        brain_payload = {
+            'batch_id': batch_id,
+            'current_time': now_ist.isoformat(),
+            'channel_context': _get_channel_context_for_brain(),
+            'candidates': brain_candidates,
+            'source': 'main_bot_superbatch',
+            'posting_mode': 'HOLD_UNTIL_BRAIN_DECISION',
+        }
+        brain_ok, brain_info = await _send_superbatch_to_editorial_brain(brain_payload)
+
+        if brain_ok:
+            final_text = (
+                f"🧠 <b>SUPER BATCH SENT TO EDITORIAL BRAIN</b>\n\n"
+                f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
+                f"🎬 <b>Candidates Sent:</b> {len(brain_candidates)}/{total_movies}\n"
+                f"🆔 <b>Batch ID:</b> <code>{batch_id}</code>\n\n"
+                f"⏸ <b>Telegram channel posting is on HOLD.</b>\n"
+                f"Activepieces will now decide POST_NOW / POST_TODAY / "
+                f"SCHEDULE_LATER / SAVE_ONLY."
+            )
+        else:
+            logger.error(f"❌ Editorial Brain delivery failed for {batch_id}: {brain_info}")
+            final_text = (
+                f"⚠️ <b>SUPER BATCH SAVED, BUT BRAIN DELIVERY FAILED</b>\n\n"
+                f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
+                f"🎬 <b>Candidates Prepared:</b> {len(brain_candidates)}/{total_movies}\n"
+                f"🆔 <b>Batch ID:</b> <code>{batch_id}</code>\n\n"
+                f"🛑 <b>No Telegram post was sent.</b> This is intentional fail-safe behavior.\n"
+                f"Reason: <code>{str(brain_info)[:250]}</code>"
+            )
+
+        await status_msg.edit_text(final_text, parse_mode='HTML')
+        SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
+        return
+
+    # 📝 Legacy direct-post mode list format
     if movies_posted_list:
         posted_names = "\n".join([f"🔹 {name}" for name in movies_posted_list])
     else:
