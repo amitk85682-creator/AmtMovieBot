@@ -6,6 +6,7 @@ import secrets
 import pytz
 import re
 import json
+import hashlib
 import threading
 import asyncio
 import logging  # Logging import zaroori hai
@@ -1328,8 +1329,13 @@ async def fallback_extraction(caption_text):
         season_pattern = re.compile(r'\b(S\d{1,2}|Season\s*\d+|S\d{1,2}E\d{1,3}|\[?E\d{1,3}\s*(?:[-~_]|to)\s*(?:e|ep)?\d{1,3}\]?|EP\s*\d{1,3}(?:\s*(?:[-~_]|to)\s*(?:e|ep)?\d{1,3})?|Episode\s*\d+|Part\s*\d+|P\d+)\b', re.IGNORECASE)
         season_match = season_pattern.search(text)
         if season_match:
-            # Use existing web series logic (kept from original)
-            return await _extract_web_series(text, original)
+            ws_result = await _extract_web_series(text, original)
+            ws_title = str(ws_result.get("title", "")).strip()
+            # If web series parser returned a noise-only title (e.g. "Part 01"),
+            # fall through to movie extraction instead of returning garbage.
+            if ws_title and len(ws_title) >= 3 and not re.match(r'^(?:Part\s*\d+|P\d+)$', ws_title, re.IGNORECASE):
+                return ws_result
+            logger.debug("Web series fallback returned noise title '%s', falling through to movie extraction", ws_title)
 
         # 3. MOVIE EXTRACTION
         # Try to find year
@@ -6797,7 +6803,6 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success_msg += f"🚀 **अब फाइल्स भेजें, फिर /done लिखें।**"
         
         # 👇 NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
-        # 👇 NAYA: Button Add Karein (Agar files hain tabhi delete button aayega)
         keyboard = []
         if file_count > 0:
             keyboard.append([InlineKeyboardButton("🗑️ Delete OLD Files", callback_data=f"clearfiles_{movie_id}")])
@@ -6998,6 +7003,74 @@ def _get_movie_editorial_history(movie_id: int, title: str) -> dict:
         close_db_connection(conn)
 
 
+def _merge_seasons_data(existing: dict, new: dict) -> dict:
+    """Merge seasons_data JSONB dicts: existing seasons preserved, new data merged in.
+    Never replaces existing data wholesale — only adds/updates individual season fields."""
+    if not existing and not new:
+        return {}
+    merged = dict(existing or {})
+    for season_key, season_val in (new or {}).items():
+        if season_key in merged and isinstance(merged[season_key], dict) and isinstance(season_val, dict):
+            # Merge individual season fields; new data updates but doesn't remove existing
+            merged_season = dict(merged[season_key])
+            for field, value in season_val.items():
+                if value is not None and value != '' and value != 0:
+                    merged_season[field] = value
+                elif field not in merged_season:
+                    merged_season[field] = value
+            merged[season_key] = merged_season
+        else:
+            # New season entry, or non-dict — just set it
+            merged[season_key] = season_val
+    return merged
+
+
+def _build_upload_event_snapshot(movie_id, season_number, saved_labels, saved_file_details, seasons_data):
+    """
+    Build a snapshot of what THIS superbatch actually added for a movie/series.
+    saved_file_details: list of dicts with quality, file_size, languages, extra_info per saved file.
+    seasons_data: merged seasons_data from the parent movie (for episode_count lookup).
+    """
+    uploaded_extra_info = []
+    for f in saved_file_details:
+        ei = str(f.get('extra_info', '')).strip()
+        if ei:
+            uploaded_extra_info.append(ei)
+
+    # Season metadata from seasons_data
+    season_info = {}
+    if season_number and seasons_data:
+        season_info = seasons_data.get(str(season_number), {})
+
+    episode_count = season_info.get('episode_count') if season_info else None
+    season_air_date = season_info.get('air_date') if season_info else None
+    season_year = season_info.get('year') if season_info else None
+
+    # Check completeness estimate
+    appears_complete = False
+    if episode_count and episode_count > 0 and uploaded_extra_info:
+        all_eps = set()
+        for ei in uploaded_extra_info:
+            for m in re.finditer(r'E(\d+)\s*[-~_]\s*E?(\d+)', ei, re.IGNORECASE):
+                start_ep, end_ep = int(m.group(1)), int(m.group(2))
+                all_eps.update(range(start_ep, end_ep + 1))
+            for m in re.finditer(r'E(\d+)(?!\s*[-~_])', ei, re.IGNORECASE):
+                all_eps.add(int(m.group(1)))
+        if all_eps and len(all_eps) >= episode_count:
+            appears_complete = True
+
+    return {
+        'season_number': season_number,
+        'season_label': f'Season {season_number}' if season_number else None,
+        'season_release_year': season_year,
+        'season_air_date': season_air_date,
+        'episode_count': episode_count,
+        'uploaded_extra_info': uploaded_extra_info,
+        'appears_complete': appears_complete,
+        'new_files': saved_file_details,
+    }
+
+
 def _get_channel_context_for_brain() -> dict:
     """Aaj ke channel post count aur last post time ka factual snapshot."""
     now_ist = datetime.now(pytz.timezone('Asia/Kolkata'))
@@ -7196,26 +7269,32 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename_raw=representative.get('file_name', ''),
             )
 
-            result = await _core_movie_processor(
+            result_dict = await _core_movie_processor(
                 representative.get('caption') or representative.get('file_name') or display_name,
                 image_bytes,
                 reconciled_data=reconciled_data,
             )
 
-            if not result:
+            if not result_dict:
                 logger.warning(f"Superbatch: '{display_name}' process nahi ho paya, skip kar raha hoon.")
                 continue
 
-            movie_id   = result['movie_id']
-            title      = result['title']
-            year       = result['year']
-            genre      = result['genre']
-            rating     = result['rating']
-            plot       = result['plot']
-            category   = result['category']
-            movie_lang = result['movie_lang']
-            poster_url = result['poster_url']
-            imdb_id    = result['imdb_id']
+            # 2. Extract Details for Brain
+            movie_id = result_dict.get('movie_id')
+            title = result_dict.get('title')
+            year = result_dict.get('year')
+            genre = result_dict.get('genre')
+            rating = result_dict.get('rating')
+            category = result_dict.get('category')
+            imdb_id = result_dict.get('imdb_id')
+            poster_url = result_dict.get('poster_url')
+            movie_lang = result_dict.get('movie_lang')
+            extra_info = result_dict.get('movie_extra')
+            season_number = result_dict.get('season_number')
+            season_release_year = result_dict.get('season_release_year')
+            season_release_date = result_dict.get('season_release_date')
+            seasons_data = result_dict.get('seasons_data') or {}
+            previous_season_keys = result_dict.get('previous_season_keys') or []
 
             # Brain ko meaningful upgrade samajhne ke liye save se PEHLE quality history.
             previous_quality_labels = _get_movie_quality_labels(movie_id)
@@ -7234,11 +7313,15 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # ── STEP 3: Har file ke liye unified Phase 2 saver ───────────────
             saved_labels = []
+            saved_file_details = []
             try:
                 for f in movie_files:
-                    label = await _pm_save_file(f['message_obj'], context)
-                    if label:
-                        saved_labels.append(label)
+                    saved_dict = await _pm_save_file(f['message_obj'], context)
+                    if saved_dict:
+                        saved_labels.append(saved_dict['label'])
+                        # Ensure we get unique file ID from the save operation
+                        saved_dict['file_unique_id'] = f.get('file_unique_id')
+                        saved_file_details.append(saved_dict)
                     await asyncio.sleep(0.5)
             finally:
                 # Koi file error kare tab bhi next movie ke liye session leak na ho.
@@ -7250,11 +7333,6 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning(f"Superbatch: '{display_name}' — koi file save nahi ho paya")
                 continue
             total_files_saved += len(saved_labels)
-
-            # 🚫 AI Alias Generation OFF — Flask Web App mein Google Suggest + pg_trgm handles typos
-            # generate_basic_aliases() bhi hata diya — DB clean rahega
-            aliases = []
-            alias_count = 0
 
             # ── BRAIN GATE: DB save complete, ab candidate queue banao ──────────
             if SUPERBATCH_BRAIN_HOLD:
@@ -7273,178 +7351,89 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     poster_url and poster_url != 'N/A' and str(poster_url).startswith('http')
                 )
 
+                is_series_candidate = (
+                    content_type in {'Web Series', 'Anime'}
+                    and bool(season_number)
+                )
+
+                # Deterministic fingerprint from saved file details
+                fingerprint_parts = []
+                for f_dict in saved_file_details:
+                    q = str(f_dict.get('quality', '')).strip()
+                    ei = str(f_dict.get('extra_info', '')).strip()
+                    fuid = str(f_dict.get('file_unique_id', '')).strip()
+                    fingerprint_parts.append(f"{q}|{ei}|{fuid}")
+                
+                fingerprint_parts.sort()
+                file_fingerprint = hashlib.md5('|'.join(fingerprint_parts).encode('utf-8')).hexdigest()[:12]
+                event_key = f"movie:{movie_id}|season:{season_number or 0}|files:{file_fingerprint}"
+                
+                upload_snapshot = _build_upload_event_snapshot(
+                    movie_id, season_number, saved_labels, saved_file_details, seasons_data
+                )
+
                 candidate = {
-                    'candidate_id': movie_id,
+                    'event_key': event_key,
+                    'movie_id': movie_id,
                     'title': title,
                     'content_type': content_type,
-                    'release_year': year or None,
-                    'current_quality': current_quality,
-                    'previous_quality': previous_quality,
-                    'languages': movie_lang or None,
-                    'first_time_added': not bool(previous_quality_labels),
-                    'requests_last_7_days': history.get('requests_last_7_days', 0),
-                    'last_posted_at': history.get('last_posted_at'),
-                    'days_since_last_post': history.get('days_since_last_post'),
-                    'category': category or None,
-                    'genre': genre or None,
-                    'rating': rating or None,
-                    'poster_available': raw_photo_available,
                     'imdb_id': imdb_id or None,
+                    'original_release_year': year or None,
+                    'season_number': upload_snapshot.get('season_number'),
+                    'season_label': upload_snapshot.get('season_label'),
+                    'season_release_year': upload_snapshot.get('season_release_year'),
+                    'season_release_date': upload_snapshot.get('season_air_date'),
+                    'episode_count': upload_snapshot.get('episode_count'),
+                    'uploaded_extra_info': upload_snapshot.get('uploaded_extra_info'),
+                    'appears_complete': upload_snapshot.get('appears_complete'),
+                    'new_files': upload_snapshot.get('new_files'),
+                    'previous_state': {
+                        'had_files_before': len(previous_quality_labels) > 0,
+                        'previous_best_quality': previous_quality,
+                        'previous_seasons': previous_season_keys,
+                    },
+                    'editorial_history': {
+                        'requests_last_7_days': history.get('requests_last_7_days', 0),
+                        'last_posted_at': history.get('last_posted_at'),
+                        'days_since_last_post': history.get('days_since_last_post'),
+                    },
+                    'rating': rating or None,
+                    'genre': genre or None,
+                    'poster_available': raw_photo_available,
+                    'category': category or None,
                 }
                 brain_candidates.append(candidate)
                 success_movies += 1
                 logger.info(
                     f"🧠 Brain queued: movie_id={movie_id}, title={title!r}, batch_id={batch_id}"
                 )
-                # IMPORTANT: Brain decision se pehle Telegram channel post bilkul nahi.
                 continue
             
-            # --- POSTER PROCESSING (Landscape Blur Effect) ---
-            raw_photo = poster_url if (poster_url and poster_url != 'N/A' and poster_url.startswith('http')) else None
-            
-            if not raw_photo and image_bytes:
-                raw_photo = image_bytes
-                
-            # 👇 NAYA LOGIC: अगर ओरिजिनल इमेज (poster) नहीं मिली, तो इस मूवी को पोस्ट मत करो
-            if not raw_photo:
-                logger.warning(f"⚠️ Post Skipped: '{title}' के लिए कोई इमेज नहीं मिली।")
-                continue  # 'continue' का मतलब है ये चैनल/फोरम में पोस्ट किए बिना अगली मूवी पर चला जायेगा
-                
-            # अगर असली इमेज है, तभी लैंडस्केप पोस्टर बनाओ
-            photo_to_send = await make_landscape_poster(raw_photo)
+            # --- SEND AUTO/MANUAL POST BUTTONS ---
+            report = (
+                f"🎉 **Superbatch Item Processed!**\n\n"
+                f"🎬 **Movie:** `{title}`\n"
+                f"📅 **Year:** {year if year else 'N/A'}\n"
+                f"🏷️ **Category:** {category}\n"
+                f"📂 **Files Saved:** {len(saved_labels)}\n\n"
+            )
 
-            # 🛑 100% SAFE HTML CAPTION + RANDOM STYLES
-            safe_rating = rating if rating else "N/A"
-            safe_genre = genre if genre else "Unknown"
-
-            res_set = set()
-            for lbl in saved_labels:
-                match = re.search(r'(\d{3,4}p)', lbl)
-                if match:
-                    res_set.add(match.group(1))
-            # file_names se bhi try karo agar label mein nahi mila
-            if not res_set:
-                for f in movie_files:
-                    match = re.search(r'(\d{3,4}p)', str(f.get('file_name', '')).lower())
-                    if match:
-                        res_set.add(match.group(1))
-            res_list = sorted(list(res_set), key=lambda x: int(x.replace('p','')), reverse=True)
-            dynamic_res = " | ".join(res_list) if res_list else "HD"
-            
-            safe_title = title.replace('<', '').replace('>', '')
-            unicode_title = get_safe_font(safe_title)
-
-            # 🎲 2 RANDOM STYLES 🎲 (Box wala hat gaya)
-            style_choice = random.choice([1, 2])
-
-            if style_choice == 1:
-                # 🌟 Style 1: Clean Minimalist Divider (Mobile & PC Friendly)
-                caption = (
-                    f"🎬 <b>{safe_title}</b>\n"
-                    f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"✨ <b>Genre:</b> {safe_genre}\n"
-                    f"🔊 <b>Language:</b> {movie_lang if movie_lang else 'Hindi'}\n"
-                    f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
-                    f"➖➖➖➖➖➖➖➖➖➖\n"
-                    f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
-                    f"👇 <b>Download Below</b> 👇"
-                )
-            else:
-                # Style 2: Tree Line + Premium Font (Pehle ye Style 3 tha)
-                caption = (
-                    f"🔥 <b>{unicode_title}</b>\n"
-                    f" ├ ✨ Genre: {safe_genre}\n"
-                    f" ├ 🔊 Language: {movie_lang if movie_lang else 'Hindi'}\n"
-                    f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
-                    f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
-                    f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
-                    f"👇 <b>Download Below</b> 👇"
-                )
-
-            # --- SECURE LINK & BUTTONS (As it was) ---
-            secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
-
-            post_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Download Now", url=secure_url), InlineKeyboardButton("Download Now", url=secure_url)],
-                [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
-                [InlineKeyboardButton("📢 Join Channel", url=FILMFYBOX_CHANNEL_URL)]
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🤖 Auto Post (HD TMDB Poster)", callback_data=f"autopost_{movie_id}")],
+                [InlineKeyboardButton("📢 Manual Post (Send Poster)", callback_data=f"askposter_{movie_id}")]
             ])
 
-            # --- TARGET CHANNEL SELECTION (New System) ---
-            cat_lower = str(category or "").lower()
-            if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
-                target_channels = [ANIME_CHANNEL_ID]
-            else:
-                target_channels = [ch.strip() for ch in os.environ.get('BROADCAST_CHANNELS', '').split(',') if ch.strip()]
-
-            # 👇 YAHAN SE MAIN CHANNEL PAR BHEJNE KA ASLI LOGIC SHURU HOTA HAI 👇
+            # Send a new message for each movie so the user can interact individually without ruining other messages.
+            await update.message.reply_text(report, parse_mode='Markdown', reply_markup=keyboard)
             
-            # --- THE "NINJA FIX" --- 
-            # Pehle decide karte hain ki photo kya bhejna hai
-            is_bytes = hasattr(photo_to_send, 'read')
-            current_media = photo_to_send
-            
-            uploaded_file_id = None # Isme Telegram ki File ID store hogi
-
-            # 👇 GLOBAL DUPLICATE CHECK — Agar kisi bhi channel me 7 din me post ho chuki hai to skip 👇
-            if is_movie_posted_recently(movie_id, days=7):
-                logger.info(f"⏭️ Skipping '{title}' (already posted within the last 7 days in some channel).")
-                continue
-            
-            if target_channels:
-                for chat_id_str in target_channels: 
-                    try:
-                        chat_id = int(chat_id_str)
-
-                        sent_msg = None
-                        
-                        # Agar humare pass pehle se ID hai, toh file upload nahi karni
-                        if uploaded_file_id:
-                            sent_msg = await context.bot.send_photo(
-                                chat_id=chat_id,
-                                photo=uploaded_file_id, # 👈 Direct ID
-                                caption=caption,
-                                parse_mode='HTML',
-                                reply_markup=post_keyboard
-                            )
-                        else:
-                            # Pehli baar upload karna hai (Bytes se)
-                            if is_bytes:
-                                current_media.seek(0) # File pointer ko shuru me laao
-                                
-                            sent_msg = await context.bot.send_photo(
-                                chat_id=chat_id,
-                                photo=current_media, # 👈 Actual bytes
-                                caption=caption,
-                                parse_mode='HTML',
-                                reply_markup=post_keyboard
-                            )
-                            # Ek baar upload hone ke baad, Telegram se permanent File ID save karlo
-                            if sent_msg and sent_msg.photo:
-                                uploaded_file_id = sent_msg.photo[-1].file_id 
-                                
-                        # ✅ DB me save karna zaroori hai taaki baad me /restore kaam kare
-                        if sent_msg:
-                            ch_name = sent_msg.chat.title if sent_msg.chat else "Unknown"
-                            save_post_to_db(
-                                movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot", caption, 
-                                uploaded_file_id or poster_url, "photo", post_keyboard.to_dict(), None, "movies",
-                                movie_name=title, imdb_id=imdb_id, tmdb_id=None, channel_name=ch_name
-                            )
-                            await asyncio.sleep(1.5)
-                            
-                    except Exception as e:
-                        logger.error(f"❌ Failed to post in channel {chat_id_str}: {e}")
-
             success_movies += 1
-            movies_posted_list.append(title) # 👈 NAYA: List me Title add kiya
-            await asyncio.sleep(2) # Flood limit se bachne ke liye delay
+            movies_posted_list.append(title)
+            await asyncio.sleep(0.5)
 
         except Exception as e:
             logger.error(f"SuperBatch Movie Error: {e}")
             continue
 
-    # ── BRAIN HOLD MODE: poora batch ek saath Activepieces ko bhejo ───────
     if SUPERBATCH_BRAIN_HOLD:
         now_ist = datetime.now(pytz.timezone('Asia/Kolkata'))
         brain_payload = {
@@ -7463,32 +7452,25 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
                 f"🎬 <b>Candidates Sent:</b> {len(brain_candidates)}/{total_movies}\n"
                 f"🆔 <b>Batch ID:</b> <code>{batch_id}</code>\n\n"
-                f"⏸ <b>Telegram channel posting is on HOLD.</b>\n"
-                f"Activepieces will now decide POST_NOW / POST_TODAY / "
-                f"SCHEDULE_LATER / SAVE_ONLY."
+                f"⏸ <b>Telegram channel posting is on HOLD.</b>"
             )
         else:
-            logger.error(f"❌ Editorial Brain delivery failed for {batch_id}: {brain_info}")
             final_text = (
                 f"⚠️ <b>SUPER BATCH SAVED, BUT BRAIN DELIVERY FAILED</b>\n\n"
                 f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
-                f"🎬 <b>Candidates Prepared:</b> {len(brain_candidates)}/{total_movies}\n"
-                f"🆔 <b>Batch ID:</b> <code>{batch_id}</code>\n\n"
-                f"🛑 <b>No Telegram post was sent.</b> This is intentional fail-safe behavior.\n"
-                f"Reason: <code>{str(brain_info)[:250]}</code>"
+                f"🆔 <b>Batch ID:</b> <code>{batch_id}</code>\n"
+                f"🛑 <b>No Telegram post was sent.</b>"
             )
 
         await status_msg.edit_text(final_text, parse_mode='HTML')
         SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
         return
 
-    # 📝 Legacy direct-post mode list format
     if movies_posted_list:
         posted_names = "\n".join([f"🔹 {name}" for name in movies_posted_list])
     else:
         posted_names = "Koyi nayi movie post nahi hui."
 
-    # 🎉 NAYA: Final Message (HTML format me)
     final_text = (
         f"🎉 <b>SUPER BATCH COMPLETED!</b>\n\n"
         f"💾 <b>Total Files Saved in DB:</b> {total_files_saved}\n"
@@ -7497,19 +7479,10 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await status_msg.edit_text(final_text, parse_mode='HTML')
-
     SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
 
 
 # ==============================================================================
-# 🎯 CORE MOVIE PROCESSOR — PM FILE LISTENER KA DIL
-# ==============================================================================
-# Yeh function ek "engine" hai.
-# pm_file_listener aur superbatch_done DONO isko call karte hain.
-# Iska matlab: superbatch ko wahi accuracy milegi jo pm_file_listener ko milti hai.
-#
-# Flow: raw_text + image_bytes
-#         → Gemini AI  (title, year, language, category extract)
 #         → TMDB       (HD poster, genre, rating, plot)
 #         → IMDb       (cast)
 #         → DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
@@ -7526,15 +7499,49 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         ai_data = await get_movie_name_from_caption(raw_text, image_bytes)
         
     movie_name = ai_data.get("title", "UNKNOWN")
-    movie_year = ai_data.get("year", "")
+    movie_year = str(ai_data.get("year", "") or "").strip()
     movie_lang = ai_data.get("language", "")
+    movie_extra = str(ai_data.get("extra_info", "") or "").strip()
     gemini_category = ai_data.get("category", "")
+
+    # Series ke season ko preserve karo: S03, S3, Season 3
+    season_number = None
+    season_match = re.search(
+        r'(?i)\b(?:s(?:eason)?\s*0*(\d{1,2})|season\s*0*(\d{1,2}))\b',
+        f"{movie_extra} {raw_text}",
+    )
+
+    if season_match:
+        season_number = int(
+            season_match.group(1) or season_match.group(2)
+        )
+
+        if not movie_extra:
+            movie_extra = f"S{season_number:02d}"
 
     if movie_name == "UNKNOWN" or len(movie_name) < 2:
         return None
 
     # --- STEP 2: TMDB + IMDb METADATA ---
-    metadata = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, False, gemini_category)
+    category_hint_lower = str(gemini_category or "").lower()
+
+    is_season_upload = bool(season_number) and any(
+        word in category_hint_lower
+        for word in ("series", "web", "tv", "anime")
+    )
+
+    # (2026) Season 3 ka year ho sakta hai, original show ka nahi.
+    # Isliye TMDB search ko 2026 se restrict nahi karenge.
+    metadata_search_year = "" if is_season_upload else movie_year
+
+    metadata = await run_async(
+        fetch_movie_metadata,
+        movie_name,
+        metadata_search_year,
+        movie_lang,
+        False,
+        gemini_category,
+    )
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
     else:
@@ -7546,6 +7553,30 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         rating     = "N/A"
         plot       = "Auto Added"
         category   = gemini_category if gemini_category else "Movies"
+        seasons_data = {}
+
+    # TMDB se selected season ki actual release date
+    season_info = (
+        seasons_data.get(str(season_number), {})
+        if season_number
+        else {}
+    )
+
+    season_release_date = str(
+        season_info.get("air_date") or ""
+    ).strip() or None
+
+    season_release_year = None
+
+    if (
+        season_release_date
+        and re.match(r"^\d{4}-\d{2}-\d{2}$", season_release_date)
+    ):
+        season_release_year = int(season_release_date[:4])
+
+    elif season_number and movie_year.isdigit():
+        # Exact date nahi mili, caption ka 2026 season year maana jayega
+        season_release_year = int(movie_year)
 
     # 👇 NAYA LOGIC: Gemini Category Priority for Anime 👇
     cat_lower = str(gemini_category or "").lower()
@@ -7569,41 +7600,96 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
 
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, extra_info, "cast")
-            VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (title) DO UPDATE
-            SET imdb_id      = COALESCE(EXCLUDED.imdb_id,      movies.imdb_id),
-                poster_url   = COALESCE(EXCLUDED.poster_url,   movies.poster_url),
-                year         = CASE WHEN movies.year = 0 THEN EXCLUDED.year ELSE movies.year END,
-                category     = COALESCE(EXCLUDED.category,     movies.category),
-                genre        = COALESCE(EXCLUDED.genre,        movies.genre),
-                rating       = COALESCE(EXCLUDED.rating,       movies.rating),
-                description  = COALESCE(EXCLUDED.description,  movies.description),
-                language     = CASE WHEN EXCLUDED.language   != '' THEN EXCLUDED.language   ELSE movies.language   END,
-                extra_info   = CASE WHEN EXCLUDED.extra_info  != '' THEN EXCLUDED.extra_info  ELSE movies.extra_info  END,
-                "cast"       = COALESCE(EXCLUDED."cast",       movies."cast")
-            RETURNING id
-            """,
-            (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, "", cast_str)
-        )
-        movie_id = cur.fetchone()[0]
+        
+        movie_id = None
+        db_seasons = {}
+
+        if imdb_id:
+            cur.execute("SELECT id, title, seasons_data FROM movies WHERE imdb_id = %s", (imdb_id,))
+            row = cur.fetchone()
+            if row:
+                movie_id = row[0]
+                title = row[1]  # Use canonical DB title
+                db_seasons = row[2] if row[2] else {}
+                if isinstance(db_seasons, str):
+                    try: db_seasons = json.loads(db_seasons)
+                    except: db_seasons = {}
+
+                previous_season_keys = list(db_seasons.keys())
+
+                # Merge seasons_data
+                merged_seasons = _merge_seasons_data(db_seasons, seasons_data)
+
+                cur.execute(
+                    """
+                    UPDATE movies SET
+                        poster_url = COALESCE(%s, poster_url),
+                        year       = CASE WHEN year = 0 THEN %s ELSE year END,
+                        genre      = COALESCE(%s, genre),
+                        rating     = COALESCE(%s, rating),
+                        description = COALESCE(%s, description),
+                        category   = COALESCE(%s, category),
+                        language   = CASE WHEN %s != '' THEN %s ELSE language END,
+                        "cast"     = COALESCE(%s, "cast"),
+                        seasons_data = %s
+                    WHERE id = %s
+                    """,
+                    (poster_url, year, genre, rating, plot, category, movie_lang, movie_lang, cast_str, json.dumps(merged_seasons), movie_id)
+                )
+                seasons_data = merged_seasons
+
+        if not movie_id:
+            cur.execute("SELECT seasons_data FROM movies WHERE title = %s", (title,))
+            row = cur.fetchone()
+            existing_title_seasons = row[0] if row else {}
+            if isinstance(existing_title_seasons, str):
+                try: existing_title_seasons = json.loads(existing_title_seasons)
+                except: existing_title_seasons = {}
+                
+            previous_season_keys = list(existing_title_seasons.keys())
+            merged_seasons = _merge_seasons_data(existing_title_seasons, seasons_data)
+            
+            cur.execute(
+                """
+                INSERT INTO movies (title, url, imdb_id, poster_url, year, genre, rating, description, category, language, "cast", seasons_data)
+                VALUES (%s, '', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (title) DO UPDATE
+                SET imdb_id      = COALESCE(EXCLUDED.imdb_id,      movies.imdb_id),
+                    poster_url   = COALESCE(EXCLUDED.poster_url,   movies.poster_url),
+                    year         = CASE WHEN movies.year = 0 THEN EXCLUDED.year ELSE movies.year END,
+                    category     = COALESCE(EXCLUDED.category,     movies.category),
+                    genre        = COALESCE(EXCLUDED.genre,        movies.genre),
+                    rating       = COALESCE(EXCLUDED.rating,       movies.rating),
+                    description  = COALESCE(EXCLUDED.description,  movies.description),
+                    language     = CASE WHEN EXCLUDED.language   != '' THEN EXCLUDED.language   ELSE movies.language   END,
+                    "cast"       = COALESCE(EXCLUDED."cast",       movies."cast"),
+                    seasons_data = EXCLUDED.seasons_data
+                RETURNING id
+                """,
+                (title, imdb_id, poster_url, year, genre, rating, plot, category, movie_lang, cast_str, json.dumps(merged_seasons))
+            )
+            movie_id = cur.fetchone()[0]
+            seasons_data = merged_seasons
+
         conn.commit()
         cur.close()
 
         return {
-            'movie_id':   movie_id,
-            'title':      title,
-            'year':       year,
-            'genre':      genre,
-            'rating':     rating,
-            'plot':       plot,
-            'category':   category,
+            'movie_id': movie_id,
+            'title': title,
+            'year': year,
+            'genre': genre,
+            'rating': rating,
+            'plot': plot,
+            'category': category,
             'movie_lang': movie_lang,
             'poster_url': poster_url,
-            'imdb_id':    imdb_id,
-            'cast_str':   cast_str,
+            'imdb_id': imdb_id,
+            'cast_str': cast_str,
+            'extra_info': movie_extra,
+            'season_number': season_number,
+            'season_release_date': season_release_date,
+            'season_release_year': season_release_year,
         }
     except Exception as e:
         logger.error(f"_core_movie_processor DB Error: {e}")
@@ -7617,7 +7703,7 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
 # 📤 _pm_save_file — pm_file_listener ka Phase 2 (ek jagah, sab use karein)
 # superbatch_done bhi isko call karta hai — alag/duplicate code nahi
 # ==============================================================================
-async def _pm_save_file(message, context) -> str | None:
+async def _pm_save_file(message, context) -> dict | None:
     """
     Unified Phase 2 saver. Gemini bilkul use nahi hota.
     Caption aur raw filename separately parse hote hain, field-wise merge hota hai,
@@ -7721,7 +7807,14 @@ async def _pm_save_file(message, context) -> str | None:
         except Exception as exc:
             logger.error("Auto-Upgrade error in _pm_save_file: %s", exc)
 
-        return label
+        return {
+            'label': label,
+            'quality': label,
+            'file_size': file_size_str,
+            'languages': f_lang,
+            'extra_info': f_extra,
+            'file_unique_id': file_unique_id
+        }
     except Exception as exc:
         logger.error("_pm_save_file DB error: %s", exc)
         try:
@@ -7931,9 +8024,10 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ... (Baaki ka Phase 2 ka code aapka same rahega)
 
         # 📤 PHASE 2: UNIFIED FILE SAVING
-        label = await _pm_save_file(message, context)
+        saved_dict = await _pm_save_file(message, context)
         
-        if label:
+        if saved_dict:
+            label = saved_dict['label']
             file_size = message.document.file_size if message.document else (message.video.file_size if message.video else 0)
             file_size_str = get_readable_file_size(file_size)
             movie_title = BATCH_SESSION.get('movie_title', 'Movie')
