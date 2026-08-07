@@ -429,6 +429,406 @@ SUPER_BATCH_SESSION = {'active': False, 'admin_id': None, 'files': []}
 ACTIVEPIECES_BRAIN_WEBHOOK_URL = os.environ.get('ACTIVEPIECES_BRAIN_WEBHOOK_URL', '').strip()
 SUPERBATCH_BRAIN_HOLD = os.environ.get('SUPERBATCH_BRAIN_HOLD', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
 
+# ==================== SUPERBATCH POST CARDS ====================
+# Per-card independent posting state for superbatch items.
+# Each card has a short unique ID and its own status lifecycle.
+# Statuses: READY → POSTING → POSTED / FAILED
+#           READY → WAITING_MANUAL_POSTER → POSTING → POSTED / FAILED
+SUPERBATCH_POST_CARDS = {}          # card_id → card dict
+SUPERBATCH_MANUAL_PROMPT_MAP = {}   # prompt_message_id → card_id (reply-based manual poster)
+_SB_CARD_COUNTER = 0                # Sequential counter for short IDs
+
+
+def _create_sb_card_id():
+    """Generate a short, unique card ID like 'sbc_001_a1b2' for callback_data."""
+    global _SB_CARD_COUNTER
+    _SB_CARD_COUNTER += 1
+    return f"sbc_{_SB_CARD_COUNTER:03d}_{secrets.token_hex(2)}"
+
+
+def _sb_resolve_target_channels(category: str) -> list:
+    """Shared channel resolution: Anime → ANIME_CHANNEL_ID, else BROADCAST_CHANNELS."""
+    cat_lower = str(category or '').lower()
+    if "anime" in cat_lower or "cartoon" in cat_lower or "animation" in cat_lower:
+        return [ANIME_CHANNEL_ID]
+    channels_str = os.environ.get('BROADCAST_CHANNELS', '')
+    return [ch.strip() for ch in channels_str.split(',') if ch.strip()]
+
+
+async def _sb_build_post_caption_and_keyboard(movie_id, title, genre, language, context):
+    """
+    Build channel caption + download keyboard for a superbatch card.
+    Reuses the exact same style as the existing autopost_ callback.
+    """
+    # Fetch quality labels from DB
+    conn = get_db_connection()
+    if not conn:
+        return None, None
+    cur = conn.cursor()
+    cur.execute("SELECT quality FROM movie_files WHERE movie_id = %s", (movie_id,))
+    rows = cur.fetchall()
+    cur.close()
+    close_db_connection(conn)
+
+    # Quality formatting (same as autopost_ callback)
+    res_list = []
+    for r in rows:
+        if r and r[0]:
+            match = re.search(r'(\d{3,4}p)', str(r[0]))
+            if match:
+                res_list.append(match.group(1))
+    res_list = sorted(list(set(res_list)), key=lambda x: int(x.replace('p', '')), reverse=True)
+    dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
+
+    m_genre = genre if genre else "Action, Drama"
+    m_lang = language if language else "Hindi + English"
+
+    # Random caption style (same 2 styles as autopost_)
+    safe_title = title.replace('<', '').replace('>', '')
+    unicode_title = get_safe_font(safe_title)
+    style_choice = random.choice([1, 2])
+
+    if style_choice == 1:
+        channel_caption = (
+            f"🎬 <b>{safe_title}</b>\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"✨ <b>Genre:</b> {m_genre}\n"
+            f"🔊 <b>Language:</b> {m_lang}\n"
+            f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+            f"👇 <b>Download Below</b> 👇"
+        )
+    else:
+        channel_caption = (
+            f"🔥 <b>{unicode_title}</b>\n"
+            f" ├ ✨ Genre: {m_genre}\n"
+            f" ├ 🔊 Language: {m_lang}\n"
+            f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
+            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
+            f"👇 <b>Download Below</b> 👇"
+        )
+
+    # Secure link + buttons (same as autopost_)
+    secure_url = f"https://flimfybox-bot-yht0.onrender.com/watch/{movie_id}"
+    channel_link = os.environ.get('FILMFYBOX_CHANNEL_URL', 'https://t.me/your_channel')
+
+    post_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Download Now", url=secure_url), InlineKeyboardButton("Download Now", url=secure_url)],
+        [InlineKeyboardButton("⚡ Download Now", url=secure_url)],
+        [InlineKeyboardButton("📢 Join Channel", url=channel_link)]
+    ])
+
+    return channel_caption, post_keyboard
+
+
+async def _sb_execute_auto_post(card_id, query, context):
+    """
+    Execute auto-post for a superbatch card. Uses TMDB poster + make_landscape_poster.
+    Same logic as the existing autopost_ callback but operates on card state.
+    """
+    card = SUPERBATCH_POST_CARDS.get(card_id)
+    if not card:
+        return
+
+    # Guard against double-clicks
+    if card['status'] in ('POSTED', 'POSTING'):
+        return
+    card['status'] = 'POSTING'
+
+    movie_id = card['movie_id']
+    title = card['title']
+    season_text = f" — Season {card['season_number']}" if card.get('season_number') else ""
+
+    try:
+        # Fetch poster + genre + language from DB
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT poster_url, genre, language, category FROM movies WHERE id = %s", (movie_id,))
+        m_data = cur.fetchone()
+        cur.close()
+        close_db_connection(conn)
+
+        if not m_data:
+            card['status'] = 'FAILED'
+            await query.edit_message_text(f"❌ Movie ID {movie_id} not found in DB.")
+            return
+
+        m_poster = m_data[0] if m_data[0] else None
+        m_genre = m_data[1] if m_data[1] else card.get('genre', 'Unknown')
+        m_lang = m_data[2] if m_data[2] else "Hindi + English"
+        m_category = m_data[3] if m_data[3] else card.get('category', '')
+
+        # Duplicate check
+        if is_movie_posted_recently(movie_id, days=7):
+            card['status'] = 'POSTED'  # Mark as posted since it was already posted
+            await query.edit_message_text(
+                f"⏭️ <b>{title}{season_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.",
+                parse_mode='HTML'
+            )
+            return
+
+        # Resolve target channels
+        target_channels = _sb_resolve_target_channels(m_category)
+        if not target_channels:
+            card['status'] = 'FAILED'
+            await query.edit_message_text(f"❌ No BROADCAST_CHANNELS configured.")
+            return
+
+        # Poster processing (same as autopost_ callback)
+        raw_photo = m_poster if (m_poster and m_poster != 'N/A' and m_poster.startswith('http')) else None
+        if not raw_photo:
+            thumb_id = context.bot_data.get(f"auto_thumb_{movie_id}")
+            if isinstance(thumb_id, str) and not thumb_id.startswith("http"):
+                try:
+                    tg_file = await context.bot.get_file(thumb_id)
+                    raw_photo = bytes(await tg_file.download_as_bytearray())
+                except Exception as e:
+                    logger.error(f"SB autopost thumb download error: {e}")
+                    raw_photo = None
+
+        if raw_photo:
+            photo_to_send = await make_landscape_poster(raw_photo)
+        else:
+            photo_to_send = DEFAULT_POSTER
+
+        # Build caption + keyboard
+        caption_result = await _sb_build_post_caption_and_keyboard(movie_id, title, m_genre, m_lang, context)
+        if not caption_result[0]:
+            card['status'] = 'FAILED'
+            await query.edit_message_text(f"❌ Failed to build caption for {title}.")
+            return
+        channel_caption, post_keyboard = caption_result
+
+        # Send to channels
+        sent_count = 0
+        telegram_photo_id = None
+
+        for chat_id_str in target_channels:
+            try:
+                chat_id = int(chat_id_str)
+                if telegram_photo_id:
+                    sent_msg = await context.bot.send_photo(
+                        chat_id=chat_id, photo=telegram_photo_id,
+                        caption=channel_caption, parse_mode='HTML',
+                        reply_markup=post_keyboard
+                    )
+                else:
+                    if hasattr(photo_to_send, 'seek'):
+                        photo_to_send.seek(0)
+                    sent_msg = await context.bot.send_photo(
+                        chat_id=chat_id, photo=photo_to_send,
+                        caption=channel_caption, parse_mode='HTML',
+                        reply_markup=post_keyboard
+                    )
+                    if sent_msg and sent_msg.photo:
+                        telegram_photo_id = sent_msg.photo[-1].file_id
+
+                if sent_msg:
+                    try:
+                        save_post_to_db(
+                            movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",
+                            channel_caption, telegram_photo_id or (sent_msg.photo[-1].file_id if sent_msg.photo else None),
+                            "photo", post_keyboard.to_dict(), None, "movies"
+                        )
+                    except Exception as db_err:
+                        logger.error(f"SB save post DB error: {db_err}")
+                sent_count += 1
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"SB auto-post failed for {chat_id_str}: {e}")
+
+        if sent_count > 0:
+            card['status'] = 'POSTED'
+            await query.edit_message_text(
+                f"✅ <b>Auto Posted</b>\n\n"
+                f"📌 {title}{season_text}\n"
+                f"📡 Sent to {sent_count} channel(s)",
+                parse_mode='HTML'
+            )
+        else:
+            card['status'] = 'FAILED'
+            retry_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Retry Auto", callback_data=f"sb_auto_{card_id}")],
+                [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
+            ])
+            await query.edit_message_text(
+                f"❌ <b>Post Failed</b>\n{title}{season_text}",
+                parse_mode='HTML', reply_markup=retry_keyboard
+            )
+
+        # Clean up auto thumb
+        context.bot_data.pop(f"auto_thumb_{movie_id}", None)
+
+    except Exception as e:
+        logger.error(f"SB auto-post error for card {card_id}: {e}", exc_info=True)
+        card['status'] = 'FAILED'
+        try:
+            retry_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Retry Auto", callback_data=f"sb_auto_{card_id}")],
+                [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
+            ])
+            await query.edit_message_text(
+                f"❌ <b>Post Failed</b>\n{title}{season_text}\nError: {str(e)[:100]}",
+                parse_mode='HTML', reply_markup=retry_keyboard
+            )
+        except Exception:
+            pass
+
+
+async def _sb_execute_manual_post(card_id, file_id, update, context):
+    """
+    Execute manual post for a superbatch card using admin-provided photo.
+    Reuses the same channel posting logic as handle_admin_poster.
+    """
+    card = SUPERBATCH_POST_CARDS.get(card_id)
+    if not card:
+        await update.message.reply_text("❌ Card expired or not found.")
+        return
+
+    if card['status'] in ('POSTED', 'POSTING'):
+        await update.message.reply_text("⚠️ This card is already posted or posting.")
+        return
+
+    card['status'] = 'POSTING'
+    movie_id = card['movie_id']
+    title = card['title']
+    season_text = f" — Season {card['season_number']}" if card.get('season_number') else ""
+
+    status_msg = await update.message.reply_text("⏳ Publishing to channels...")
+
+    try:
+        # Fetch movie details from DB
+        conn = get_db_connection()
+        if not conn:
+            card['status'] = 'FAILED'
+            await status_msg.edit_text("❌ DB connection failed.")
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT genre, language, category FROM movies WHERE id = %s", (movie_id,))
+        m_data = cur.fetchone()
+        cur.close()
+        close_db_connection(conn)
+
+        if not m_data:
+            card['status'] = 'FAILED'
+            await status_msg.edit_text("❌ Movie not found in DB.")
+            return
+
+        m_genre = m_data[0] if m_data[0] else card.get('genre', 'Unknown')
+        m_lang = m_data[1] if m_data[1] else "Hindi + English"
+        m_category = m_data[2] if m_data[2] else card.get('category', '')
+
+        # Duplicate check
+        if is_movie_posted_recently(movie_id, days=7):
+            card['status'] = 'POSTED'
+            await status_msg.edit_text(
+                f"⏭️ <b>{title}{season_text}</b> pehle se 7 din ke andar post ho chuki hai. Skipping.",
+                parse_mode='HTML'
+            )
+            # Edit control card too
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=card['control_chat_id'],
+                    message_id=card['control_message_id'],
+                    text=f"⏭️ <b>Already Posted (Recent)</b>\n📌 {title}{season_text}",
+                    parse_mode='HTML'
+                )
+            except Exception:
+                pass
+            return
+
+        # Resolve target channels
+        target_channels = _sb_resolve_target_channels(m_category)
+        if not target_channels:
+            card['status'] = 'FAILED'
+            await status_msg.edit_text("❌ No BROADCAST_CHANNELS configured.")
+            return
+
+        # Build caption + keyboard
+        caption_result = await _sb_build_post_caption_and_keyboard(movie_id, title, m_genre, m_lang, context)
+        if not caption_result[0]:
+            card['status'] = 'FAILED'
+            await status_msg.edit_text("❌ Failed to build caption.")
+            return
+        channel_caption, post_keyboard = caption_result
+
+        # Send to channels (using admin-provided photo)
+        sent_count = 0
+        for chat_id_str in target_channels:
+            try:
+                chat_id = int(chat_id_str)
+                sent_msg = await context.bot.send_photo(
+                    chat_id=chat_id, photo=file_id,
+                    caption=channel_caption, parse_mode='HTML',
+                    reply_markup=post_keyboard
+                )
+                if sent_msg:
+                    save_post_to_db(
+                        movie_id, chat_id, sent_msg.message_id, "FlimfyBoxBot",
+                        channel_caption, file_id, "photo", post_keyboard.to_dict(), None, "movies"
+                    )
+                    sent_count += 1
+            except Exception as e:
+                logger.error(f"SB manual post failed for {chat_id_str}: {e}")
+
+        if sent_count > 0:
+            card['status'] = 'POSTED'
+            await status_msg.edit_text(
+                f"✅ <b>Manual Post Completed</b>\n📌 {title}{season_text}\n📡 Sent to {sent_count} channel(s)",
+                parse_mode='HTML'
+            )
+            # Edit original control card message
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=card['control_chat_id'],
+                    message_id=card['control_message_id'],
+                    text=f"✅ <b>Manual Post Completed</b>\n📌 {title}{season_text}",
+                    parse_mode='HTML'
+                )
+            except Exception:
+                pass
+        else:
+            card['status'] = 'FAILED'
+            await status_msg.edit_text(f"❌ Post failed for {title}{season_text}.")
+            # Show retry on control card
+            try:
+                retry_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Retry Auto", callback_data=f"sb_auto_{card_id}")],
+                    [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
+                ])
+                await context.bot.edit_message_text(
+                    chat_id=card['control_chat_id'],
+                    message_id=card['control_message_id'],
+                    text=f"❌ <b>Post Failed</b>\n📌 {title}{season_text}",
+                    parse_mode='HTML', reply_markup=retry_keyboard
+                )
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error(f"SB manual post error for card {card_id}: {e}", exc_info=True)
+        card['status'] = 'FAILED'
+        try:
+            await status_msg.edit_text(f"❌ Error: {str(e)[:200]}")
+        except Exception:
+            pass
+
+
+def _cleanup_old_sb_cards():
+    """Remove old completed/failed superbatch cards (older than 24 hours) to prevent memory leaks."""
+    cutoff = time.time() - 86400  # 24 hours
+    to_delete = [cid for cid, c in SUPERBATCH_POST_CARDS.items()
+                 if c.get('created_at', 0) < cutoff and c.get('status') in ('POSTED', 'FAILED')]
+    for cid in to_delete:
+        SUPERBATCH_POST_CARDS.pop(cid, None)
+    # Also clean prompt map for deleted cards
+    to_delete_prompts = [pid for pid, cid in SUPERBATCH_MANUAL_PROMPT_MAP.items()
+                         if cid not in SUPERBATCH_POST_CARDS]
+    for pid in to_delete_prompts:
+        SUPERBATCH_MANUAL_PROMPT_MAP.pop(pid, None)
+
 
 # Validate required environment variables
 if not TELEGRAM_BOT_TOKEN:
@@ -5253,7 +5653,59 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         return # Yahan is block ka kaam khatam!
 
-    
+    # =======================================================
+    # 🎬 SUPERBATCH PER-CARD POST CALLBACKS
+    # =======================================================
+    if data.startswith("sb_auto_"):
+        if update.effective_user.id not in ADMIN_IDS:
+            await query.answer("❌ Admin only!", show_alert=True)
+            return
+        card_id = data[8:]  # strip "sb_auto_"
+        card = SUPERBATCH_POST_CARDS.get(card_id)
+        if not card:
+            await query.answer("❌ Card expired or not found.", show_alert=True)
+            return
+        if card['status'] == 'POSTED':
+            await query.answer("✅ Already posted. Cannot duplicate.", show_alert=True)
+            return
+        if card['status'] == 'POSTING':
+            await query.answer("⏳ Posting already in progress...", show_alert=True)
+            return
+        await query.answer("⏳ Auto-posting...")
+        # Run in background task so other cards remain responsive
+        asyncio.create_task(_sb_execute_auto_post(card_id, query, context))
+        return
+
+    if data.startswith("sb_manual_"):
+        if update.effective_user.id not in ADMIN_IDS:
+            await query.answer("❌ Admin only!", show_alert=True)
+            return
+        card_id = data[10:]  # strip "sb_manual_"
+        card = SUPERBATCH_POST_CARDS.get(card_id)
+        if not card:
+            await query.answer("❌ Card expired or not found.", show_alert=True)
+            return
+        if card['status'] == 'POSTED':
+            await query.answer("✅ Already posted. Cannot duplicate.", show_alert=True)
+            return
+        if card['status'] == 'POSTING':
+            await query.answer("⏳ Posting already in progress...", show_alert=True)
+            return
+
+        card['status'] = 'WAITING_MANUAL_POSTER'
+        await query.answer()
+
+        # Send a dedicated prompt message (reply-based association)
+        season_text = f" — Season {card['season_number']}" if card.get('season_number') else ""
+        prompt_msg = await query.message.reply_text(
+            f"🖼️ **Send poster for:**\n"
+            f"**{card['title']}{season_text}**\n\n"
+            f"_Reply directly to THIS message with the poster image._",
+            parse_mode='Markdown'
+        )
+        # Map this prompt message to the card for reply-based association
+        SUPERBATCH_MANUAL_PROMPT_MAP[prompt_msg.message_id] = card_id
+        return
 
     # =======================================================
     # 🖼️ NEW: ASK POSTER LOGIC (Semi-Auto Post)
@@ -7409,22 +7861,47 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 continue
             
-            # --- SEND AUTO/MANUAL POST BUTTONS ---
+            # --- SEND AUTO/MANUAL POST BUTTONS (Legacy mode, BRAIN_HOLD=False) ---
+            _cleanup_old_sb_cards()
+            card_id = _create_sb_card_id()
+            card = {
+                'card_id': card_id,
+                'batch_id': batch_id,
+                'movie_id': movie_id,
+                'title': title,
+                'season_number': season_number,
+                'saved_count': len(saved_labels),
+                'poster_url': poster_url,
+                'year': str(year) if year else '',
+                'genre': genre or '',
+                'rating': rating or '',
+                'category': category or '',
+                'content_type': 'Movie', # default fallback if not computed here
+                'event_key': '',
+                'imdb_id': imdb_id,
+                'status': 'READY',
+                'control_chat_id': None,
+                'control_message_id': None,
+                'created_at': time.time(),
+            }
+            
+            season_line = f"📺 Season {season_number}\n" if season_number else ""
             report = (
-                f"🎉 **Superbatch Item Processed!**\n\n"
-                f"🎬 **Movie:** `{title}`\n"
-                f"📅 **Year:** {year if year else 'N/A'}\n"
-                f"🏷️ **Category:** {category}\n"
-                f"📂 **Files Saved:** {len(saved_labels)}\n\n"
+                f"🎬 Superbatch Post Ready\n\n"
+                f"📌 {title}\n"
+                f"{season_line}"
+                f"📁 {len(saved_labels)} files saved\n"
             )
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🤖 Auto Post (HD TMDB Poster)", callback_data=f"autopost_{movie_id}")],
-                [InlineKeyboardButton("📢 Manual Post (Send Poster)", callback_data=f"askposter_{movie_id}")]
+                [InlineKeyboardButton("🤖 Auto Post", callback_data=f"sb_auto_{card_id}")],
+                [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
             ])
 
-            # Send a new message for each movie so the user can interact individually without ruining other messages.
-            await update.message.reply_text(report, parse_mode='Markdown', reply_markup=keyboard)
+            sent_card = await update.message.reply_text(report, parse_mode='Markdown', reply_markup=keyboard)
+            card['control_chat_id'] = sent_card.chat_id
+            card['control_message_id'] = sent_card.message_id
+            SUPERBATCH_POST_CARDS[card_id] = card
             
             success_movies += 1
             movies_posted_list.append(title)
@@ -7463,6 +7940,47 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         await status_msg.edit_text(final_text, parse_mode='HTML')
+        
+        # --- NEW: CREATE MANUAL OVERRIDE CARDS ---
+        _cleanup_old_sb_cards()
+        for candidate in brain_candidates:
+            card_id = _create_sb_card_id()
+            card = {
+                'card_id': card_id,
+                'batch_id': batch_id,
+                'movie_id': candidate['movie_id'],
+                'title': candidate['title'],
+                'season_number': candidate.get('season_number'),
+                'saved_count': len(candidate.get('new_files', [])),
+                'poster_url': None,
+                'year': candidate.get('original_release_year', ''),
+                'genre': candidate.get('genre', ''),
+                'rating': candidate.get('rating', ''),
+                'category': candidate.get('category', ''),
+                'content_type': candidate.get('content_type', 'Movie'),
+                'event_key': candidate.get('event_key', ''),
+                'imdb_id': candidate.get('imdb_id'),
+                'status': 'READY',
+                'control_chat_id': None,
+                'control_message_id': None,
+                'created_at': time.time(),
+            }
+            season_line = f"📺 Season {card['season_number']}\n" if card.get('season_number') else ""
+            report = (
+                f"🎬 Superbatch Post Ready\n\n"
+                f"📌 {card['title']}\n"
+                f"{season_line}"
+                f"📁 {card['saved_count']} files saved\n"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🤖 Auto Post", callback_data=f"sb_auto_{card_id}")],
+                [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
+            ])
+            sent_card = await update.message.reply_text(report, parse_mode='Markdown', reply_markup=keyboard)
+            card['control_chat_id'] = sent_card.chat_id
+            card['control_message_id'] = sent_card.message_id
+            SUPERBATCH_POST_CARDS[card_id] = card
+
         SUPER_BATCH_SESSION.update({'active': False, 'admin_id': None, 'files': []})
         return
 
@@ -8148,6 +8666,21 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not is_admin(user_id): 
         return
 
+    # --- NEW: SUPERBATCH REPLY-BASED MANUAL POSTER ---
+    if update.message.reply_to_message:
+        replied_msg_id = update.message.reply_to_message.message_id
+        card_id = SUPERBATCH_MANUAL_PROMPT_MAP.get(replied_msg_id)
+        if card_id:
+            card = SUPERBATCH_POST_CARDS.get(card_id)
+            if card and card['status'] == 'WAITING_MANUAL_POSTER' and update.message.photo:
+                file_id = update.message.photo[-1].file_id
+                # Remove prompt mapping
+                SUPERBATCH_MANUAL_PROMPT_MAP.pop(replied_msg_id, None)
+                # Execute manual post
+                asyncio.create_task(_sb_execute_manual_post(card_id, file_id, update, context))
+                return
+
+    # --- EXISTING: Normal batch manual poster flow ---
     # Check karo ki bot photo ka wait kar raha tha ya nahi
     movie_id = context.user_data.get('waiting_for_poster')
     if not movie_id: 
