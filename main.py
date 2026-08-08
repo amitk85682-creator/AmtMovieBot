@@ -7407,107 +7407,443 @@ def get_resolution(text):
     return 'unknown'
 
 
-def is_downgrade(movie_id, new_quality_label, conn):
+def _is_series_like_category(category):
     """
-    🛡️ Anti-Downgrade Shield
-    Check karo ki kya DB mein SAME resolution ki koi HIGHER level file maujud hai.
-    Agar haan, toh nayi (lower level) file ko REJECT karo (save mat karo).
+    Series / Anime ke liye quality comparison content-aware hoga.
+    """
+    value = str(category or "").casefold()
 
-    Returns:
-        (True, existing_label)  → REJECT: DB mein better file hai
-        (False, None)           → ALLOW: File save karo
+    return any(
+        token in value
+        for token in (
+            "series",
+            "web",
+            "tv",
+            "anime",
+            "animation",
+        )
+    )
+
+
+def _extract_content_scope(*parts):
+    """
+    Quality + extra_info se season aur episode coverage nikalta hai.
+
+    Examples:
+        S04 E01-E08
+        S04E01-E08
+        S04 E01-08
+        S01 EP 13-25
+        SEASON 03
+    """
+    text = " ".join(
+        str(part or "")
+        for part in parts
+        if part
+    )
+
+    # S04E01 -> S04 E01
+    normalized = re.sub(
+        r'(?i)(S\d{1,2})(?=E\d)',
+        r'\1 ',
+        text
+    )
+
+    # -------------------------
+    # Season
+    # -------------------------
+    season = None
+
+    season_match = re.search(
+        r'(?i)\bS\s*0*(\d{1,2})\b'
+        r'|\bSeason\s*0*(\d{1,2})\b',
+        normalized
+    )
+
+    if season_match:
+        season = int(
+            season_match.group(1)
+            or season_match.group(2)
+        )
+
+    # -------------------------
+    # Episodes
+    # -------------------------
+    episodes = set()
+
+    # E01-E08
+    # E01-08
+    # EP 01 - 08
+    # Episode 1 to 8
+    range_pattern = re.compile(
+        r'(?i)(?:^|[^A-Z0-9])'
+        r'(?:E|EP|Episode)\s*0*(\d{1,3})'
+        r'\s*(?:-|~|_|to)\s*'
+        r'(?:(?:E|EP|Episode)\s*)?'
+        r'0*(\d{1,3})(?=$|[^0-9])'
+    )
+
+    for match in range_pattern.finditer(normalized):
+        start_ep = int(match.group(1))
+        end_ep = int(match.group(2))
+
+        if (
+            1 <= start_ep <= 999
+            and 1 <= end_ep <= 999
+        ):
+            low = min(start_ep, end_ep)
+            high = max(start_ep, end_ep)
+
+            episodes.update(
+                range(low, high + 1)
+            )
+
+    # Single episode: E07 / EP07 / Episode 7
+    single_pattern = re.compile(
+        r'(?i)(?:^|[^A-Z0-9])'
+        r'(?:E|EP|Episode)\s*0*(\d{1,3})'
+        r'(?=$|[^0-9])'
+    )
+
+    for match in single_pattern.finditer(normalized):
+        ep = int(match.group(1))
+
+        if 1 <= ep <= 999:
+            episodes.add(ep)
+
+    # Sirf explicit COMPLETE ko complete maanenge.
+    # "COMBINED" ko blindly complete nahi maanenge.
+    complete = bool(
+        season is not None
+        and re.search(
+            r'(?i)\b(?:'
+            r'complete'
+            r'|full\s*season'
+            r'|all\s*episodes'
+            r')\b',
+            normalized
+        )
+    )
+
+    return {
+        "season": season,
+        "episodes": episodes,
+        "complete": complete,
+    }
+
+
+def _scope_covers(container_scope, target_scope):
+    """
+    Check:
+    kya container wali file target ke saare episodes cover karti hai?
+
+    Example:
+        container E01-E12
+        target    E01-E08
+        => True
+
+        container E01-E06
+        target    E01-E08
+        => False
+    """
+    container_season = container_scope.get("season")
+    target_season = target_scope.get("season")
+
+    # Season unknown ya different = compare nahi karenge
+    if (
+        container_season is None
+        or target_season is None
+        or container_season != target_season
+    ):
+        return False
+
+    container_eps = container_scope.get("episodes") or set()
+    target_eps = target_scope.get("episodes") or set()
+
+    container_complete = bool(
+        container_scope.get("complete")
+    )
+    target_complete = bool(
+        target_scope.get("complete")
+    )
+
+    # Explicit complete season target ko cover karta hai
+    if container_complete:
+        return True
+
+    # Target complete hai lekin container complete nahi
+    if target_complete:
+        return False
+
+    # Dono ke exact episode coverage available hai
+    if container_eps and target_eps:
+        return target_eps.issubset(container_eps)
+
+    # Dono same season hain aur dono me episode range nahi hai.
+    # Example: S04 vs S04
+    if not container_eps and not target_eps:
+        return True
+
+    # Ek side episode range hai, doosri ambiguous hai.
+    # Data loss avoid karne ke liye compare nahi karenge.
+    return False
+
+
+def is_downgrade(
+    movie_id,
+    new_quality_label,
+    new_extra_info,
+    conn,
+    category=""
+):
+    """
+    🛡️ CONTENT-AWARE Anti-Downgrade
+
+    Movies:
+        same resolution par better source already hai
+        => lower source reject.
+
+    Series / Anime:
+        same season
+        + existing file NEW content ko fully cover kare
+        + same resolution
+        + existing source better ho
+        => tabhi reject.
     """
     new_level = get_source_level(new_quality_label)
     new_res = get_resolution(new_quality_label)
 
-    # Agar source ya resolution unknown hai, toh allow kar do (safe side)
-    if new_level == 0 or new_res == 'unknown':
+    if new_level == 0 or new_res == "unknown":
         return False, None
+
+    series_mode = _is_series_like_category(category)
+
+    new_scope = _extract_content_scope(
+        new_quality_label,
+        new_extra_info
+    )
 
     try:
         cur = conn.cursor()
+
         cur.execute(
-            "SELECT quality FROM movie_files WHERE movie_id = %s AND quality != %s",
-            (movie_id, new_quality_label)
+            """
+            SELECT id, quality, extra_info
+            FROM movie_files
+            WHERE movie_id = %s
+            """,
+            (movie_id,)
         )
-        existing_files = cur.fetchall()
+
+        existing_files = cur.fetchall() or []
         cur.close()
 
-        for row in existing_files:
-            old_label = row[0]
+        for old_id, old_label, old_extra in existing_files:
+
+            old_label = str(old_label or "")
+            old_extra = str(old_extra or "")
+
             old_level = get_source_level(old_label)
             old_res = get_resolution(old_label)
 
-            # Same resolution + DB mein higher level already hai → REJECT
-            if old_res == new_res and old_level > new_level:
-                logger.info(
-                    f"🛡️ Anti-Downgrade BLOCKED: movie_id={movie_id} | "
-                    f"Tried='{new_quality_label}' (L{new_level}) | "
-                    f"DB has='{old_label}' (L{old_level}) | "
-                    f"Same res={new_res}"
+            # Pehle basic quality rule
+            if old_res != new_res:
+                continue
+
+            if old_level <= new_level:
+                continue
+
+            # ------------------------------
+            # SERIES / ANIME CONTENT CHECK
+            # ------------------------------
+            if series_mode:
+                old_scope = _extract_content_scope(
+                    old_label,
+                    old_extra
                 )
-                return True, old_label
+
+                # Existing file NEW episodes ko fully cover
+                # nahi karti to quality comparison hi mat karo.
+                if not _scope_covers(
+                    old_scope,
+                    new_scope
+                ):
+                    continue
+
+            old_display = old_label
+
+            if old_extra:
+                old_display = (
+                    f"{old_extra} | {old_label}"
+                )
+
+            logger.info(
+                "🛡️ Anti-Downgrade BLOCKED: "
+                "movie_id=%s | "
+                "NEW='%s | %s' (L%s) | "
+                "DB='%s' (L%s) | "
+                "res=%s",
+                movie_id,
+                new_extra_info or "",
+                new_quality_label,
+                new_level,
+                old_display,
+                old_level,
+                new_res,
+            )
+
+            return True, old_display
 
         return False, None
 
     except Exception as e:
-        logger.error(f"❌ Anti-Downgrade check error: {e}")
-        return False, None  # Error par allow kar do (safe side)
+        logger.error(
+            "❌ Anti-Downgrade check error: %s",
+            e
+        )
+
+        # Error par data loss avoid karo
+        return False, None
 
 
-def auto_upgrade_delete(movie_id, new_quality_label, conn):
+def auto_upgrade_delete(
+    movie_id,
+    new_quality_label,
+    new_extra_info,
+    conn,
+    category=""
+):
     """
-    🔄 Resolution-Locked Auto-Upgrade System
-    Nayi file ka source level + resolution check karo.
-    Sirf SAME resolution ki lower level files DELETE karo.
-    Different resolution ki files SAFE rahein.
-    Same level = koi delete nahi (dono save rahein).
-    Returns: (deleted_count, deleted_labels)
+    🔄 CONTENT-AWARE Auto Upgrade
+
+    Series/Anime me old row tabhi delete hogi jab NEW file
+    us old row ke content ko fully cover karti ho.
+
+    IMPORTANT:
+    Delete quality string se nahi, exact DB row ID se hota hai.
+    Isse doosre seasons/episode packs safe rahenge.
     """
     new_level = get_source_level(new_quality_label)
     new_res = get_resolution(new_quality_label)
 
-    if new_level == 0 or new_res == 'unknown':
-        return 0, []  # Unknown source/resolution, kuch delete mat karo
+    if new_level == 0 or new_res == "unknown":
+        return 0, []
+
+    series_mode = _is_series_like_category(category)
+
+    new_scope = _extract_content_scope(
+        new_quality_label,
+        new_extra_info
+    )
 
     try:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT quality FROM movie_files WHERE movie_id = %s AND quality != %s",
-            (movie_id, new_quality_label)
-        )
-        existing_files = cur.fetchall()
 
-        labels_to_delete = []
-        for row in existing_files:
-            old_label = row[0]
+        cur.execute(
+            """
+            SELECT id, quality, extra_info
+            FROM movie_files
+            WHERE movie_id = %s
+            """,
+            (movie_id,)
+        )
+
+        existing_files = cur.fetchall() or []
+
+        row_ids_to_delete = []
+        deleted_labels = []
+
+        for old_id, old_label, old_extra in existing_files:
+
+            old_label = str(old_label or "")
+            old_extra = str(old_extra or "")
+
+            # Newly inserted exact row ko touch nahi karna
+            if (
+                old_label == str(new_quality_label or "")
+                and old_extra.strip()
+                == str(new_extra_info or "").strip()
+            ):
+                continue
+
             old_level = get_source_level(old_label)
             old_res = get_resolution(old_label)
 
-            # ✅ Resolution-Locked: Sirf SAME resolution + lower level = DELETE
-            if old_level > 0 and old_level < new_level and old_res == new_res:
-                labels_to_delete.append(old_label)
+            # Same resolution + genuinely lower source
+            if not (
+                old_level > 0
+                and old_level < new_level
+                and old_res == new_res
+            ):
+                continue
+
+            # ------------------------------
+            # SERIES / ANIME CONTENT CHECK
+            # ------------------------------
+            if series_mode:
+                old_scope = _extract_content_scope(
+                    old_label,
+                    old_extra
+                )
+
+                # NEW content OLD content ko fully cover kare
+                # tabhi old row delete hogi.
+                if not _scope_covers(
+                    new_scope,
+                    old_scope
+                ):
+                    continue
+
+            row_ids_to_delete.append(old_id)
+
+            if old_extra:
+                deleted_labels.append(
+                    f"{old_extra} | {old_label}"
+                )
+            else:
+                deleted_labels.append(old_label)
 
         deleted_count = 0
-        if labels_to_delete:
-            placeholders = ','.join(['%s'] * len(labels_to_delete))
-            cur.execute(
-                f"DELETE FROM movie_files WHERE movie_id = %s AND quality IN ({placeholders})",
-                [movie_id] + labels_to_delete
+
+        if row_ids_to_delete:
+            placeholders = ",".join(
+                ["%s"] * len(row_ids_to_delete)
             )
+
+            cur.execute(
+                f"""
+                DELETE FROM movie_files
+                WHERE movie_id = %s
+                AND id IN ({placeholders})
+                """,
+                [movie_id] + row_ids_to_delete
+            )
+
             deleted_count = cur.rowcount
             conn.commit()
+
             logger.info(
-                f"🔄 Auto-Upgrade: movie_id={movie_id} | "
-                f"New='{new_quality_label}' (L{new_level}, {new_res}) | "
-                f"Deleted {deleted_count} lower prints (same res): {labels_to_delete}"
+                "🔄 Auto-Upgrade: movie_id=%s | "
+                "NEW='%s | %s' | "
+                "Deleted=%s | %s",
+                movie_id,
+                new_extra_info or "",
+                new_quality_label,
+                deleted_count,
+                deleted_labels,
             )
 
         cur.close()
-        return deleted_count, labels_to_delete
+
+        return deleted_count, deleted_labels
 
     except Exception as e:
-        logger.error(f"❌ Auto-Upgrade Error for movie_id={movie_id}: {e}")
+        logger.error(
+            "❌ Auto-Upgrade Error for movie_id=%s: %s",
+            movie_id,
+            e
+        )
+
         return 0, []
 
 
@@ -8736,7 +9072,13 @@ async def _pm_save_file(message, context) -> dict | None:
     if not precheck_conn:
         return None
     try:
-        rejected, existing = is_downgrade(movie_id, label, precheck_conn)
+        rejected, existing = is_downgrade(
+            movie_id,
+            label,
+            f_extra,
+            precheck_conn,
+            current_category
+        )
     except Exception as exc:
         logger.error("_pm_save_file pre-upload downgrade check failed: %s", exc)
         return None
@@ -8794,7 +9136,13 @@ async def _pm_save_file(message, context) -> dict | None:
         )
 
         try:
-            deleted, deleted_labels = auto_upgrade_delete(movie_id, label, conn)
+            deleted, deleted_labels = auto_upgrade_delete(
+                movie_id,
+                label,
+                f_extra,
+                conn,
+                current_category
+            )
             if deleted > 0:
                 BATCH_SESSION['file_count'] = max(0, BATCH_SESSION.get('file_count', 0) - deleted)
                 logger.info("🔄 _pm_save_file: %s old print(s) deleted: %s", deleted, deleted_labels)
