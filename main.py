@@ -9193,7 +9193,18 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             [InlineKeyboardButton("📢 Manual Post (Send Poster)", callback_data=f"askposter_{movie_id}")]
         ])
 
-        await status_msg.edit_text(report, parse_mode='Markdown', reply_markup=keyboard)
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        await context.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=photo_to_send,
+            caption=report,
+            parse_mode='Markdown',
+            reply_markup=keyboard
+        )
 
     except Exception as e:
         logger.error(f"Error in batch_done_command: {e}", exc_info=True)
