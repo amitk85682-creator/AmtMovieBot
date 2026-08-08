@@ -1743,7 +1743,7 @@ You are receiving TWO evidence sources from the EXACT SAME Telegram media file:
 The local extraction is only a hint and can be incomplete or wrong. Read the raw strings too.
 The Telegram filename is commonly truncated near the end. The caption can contain promotions.
 Reconcile both sources into ONE identity that will later be searched by application code on OMDb/TMDB.
-Do NOT claim that you searched TMDB/IMDb. Do NOT invent details absent from both sources.
+Do NOT claim that you searched OMDb/TMDB. Do NOT invent details absent from both sources.
 
 Rules:
 - Return ONLY one valid JSON object; no markdown or explanation.
@@ -9034,7 +9034,78 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ **Save Failed or Blocked!**\nYa toh error aaya, ya DB mein pehle se better print (downgrade) hai. Logs check karein.", 
                 parse_mode='Markdown'
             )
-    
+
+async def send_status_with_poster(
+    source_message,
+    context,
+    text_message,
+    poster_url=None,
+    status_msg=None,
+    parse_mode='Markdown'
+):
+    """
+    Text status ko poster + caption message me convert karta hai.
+    Agar old status_msg diya ho to pehle usko delete karega.
+    """
+    try:
+        final_photo = (
+            poster_url
+            if poster_url and str(poster_url).strip() and str(poster_url).strip().upper() != "N/A"
+            else DEFAULT_POSTER
+        )
+
+        downloaded_poster = await get_poster_bytes(final_photo)
+        photo_to_send = downloaded_poster if downloaded_poster else final_photo
+
+        # Agar pehle "processing..." wala text msg bheja tha, use delete kar do
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except:
+                pass
+
+        # Telegram caption limit ka dhyan
+        caption_text = text_message
+        extra_text = None
+
+        if len(text_message) > 1000:
+            caption_text = text_message[:950] + "\n\n...continued below"
+            extra_text = text_message
+
+        sent = await context.bot.send_photo(
+            chat_id=source_message.chat_id,
+            photo=photo_to_send,
+            caption=caption_text,
+            parse_mode=parse_mode,
+            reply_to_message_id=source_message.message_id
+        )
+
+        if extra_text:
+            await context.bot.send_message(
+                chat_id=source_message.chat_id,
+                text=extra_text,
+                parse_mode=parse_mode,
+                reply_to_message_id=sent.message_id
+            )
+
+        return sent
+
+    except Exception as e:
+        logger.error(f"send_status_with_poster failed: {e}")
+
+        # fallback: sirf text bhej do
+        if status_msg:
+            try:
+                await status_msg.edit_text(text_message, parse_mode=parse_mode)
+                return status_msg
+            except:
+                pass
+
+        return await source_message.reply_text(
+            text_message,
+            parse_mode=parse_mode
+        )
+
 async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not BATCH_SESSION.get('active'): 
         await update.message.reply_text("❌ Koi batch active nahi hai!")
