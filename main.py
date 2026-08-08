@@ -492,9 +492,11 @@ async def _sb_build_post_caption_and_keyboard(movie_id, title, genre, language, 
         channel_caption = (
             f"🎬 <b>{safe_title}</b>\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"✨ <b>Genre:</b> {m_genre}\n"
-            f"🔊 <b>Language:</b> {m_lang}\n"
-            f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+            f"📅 <b>Date:</b> {date}\n"
+            f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+            f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+            f"🔊 <b>Language:</b> {lang}\n"
+            f"<b>Quality:</b> {quality}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
             f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
@@ -502,10 +504,13 @@ async def _sb_build_post_caption_and_keyboard(movie_id, title, genre, language, 
     else:
         channel_caption = (
             f"🔥 <b>{unicode_title}</b>\n"
-            f" ├ ✨ Genre: {m_genre}\n"
-            f" ├ 🔊 Language: {m_lang}\n"
-            f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
-            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"📅 <b>Date:</b> {date}\n"
+            f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+            f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+            f"🔊 <b>Language:</b> {lang}\n"
+            f"<b>Quality:</b> {quality}\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
             f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
@@ -1440,6 +1445,239 @@ def _local_evidence_fallback(caption_evidence, filename_evidence):
         "category": category,
     }
 
+def _validate_reconciled_evidence(
+    final_data,
+    fallback,
+    caption_raw="",
+    filename_raw="",
+):
+    """
+    Gemini = clue, not truth.
+
+    Identity-critical Gemini fields ko raw caption + filename
+    evidence ke against validate karta hai.
+    """
+    final_data = _normalize_evidence_dict(final_data)
+    fallback = _normalize_evidence_dict(fallback)
+
+    raw = f"{caption_raw or ''}\n{filename_raw or ''}"
+
+    def compact(value):
+        value = unicodedata.normalize(
+            "NFKC",
+            str(value or ""),
+        ).casefold()
+
+        return "".join(
+            ch for ch in value
+            if ch.isalnum()
+        )
+
+    def number_set(value):
+        result = set()
+
+        for raw_num in re.findall(r'\d+', str(value or "")):
+            try:
+                result.add(int(raw_num))
+            except (TypeError, ValueError):
+                pass
+
+        return result
+
+    # =========================================================
+    # 1. TITLE VALIDATION
+    # =========================================================
+    candidate_title = str(
+        final_data.get("title", "") or ""
+    ).strip()
+
+    fallback_title = str(
+        fallback.get("title", "") or ""
+    ).strip()
+
+    candidate_key = compact(candidate_title)
+    fallback_key = compact(fallback_title)
+    raw_key = compact(raw)
+
+    title_supported = bool(
+        candidate_key
+        and (
+            candidate_key in raw_key
+            or (
+                fallback_key
+                and (
+                    candidate_key == fallback_key
+                    or candidate_key in fallback_key
+                    or fallback_key in candidate_key
+                    or fuzz.token_set_ratio(
+                        candidate_title.casefold(),
+                        fallback_title.casefold(),
+                    ) >= 88
+                )
+            )
+        )
+    )
+
+    if not title_supported:
+        logger.warning(
+            "🛡️ Unsupported Gemini title rejected: %r -> %r",
+            candidate_title,
+            fallback_title,
+        )
+
+        final_data["title"] = (
+            fallback_title
+            if _valid_evidence_title(fallback_title)
+            else "UNKNOWN"
+        )
+
+    # =========================================================
+    # 2. YEAR VALIDATION
+    # Gemini year raw evidence me literally hona chahiye.
+    # =========================================================
+    candidate_year = str(
+        final_data.get("year", "") or ""
+    ).strip()
+
+    if candidate_year:
+        supported_year = bool(
+            re.fullmatch(
+                r'(?:19|20)\d{2}',
+                candidate_year
+            )
+            and re.search(
+                rf'(?<!\d){re.escape(candidate_year)}(?!\d)',
+                raw,
+            )
+        )
+
+        if not supported_year:
+            fallback_year = str(
+                fallback.get("year", "") or ""
+            ).strip()
+
+            if (
+                fallback_year
+                and re.search(
+                    rf'(?<!\d){re.escape(fallback_year)}(?!\d)',
+                    raw,
+                )
+            ):
+                final_data["year"] = fallback_year
+            else:
+                final_data["year"] = ""
+
+            logger.warning(
+                "🛡️ Unsupported Gemini year rejected: %r",
+                candidate_year,
+            )
+
+    # =========================================================
+    # 3. CATEGORY VALIDATION
+    # Part 1 / P1 alone series proof nahi hai.
+    # =========================================================
+    strong_series_evidence = bool(
+        re.search(
+            r'(?i)(?:'
+            r'\bS\d{1,2}(?:E\d{1,3})?\b'
+            r'|\bSeason\s*\d+\b'
+            r'|\b(?:E|EP|Episode)\s*\d{1,3}\b'
+            r')',
+            raw,
+        )
+    )
+
+    category = str(
+        final_data.get("category", "") or ""
+    ).casefold()
+
+    if strong_series_evidence:
+        # Anime hint ko yahan destroy nahi karenge.
+        if category != "anime":
+            final_data["category"] = "Web Series"
+
+    elif category in {
+        "web series",
+        "series",
+        "tv",
+        "tv series",
+    }:
+        logger.warning(
+            "🛡️ Unsupported Gemini Web Series category rejected"
+        )
+
+        final_data["category"] = (
+            fallback.get("category")
+            or "Movies"
+        )
+
+    # =========================================================
+    # 4. EXTRA INFO VALIDATION
+    # Gemini naya S/E/Part number invent nahi kar sakta.
+    # =========================================================
+    extra_info = str(
+        final_data.get("extra_info", "") or ""
+    ).strip()
+
+    if extra_info:
+        extra_numbers = number_set(extra_info)
+        raw_numbers = number_set(raw)
+
+        marker_supported = True
+
+        # Season
+        if re.search(
+            r'(?i)\b(?:S\d+|Season\s*\d+)\b',
+            extra_info,
+        ):
+            if not re.search(
+                r'(?i)\b(?:S\d+|Season\s*\d+)\b',
+                raw,
+            ):
+                marker_supported = False
+
+        # Episode
+        if re.search(
+            r'(?i)\b(?:E|EP|Episode)\s*\d+',
+            extra_info,
+        ):
+            if not re.search(
+                r'(?i)(?:'
+                r'\b(?:E|EP|Episode)\s*\d+'
+                r'|S\d+E\d+'
+                r')',
+                raw,
+            ):
+                marker_supported = False
+
+        # Part
+        if re.search(
+            r'(?i)\b(?:Part\s*\d+|P\d+)\b',
+            extra_info,
+        ):
+            if not re.search(
+                r'(?i)\b(?:Part\s*\d+|P\d+)\b',
+                raw,
+            ):
+                marker_supported = False
+
+        # Gemini ke numbers raw file me hone chahiye.
+        if not extra_numbers.issubset(raw_numbers):
+            marker_supported = False
+
+        if not marker_supported:
+            logger.warning(
+                "🛡️ Unsupported Gemini extra_info rejected: %r",
+                extra_info,
+            )
+
+            final_data["extra_info"] = fallback.get(
+                "extra_info",
+                "",
+            )
+
+    return final_data
+
 
 def _get_message_filename(message):
     """Raw Telegram message object se original media filename nikalta hai."""
@@ -1504,7 +1742,7 @@ You are receiving TWO evidence sources from the EXACT SAME Telegram media file:
 
 The local extraction is only a hint and can be incomplete or wrong. Read the raw strings too.
 The Telegram filename is commonly truncated near the end. The caption can contain promotions.
-Reconcile both sources into ONE identity that will later be searched by application code on TMDB/IMDb.
+Reconcile both sources into ONE identity that will later be searched by application code on OMDb/TMDB.
 Do NOT claim that you searched TMDB/IMDb. Do NOT invent details absent from both sources.
 
 Rules:
@@ -1541,6 +1779,12 @@ Required JSON example:
             if not isinstance(parsed, dict):
                 raise ValueError("Gemini JSON was not an object")
 
+            final_data = _validate_reconciled_evidence(
+                final_data,
+                fallback,
+                caption_raw=caption_raw,
+                filename_raw=filename_raw,
+            )
             final_data = _normalize_evidence_dict(parsed)
             for field in _EVIDENCE_KEYS:
                 if not final_data.get(field):
@@ -1585,6 +1829,40 @@ def _canonical_evidence_title(title):
     value = re.sub(r'\s+', ' ', value).strip()
     return value
 
+def _title_number_signature(title):
+    """
+    Sequel / part numbers ko grouping identity ka part banata hai.
+
+    Pushpa 2 -> ('2',)
+    Dhoom 3  -> ('3',)
+
+    Release year ignore hota hai.
+    """
+    value = clean_telegram_text(
+        str(title or "")
+    ).casefold()
+
+    # Release year grouping number nahi hai.
+    value = re.sub(
+        r'\b(?:19|20)\d{2}\b',
+        ' ',
+        value
+    )
+
+    numbers = []
+
+    for raw in re.findall(
+        r'\b\d{1,3}\b',
+        value
+    ):
+        try:
+            numbers.append(
+                str(int(raw))
+            )
+        except (TypeError, ValueError):
+            continue
+
+    return tuple(numbers)
 
 def _evidence_record_score(record):
     """Best representative file choose karne ke liye completeness score."""
@@ -1726,8 +2004,16 @@ async def fallback_extraction(caption_text):
         text = re.sub(r'^\[[^\]]+\]\s*', '', text)          # [Group] ko udayega
         
         # 2. Detect if it's a web series (contains season/episode indicators)
-        season_pattern = re.compile(r'\b(S\d{1,2}|Season\s*\d+|S\d{1,2}E\d{1,3}|\[?E\d{1,3}\s*(?:[-~_]|to)\s*(?:e|ep)?\d{1,3}\]?|EP\s*\d{1,3}(?:\s*(?:[-~_]|to)\s*(?:e|ep)?\d{1,3})?|Episode\s*\d+|Part\s*\d+|P\d+)\b', re.IGNORECASE)
-        season_match = season_pattern.search(text)
+        strong_series_pattern = re.compile(
+            r'(?i)(?:'
+            r'\bS\d{1,2}(?:E\d{1,3})?\b'
+            r'|\bSeason\s*\d+\b'
+            r'|\b(?:E|EP|Episode)\s*\d{1,3}'
+            r'(?:\s*(?:[-~_]|to)\s*(?:E|EP|Episode)?\s*\d{1,3})?\b'
+            r')'
+        )
+
+season_match = strong_series_pattern.search(text)
         if season_match:
             ws_result = await _extract_web_series(text, original)
             ws_title = str(ws_result.get("title", "")).strip()
@@ -1790,7 +2076,7 @@ async def fallback_extraction(caption_text):
             'ddp2', 'xvid', 'divx', 'remux', 'bdrip', 'brrip', 'dvdrip', 'dvdr', 'pal',
             'ntsc', 'region', 'free', 'watch', 'online', 'download', 'movies', 'series',
             'show', 'south', 'movie', 'org', 'dual', 'truehd', 'atmos', 'dts', 'mp3',
-            'flac', 'opus', 'aac2', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'flac', 'opus', 'aac2',
             'xvid', 'hd', 'full', 'half', 'brrip', 'bdrip', 'web', 'dl', 'hdr'
         ]
         words = title.split()
@@ -5869,9 +6155,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             channel_caption = (
                 f"🎬 <b>{safe_title}</b>\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"✨ <b>Genre:</b> {m_genre}\n"
-                f"🔊 <b>Language:</b> {m_lang}\n"
-                f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+                f"📅 <b>Date:</b> {date}\n"
+                f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+                f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+                f"🔊 <b>Language:</b> {lang}\n"
+                f"<b>Quality:</b> {quality}\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
                 f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
@@ -5879,10 +6167,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             channel_caption = (
                 f"🔥 <b>{unicode_title}</b>\n"
-                f" ├ ✨ Genre: {m_genre}\n"
-                f" ├ 🔊 Language: {m_lang}\n"
-                f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
-                f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
+                f"📅 <b>Date:</b> {date}\n"
+                f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+                f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+                f"🔊 <b>Language:</b> {lang}\n"
+                f"<b>Quality:</b> {quality}\n"
+                f"➖➖➖➖➖➖➖➖➖➖\n"
                 f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
                 f"👇 <b>Download Below</b> 👇"
             )
@@ -7807,7 +8098,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             imdb_id = result_dict.get('imdb_id')
             poster_url = result_dict.get('poster_url')
             movie_lang = result_dict.get('movie_lang')
-            extra_info = result_dict.get('movie_extra')
+            extra_info = result_dict.get('extra_info')
             season_number = result_dict.get('season_number')
             season_release_year = result_dict.get('season_release_year')
             season_release_date = result_dict.get('season_release_date')
@@ -8275,6 +8566,8 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
             'imdb_id': imdb_id,
             'cast_str': cast_str,
             'extra_info': movie_extra,
+            'seasons_data': seasons_data,
+            'previous_season_keys': previous_season_keys,
             'season_number': season_number,
             'season_release_date': season_release_date,
             'season_release_year': season_release_year,
@@ -8534,7 +8827,7 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
             status_msg = await message.reply_text(
-                "🧠 Caption + Filename Evidence → Gemini → TMDB/IMDb pipeline chal raha hai...",
+                "🧠 Caption + Filename Evidence → Gemini → OMDb → TMDB verification pipeline chal raha hai...",
                 quote=True,
             )
 
@@ -10339,9 +10632,11 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = (
             f"🔞 <b>{safe_title}</b>\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"✨ <b>Genre:</b> {genre or 'Romance, Drama'}\n"
-            f"🔊 <b>Language:</b> {language or 'Hindi'}\n"
-            f"💿 <b>Quality:</b> V2 HQ-HDTC {dynamic_res}\n"
+            f"📅 <b>Date:</b> {date}\n"
+            f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+            f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+            f"🔊 <b>Language:</b> {lang}\n"
+            f"<b>Quality:</b> {quality}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
             f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
@@ -10349,10 +10644,13 @@ async def batch18_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         caption = (
             f"🔥 <b>{unicode_title}</b>\n"
-            f" ├ ✨ Genre: {genre or 'Romance, Drama'}\n"
-            f" ├ 🔊 Language: {language or 'Hindi'}\n"
-            f" └ 💿 Quality: V2 HQ-HDTC {dynamic_res}\n"
-            f"━ ━ ━ ━ ━ ━ ━ ━ ━ ━ ━\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
+            f"📅 <b>Date:</b> {date}\n"
+            f"⭐ <b>iMDB Rating:</b> {item.get('vote_average')}/10\n"
+            f"🎭 <b>Genre:</b> {', '.join([g['name'] for g in extra.get('genres', [])])}\n"
+            f"🔊 <b>Language:</b> {lang}\n"
+            f"<b>Quality:</b> {quality}\n"
+            f"➖➖➖➖➖➖➖➖➖➖\n"
             f"<b>Update Channel:</b> <a href='https://t.me/FlimfyBoxBackUp'>Join BackUp</a>\n"
             f"👇 <b>Download Below</b> 👇"
         )
