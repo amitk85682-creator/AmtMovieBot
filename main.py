@@ -3079,7 +3079,7 @@ def is_valid_imdb_id(imdb_id: str) -> bool:
 def auto_fetch_and_update_metadata(movie_id: int, movie_title: str):
     """Automatically fetch and update metadata for a movie"""
     try:
-        metadata = fetch_movie_metadata(movie_title)
+        metadata = fetch_movie_metadata(movie_title, use_cache=False)
         if metadata:
             # 🔧 FIX: 8 values unpack (pehle 6 thi — CRASH hoti thi!)
             title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
@@ -3268,7 +3268,7 @@ def extract_tmdb_poster_from_url(tmdb_url: str) -> Optional[str]:
 def fetch_cast_from_imdb(imdb_id: str, limit: int = 5) -> str:
     """Fetch cast list from TMDB using IMDb ID, return comma-separated string."""
     try:
-        api_key = "9fa44f5e9fbd41415df930ce5b81c4d7"
+        api_key = os.environ.get("TMDB_API_KEY")
         find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={api_key}&external_source=imdb_id"
         resp = requests.get(find_url, timeout=10).json()
         tmdb_results = resp.get('movie_results', [])
@@ -3291,7 +3291,7 @@ def fetch_cast_from_imdb(imdb_id: str, limit: int = 5) -> str:
 
 def get_tmdb_backdrop(query, search_year=""):
     """TMDB API se HD Original Poster (Vertical with Text) nikalta hai — run_async se call karo"""
-    api_key = "9fa44f5e9fbd41415df930ce5b81c4d7" 
+    api_key = os.environ.get("TMDB_API_KEY") 
     try:
         url = f"https://api.themoviedb.org/3/search/multi?api_key={api_key}&query={quote(query)}"
         resp = requests.get(url, timeout=10).json()
@@ -3375,580 +3375,332 @@ def _find_best_tmdb_match(tmdb_results: list, search_query: str, search_year: st
     logger.info(f"✅ TMDb Best Match: '{best_match.get('title') or best_match.get('name')}' (score: {best_score})")
     return best_match
 
-def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = ""):
-    """
-    IMDb से डेटा और TMDb से सिर्फ Lamba (Portrait) पोस्टर निकालने वाला इंजन
-    adult_mode=True होने पर TMDb सर्च में include_adult=true भेजेगा और OMDb को बायपास करेगा।
-    """
-    omdb_api_key = os.environ.get("OMDB_API_KEY")
-    tmdb_api_key = "9fa44f5e9fbd41415df930ce5b81c4d7"
+import json
+import logging
+import requests
+import re
+from urllib.parse import quote
+import os
 
+import json
+import logging
+import requests
+import re
+from urllib.parse import quote
+import os
+
+logger = logging.getLogger(__name__)
+
+# --- GEMINI RECONCILIATION ---
+import json
+import logging
+import requests
+import re
+from urllib.parse import quote
+import os
+
+logger = logging.getLogger(__name__)
+
+def clean_probable_identity(query: str, year: str, category_hint: str):
+    import google.generativeai as genai
+    gemini_key = os.environ.get('GEMINI_API_KEY')
+    if not gemini_key: return query, year, category_hint, {}
+    try:
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"""
+        You are a media metadata cleaner.
+        Input Title: {query}
+        Input Year: {year}
+        Input Hint: {category_hint}
+        
+        Clean this into a probable true identity. Return ONLY valid JSON:
+        {{
+            "title": "Canonical Title",
+            "year": "YYYY or empty string",
+            "category": "Movie, Series, or Anime",
+            "seasons": {{}} 
+        }}
+        """
+        response = model.generate_content(prompt)
+        text = response.text
+        start = text.find('{')
+        end = text.rfind('}') + 1
+        if start != -1 and end != -1:
+            data = json.loads(text[start:end])
+            return data.get('title', query), str(data.get('year', year)), data.get('category', category_hint), data.get('seasons', {})
+    except Exception as e:
+        logger.error(f'Gemini Clean Error: {e}')
+    return query, year, category_hint, {}
+
+def _fetch_tmdb_series_details(tmdb_id, tmdb_api_key):
+    if not tmdb_api_key: return {}
+    seasons_data = {}
+    try:
+        tv_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}", timeout=10).json()
+        for s in tv_details.get('seasons', []):
+            s_num = str(s.get('season_number', ''))
+            if s_num and s_num != "0":
+                s_air_date = str(s.get('air_date', ''))
+                s_year = int(s_air_date[:4]) if s_air_date[:4].isdigit() else 0
+                s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
+                episodes_info = {}
+                try:
+                    s_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{s_num}?api_key={tmdb_api_key}", timeout=5).json()
+                    for ep in s_details.get('episodes', []): episodes_info[str(ep.get('episode_number'))] = {'air_date': ep.get('air_date', '')}
+                except: pass
+                seasons_data[str(s_num)] = {"year": s_year, "poster": s_poster, "air_date": s_air_date, "episode_count": s.get('episode_count', 0), "episodes": episodes_info}
+    except Exception as e: logger.error(f"TMDB Series Fetch Error: {e}")
+    return seasons_data
+
+def fetch_watchmode_metadata(title: str, year: str, tmdb_api_key: str):
+    watchmode_key = os.environ.get("WATCHMODE_API_KEY")
+    if not watchmode_key: return None
+    try:
+        url = f"https://api.watchmode.com/v1/search/?apiKey={watchmode_key}&search_field=name&search_value={quote(title)}"
+        resp = requests.get(url, timeout=10).json()
+        results = resp.get("title_results", [])
+        if not results: return None
+        from fuzzywuzzy import fuzz
+        best_match = None; best_score = -1
+        search_lower = title.lower().strip()
+        for item in results:
+            score = fuzz.token_set_ratio(search_lower, (item.get('name') or '').lower())
+            if year and str(year).isdigit():
+                i_year = str(item.get('year', ''))
+                if i_year == str(year): score += 50
+                elif i_year and abs(int(i_year) - int(year)) <= 1: score += 20
+            if score > best_score: best_score = score; best_match = item
+        if best_score < 55 or not best_match: return None
+        
+        tmdb_id = best_match.get("tmdb_id")
+        type_str = best_match.get("tmdb_type")
+        wm_id = best_match.get("id")
+        
+        if tmdb_id and tmdb_api_key:
+            media_type = "movie" if type_str == "movie" else "tv"
+            tmdb_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={tmdb_api_key}"
+            t_resp = requests.get(tmdb_url, timeout=10).json()
+            poster = f"https://image.tmdb.org/t/p/original{t_resp.get('poster_path')}" if t_resp.get('poster_path') else None
+            genres = [g['name'] for g in t_resp.get('genres', [])]
+            return (
+                t_resp.get('title') or t_resp.get('name') or best_match.get('name'),
+                int(str(t_resp.get('release_date', t_resp.get('first_air_date', best_match.get('year'))))[:4] or 0),
+                poster, ", ".join(genres) if genres else "Unknown", t_resp.get('imdb_id'),
+                str(round(t_resp.get('vote_average', 0), 1)) if t_resp.get('vote_average') else 'N/A',
+                t_resp.get('overview', 'No plot available.'), "Web Series" if media_type == "tv" else "Movies",
+                _fetch_tmdb_series_details(tmdb_id, tmdb_api_key) if media_type == "tv" else {}
+            )
+        else:
+            wm_details = requests.get(f"https://api.watchmode.com/v1/title/{wm_id}/details/?apiKey={watchmode_key}", timeout=10).json()
+            return (
+                wm_details.get('title') or best_match.get('name'), int(wm_details.get('year', best_match.get('year')) or 0),
+                wm_details.get('poster'), ", ".join(wm_details.get('genre_names', [])) or "Unknown", wm_details.get('imdb_id'),
+                str(wm_details.get('user_rating', 'N/A')), wm_details.get('plot_overview', 'No plot available.'),
+                "Web Series" if best_match.get('type') == 'tv_series' else "Movies", {}
+            )
+    except Exception as e: logger.error(f"Watchmode error: {e}")
+    return None
+
+def fetch_tvmaze_metadata(query: str, search_year: str = ""):
+    try:
+        url = f"https://api.tvmaze.com/singlesearch/shows?q={quote(query)}"
+        resp = requests.get(url, timeout=10).json()
+        if resp and "name" in resp:
+            from fuzzywuzzy import fuzz
+            score = fuzz.token_set_ratio(query.lower(), resp.get("name", "").lower())
+            t_year = str(resp.get("premiered", ""))[:4]
+            if search_year and search_year.isdigit() and t_year.isdigit() and abs(int(search_year) - int(t_year)) > 3:
+                logger.warning(f"TVmaze year mismatch ({search_year} vs {t_year}).")
+            if score < 60: return None
+            return (
+                resp.get("name"), int(t_year) if t_year.isdigit() else 0,
+                resp.get("image", {}).get("original") if resp.get("image") else None,
+                ", ".join(resp.get("genres", [])) or "Unknown", resp.get("externals", {}).get("imdb"),
+                str(resp.get("rating", {}).get("average", "N/A")), re.sub(r'<[^>]+>', '', resp.get("summary", "")),
+                "Web Series", {}
+            )
+    except Exception as e: logger.error(f"TVmaze Error: {e}")
+    return None
+
+def fetch_anilist_metadata(query: str):
+    q = 'query ($search: String) { Media (search: $search, type: ANIME) { title { romaji english } startDate { year } coverImage { large } genres averageScore description } }'
+    try:
+        resp = requests.post('https://graphql.anilist.co', json={'query': q, 'variables': {'search': query}}, timeout=10).json()
+        media = resp.get('data', {}).get('Media')
+        if media:
+            title_eng = media['title'].get('english') or ""
+            title_rom = media['title'].get('romaji') or ""
+            from fuzzywuzzy import fuzz
+            if max(fuzz.token_set_ratio(query.lower(), title_eng.lower()), fuzz.token_set_ratio(query.lower(), title_rom.lower())) < 60: return None
+            return (
+                title_eng or title_rom, int(media.get('startDate', {}).get('year') or 0), media.get('coverImage', {}).get('large'),
+                ", ".join(media.get('genres', [])) or "Unknown", None, str(media.get('averageScore', 'N/A')),
+                re.sub(r'<[^>]+>', '', media.get('description', '')), "Anime", {}
+            )
+    except Exception as e: logger.error(f"AniList Error: {e}")
+    return None
+
+def resolve_media_identity(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True):
     search_query = query.strip()
     is_imdb_id = bool(re.match(r'^tt\d{7,8}$', search_query))
+    clean_title, clean_year, clean_category, seasons_data = search_query, search_year, hint_category, {}
+    
+    if not already_reconciled and not is_imdb_id and not adult_mode:
+        clean_title, clean_year, clean_category, seasons_data = clean_probable_identity(search_query, search_year, hint_category)
+        logger.info(f"🧠 Gemini Cleaned: '{clean_title}' ({clean_year}) [{clean_category}]")
+    else:
+        logger.info(f"⏭️ Skipping Gemini: '{clean_title}' ({clean_year}) [{clean_category}]")
 
-    logger.info(f"🔍 Metadata fetch for: '{search_query}' | year={search_year} | category={hint_category}")
+    if use_cache:
+        try:
+            conn = get_db_connection()
+            if conn:
+                cur = conn.cursor()
+                if is_imdb_id: cur.execute("SELECT title, year, poster_url, genre, imdb_id, rating, description, category, seasons_data FROM movies WHERE imdb_id = %s LIMIT 1", (search_query,))
+                else:
+                    if clean_year and str(clean_year).isdigit(): cur.execute("SELECT title, year, poster_url, genre, imdb_id, rating, description, category, seasons_data FROM movies WHERE lower(title) = lower(%s) AND year = %s LIMIT 1", (clean_title, int(clean_year)))
+                    else: cur.execute("SELECT title, year, poster_url, genre, imdb_id, rating, description, category, seasons_data FROM movies WHERE lower(title) = lower(%s) LIMIT 1", (clean_title,))
+                row = cur.fetchone()
+                cur.close(); close_db_connection(conn)
+                if row:
+                    cached_seasons = row[8] or {}
+                    if requested_season is None or str(requested_season) in cached_seasons:
+                        logger.info(f"💾 Cache Hit for '{row[0]}'. Bypassing external APIs.")
+                        return (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], cached_seasons)
+                    
+                    cached_imdb = row[4]
+                    if cached_imdb:
+                        logger.info(f"💾 Cache Hit but missing requested season {requested_season}. Using cached IMDb ID {cached_imdb} to enrich via TMDB /find.")
+                        is_imdb_id = True
+                        search_query = cached_imdb
+                    else:
+                        logger.info(f"💾 Cache Hit but missing requested season {requested_season} and no IMDb ID. Continuing to title search.")
+        except Exception as e: logger.error(f"Supabase Cache Lookup Error: {e}")
 
-    # ----- एडल्ट मोड: OMDb का उपयोग न करें (क्योंकि उसमें एडल्ट डेटा नहीं) -----
-    if adult_mode:
+    tmdb_api_key = os.environ.get("TMDB_API_KEY")
+    if not tmdb_api_key:
+        logger.error("❌ TMDB_API_KEY not found in environment. Proceeding with fallbacks where possible.")
+    omdb_api_key = os.environ.get("OMDB_API_KEY")
+
+    if adult_mode and tmdb_api_key:
         try:
             tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}&include_adult=true"
-            if search_year and search_year.strip().isdigit():
-                tmdb_search += f"&year={search_year.strip()}"
+            if search_year and str(search_year).isdigit(): tmdb_search += f"&year={search_year.strip()}"
             t_resp = requests.get(tmdb_search, timeout=10).json()
-            if not t_resp.get('results'):
-                return None
-
-            # 🔧 FIX: Smart match instead of blindly first
-            best_match = _find_best_tmdb_match(t_resp['results'], search_query, search_year)
-            if not best_match:
-                best_match = t_resp['results'][0]  # Fallback to first if scoring rejects all
-
-            title = best_match.get('title') or best_match.get('name') or search_query
-            year_str = str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4]
-            year = int(year_str) if year_str.isdigit() else 0
-            plot = best_match.get('overview', 'No story available.')
-            rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
-            category = "Adult"
-            genre = "Romance, Drama"
-
-            path = best_match.get('poster_path')
-            poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
-
-            imdb_id = None
-            try:
-                tmdb_id = best_match.get('id')
-                media_type = best_match.get('media_type', 'movie')
-                ext_url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/external_ids?api_key={tmdb_api_key}"
-                imdb_id = requests.get(ext_url, timeout=5).json().get('imdb_id')
-            except:
-                pass
-
-            return title, year, poster_url, genre, imdb_id, rating, plot, category, {}
-        except Exception as e:
-            logger.error(f"Adult TMDb Fetch Error: {e}")
-            return None
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 🔧 FIXED: NORMAL MODE — Smart OMDb → TMDb Chain
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    try:
-        omdb_resp = None
-        
-        # ━━━━━ STEP 1: OMDb Search (agar key hai toh) ━━━━━
-        if omdb_api_key and not is_imdb_id:
-            # 🔧 FIX: Pehle BINA type ke try karo (type galat hone se result miss hota tha)
-            url_no_type = f"https://www.omdbapi.com/?t={quote(search_query)}&apikey={omdb_api_key}&plot=full"
-            if search_year and str(search_year).strip().isdigit():
-                url_no_type += f"&y={str(search_year).strip()}"
-            
-            resp = requests.get(url_no_type, timeout=10).json()
-            
-            if resp.get("Response") == "True":
-                omdb_resp = resp
-            else:
-                # 🔧 FIX: Retry WITH type parameter (agar bina type se nahi mila)
-                is_series = "series" in hint_category.lower() if hint_category else False
-                if is_series:
-                    url_with_type = f"https://www.omdbapi.com/?t={quote(search_query)}&type=series&apikey={omdb_api_key}&plot=full"
-                    if search_year and str(search_year).strip().isdigit():
-                        url_with_type += f"&y={str(search_year).strip()}"
-                    resp2 = requests.get(url_with_type, timeout=10).json()
-                    if resp2.get("Response") == "True":
-                        omdb_resp = resp2
-                        
-        elif omdb_api_key and is_imdb_id:
-            url = f"https://www.omdbapi.com/?i={search_query}&apikey={omdb_api_key}&plot=full"
-            resp = requests.get(url, timeout=10).json()
-            if resp.get("Response") == "True":
-                omdb_resp = resp
-
-        # ━━━━━ STEP 2: OMDb se data mila — process karo ━━━━━
-        if omdb_resp:
-            title = omdb_resp.get('Title')
-            year = int(omdb_resp.get('Year', '0').split('–')[0]) if omdb_resp.get('Year') else 0
-            genre = omdb_resp.get('Genre', 'Action, Drama')
-            rating = omdb_resp.get('imdbRating', 'N/A')
-            plot = omdb_resp.get('Plot', 'No story available.')
-            imdb_id = omdb_resp.get('imdbID')
-            country = omdb_resp.get('Country', '')
-            lang = omdb_resp.get('Language', '').lower()
-
-            # Smart category detection
-            category = "Movies"
-            omdb_type = omdb_resp.get('Type', '').lower()
-            g_low = genre.lower()
-            
-            if omdb_type == 'series':
-                category = "Web Series"
-            elif "animation" in g_low or "anime" in g_low:
-                category = "Anime"
-            elif "india" in country.lower():
-                if any(x in lang for x in ['telugu', 'tamil', 'kannada', 'malayalam']):
-                    category = "South"
-                else:
-                    category = "Bollywood"
-            else:
-                category = "Hollywood"
-
-            # TMDb se HD poster laao
-            poster_url = omdb_resp.get('Poster')
-            if imdb_id and imdb_id != 'N/A':
-                try:
-                    tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
-                    t_resp = requests.get(tmdb_find, timeout=10).json()
-                    results = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
-                    if results:
-                        path = results[0].get('poster_path')
-                        if path:
-                            poster_url = f"https://image.tmdb.org/t/p/original{path}"
-                except:
-                    pass
-            else:
-                try:
-                    tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(title)}"
-                    t_resp = requests.get(tmdb_search, timeout=10).json()
-                    if t_resp.get('results'):
-                        for item in t_resp['results']:
-                            item_year = str(item.get('release_date', item.get('first_air_date', '')))[:4]
-                            if str(year) == item_year and item.get('poster_path'):
-                                poster_url = f"https://image.tmdb.org/t/p/original{item['poster_path']}"
-                                break
-                        else:
-                            path = t_resp['results'][0].get('poster_path')
-                            if path:
-                                poster_url = f"https://image.tmdb.org/t/p/original{path}"
-                except:
-                    pass
-
-            
-            seasons_data = {}
-            try:
-                tmdb_id = None
-                if category in ["Web Series", "Anime", "Adult"]:
-                    if not tmdb_id and imdb_id:
-                        tmdb_find = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id"
-                        t_resp = requests.get(tmdb_find, timeout=10).json()
-                        tv_res = t_resp.get('tv_results', [])
-                        if tv_res: tmdb_id = tv_res[0].get('id')
-                    if tmdb_id:
-                        tv_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}", timeout=10).json()
-                        for s in tv_details.get('seasons', []):
-                            s_num = str(s.get('season_number', ''))
-                            if s_num and str(s_num) != "0":
-                                s_air_date = str(s.get('air_date', ''))
-                                s_year = s_air_date[:4]
-                                s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
-                                episode_count = s.get('episode_count', 0)
-                                episodes_info = {}
-                                try:
-                                    season_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{s_num}?api_key={tmdb_api_key}"
-                                    season_details = requests.get(season_url, timeout=5).json()
-                                    for ep in season_details.get('episodes', []):
-                                        ep_num = str(ep.get('episode_number'))
-                                        episodes_info[ep_num] = {'air_date': ep.get('air_date', '')}
-                                except Exception as ep_e:
-                                    logger.error(f"Episode fetch error: {ep_e}")
-                                seasons_data[str(s_num)] = {
-                                    "year": int(s_year) if s_year.isdigit() else 0,
-                                    "poster": s_poster,
-                                    "air_date": s_air_date,
-                                    "episode_count": episode_count,
-                                    "episodes": episodes_info
-                                }
-            except Exception as e:
-                logger.error(f"Seasons Fetch Error: {e}")
-                
-            logger.info(f"✅ OMDb Success: '{title}' ({year}) [{category}]")
-            return title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data
-
-        # ━━━━━ STEP 3: OMDb fail — TMDb SMART FALLBACK ━━━━━
-        logger.info(f"⚠️ OMDb miss for '{search_query}', trying TMDb smart search...")
-        
-        # 🔧 FIX: search/multi use karo (movie + tv dono milenge) 
-        tmdb_search = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(search_query)}"
-        if search_year and str(search_year).strip().isdigit():
-            tmdb_search += f"&year={search_year.strip()}"
-        t_resp = requests.get(tmdb_search, timeout=10).json()
-        
-        if not t_resp.get('results'):
-            # Agar multi mein nahi mila, try TV-only search (agar series hint hai)
-            is_series = "series" in hint_category.lower() if hint_category else False
-            if is_series:
-                tmdb_tv = f"https://api.themoviedb.org/3/search/tv?api_key={tmdb_api_key}&query={quote(search_query)}"
-                if search_year and str(search_year).strip().isdigit():
-                    tmdb_tv += f"&first_air_date_year={search_year.strip()}"
-                t_resp = requests.get(tmdb_tv, timeout=10).json()
-            
-            if not t_resp.get('results'):
-                logger.warning(f"❌ TMDb bhi fail for '{search_query}'")
-                return None
-
-        # 🔧 FIX: Smart match — blindly first nahi lega!
-        best_match = _find_best_tmdb_match(t_resp['results'], search_query, search_year)
-        if not best_match:
-            # Agar smart match reject kar de, still try first as last resort
-            best_match = t_resp['results'][0]
-            logger.warning(f"⚠️ TMDb smart match rejected all, using first result as fallback")
-
-        title = best_match.get('title') or best_match.get('name') or search_query
-        year_str = str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4]
-        year = int(year_str) if year_str.isdigit() else 0
-        plot = best_match.get('overview', 'No story available.')
-        rating = str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A'
-        
-        # Smart category from TMDb media_type
-        media_type = best_match.get('media_type', '')
-        if media_type == 'tv':
-            category = "Web Series"
-        elif media_type == 'movie':
-            category = "Movies"
-        else:
-            category = "Web Series" if ("series" in hint_category.lower() if hint_category else False) else "Movies"
-        
-        genre = "Action, Drama"  # TMDb genre IDs need separate API call, using default
-        
-        # TMDb poster
-        path = best_match.get('poster_path')
-        poster_url = f"https://image.tmdb.org/t/p/original{path}" if path else None
-
-        # IMDb ID nikalo TMDb se
-        imdb_id = None
-        try:
-            tmdb_id = best_match.get('id')
-            mt = 'tv' if media_type == 'tv' else 'movie'
-            ext_url = f"https://api.themoviedb.org/3/{mt}/{tmdb_id}/external_ids?api_key={tmdb_api_key}"
-            imdb_id = requests.get(ext_url, timeout=5).json().get('imdb_id')
-        except:
-            pass
-
-        
-        seasons_data = {}
-        try:
-            if category in ["Web Series", "Anime", "Adult"] and tmdb_id:
-                tv_details = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}?api_key={tmdb_api_key}", timeout=10).json()
-                for s in tv_details.get('seasons', []):
-                    s_num = str(s.get('season_number', ''))
-                    if s_num and str(s_num) != "0":
-                        s_air_date = str(s.get('air_date', ''))
-                        s_year = s_air_date[:4]
-                        s_poster = f"https://image.tmdb.org/t/p/original{s.get('poster_path')}" if s.get('poster_path') else None
-                        episode_count = s.get('episode_count', 0)
-                        episodes_info = {}
-                        try:
-                            season_url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{s_num}?api_key={tmdb_api_key}"
-                            season_details = requests.get(season_url, timeout=5).json()
-                            for ep in season_details.get('episodes', []):
-                                ep_num = str(ep.get('episode_number'))
-                                episodes_info[ep_num] = {'air_date': ep.get('air_date', '')}
-                        except Exception as ep_e:
-                            logger.error(f"Episode fetch error: {ep_e}")
-                        seasons_data[str(s_num)] = {
-                            "year": int(s_year) if s_year.isdigit() else 0,
-                            "poster": s_poster,
-                            "air_date": s_air_date,
-                            "episode_count": episode_count,
-                            "episodes": episodes_info
-                        }
-        except Exception as e:
-            logger.error(f"Seasons Fetch Error: {e}")
-            
-        logger.info(f"✅ TMDb Success: '{title}' ({year}) [{category}]")
-        return title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data
-
-    except Exception as e:
-        logger.error(f"Metadata Fetch Error: {e}")
+            if t_resp.get('results'):
+                best_match = _find_best_tmdb_match(t_resp['results'], search_query, search_year)
+                if not best_match: best_match = t_resp['results'][0]
+                genres = [g.get('name', '') for g in best_match.get('genres', [])] if best_match.get('genres') else []
+                return (
+                    best_match.get('title') or best_match.get('name') or search_query,
+                    int(str(best_match.get('release_date', best_match.get('first_air_date', '')))[:4] or 0),
+                    f"https://image.tmdb.org/t/p/original{best_match.get('poster_path')}" if best_match.get('poster_path') else None,
+                    ", ".join(genres) if genres else "Unknown", None, str(round(best_match.get('vote_average', 0), 1)) if best_match.get('vote_average') else 'N/A',
+                    best_match.get('overview', 'No story available.'), "Adult", {}
+                )
+        except: pass
         return None
 
-# ==================== AI INTENT ANALYSIS ====================
-# 👇👇👇 START COPY HERE 👇👇👇
-async def analyze_intent(message_text):
-    """
-    Bina AI (Gemini) ke message analyze karna.
-    Isse API limit waste nahi hogi!
-    """
-    try:
-        text_lower = message_text.lower().strip()
-        
-        # 1. Agar message bahut lamba hai ya usme Link hai, toh reject kar do
-        if len(text_lower) > 60 or "http" in text_lower or "t.me" in text_lower:
-            return {"is_request": False, "content_title": None}
+    results = []
+    if tmdb_api_key:
+        try:
+            if is_imdb_id:
+                t_resp = requests.get(f"https://api.themoviedb.org/3/find/{search_query}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
+                res = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
+                if res:
+                    res[0]['media_type'] = 'tv' if res[0] in t_resp.get('tv_results', []) else 'movie'
+                    results = res
+            else:
+                tmdb_url = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(clean_title)}"
+                if clean_year and str(clean_year).isdigit(): tmdb_url += f"&year={clean_year}"
+                results = [r for r in requests.get(tmdb_url, timeout=10).json().get('results', []) if r.get('media_type') in ('movie', 'tv')]
+        except Exception as e: logger.error(f"TMDb Primary Search Error: {e}")
 
-        # 2. Agar chota message hai, toh usko direct Movie ka naam maan lo
-        # Faltu words hatane ki koshish (Optional)
-        words_to_remove = ["please", "plz", "bhai", "movie", "series", "chahiye", "give", "me"]
-        clean_name = text_lower
-        for word in words_to_remove:
-            clean_name = clean_name.replace(word, "").strip()
-
-        if len(clean_name) < 2:
-            return {"is_request": False, "content_title": None}
-
-        return {"is_request": True, "content_title": message_text.strip()}
-
-    except Exception as e:
-        logger.error(f"Error in intent analysis: {e}")
-        return {"is_request": True, "content_title": message_text.strip()}
-# 👆👆👆 END COPY HERE 👆👆👆
-
-# ==================== NOTIFICATION FUNCTIONS ====================
-async def send_admin_notification(context, user, movie_title, group_info=None):
-    """Send notification to admin channel about a new request with Lifetime Buttons"""
-    if not REQUEST_CHANNEL_ID: return
-
-    try:
-        safe_movie_title = movie_title.replace('<', '&lt;').replace('>', '&gt;')
-        safe_username = user.username if user.username else 'N/A'
-        safe_first_name = (user.first_name or 'Unknown').replace('<', '&lt;').replace('>', '&gt;')
-
-        # 🌟 Premium Mention
-        if user.username:
-            user_display = f"<a href='https://t.me/{safe_username}'>{safe_first_name}</a>"
-        else:
-            user_display = f"<a href='tg://user?id={user.id}'>{safe_first_name}</a>"
-
-        message = f"<b>━━━━━ 🎬 𝗡𝗲𝘄 𝗥𝗲𝗾𝘂𝗲𝘀𝘁! ━━━━━</b>\n\n"
-        message += f"◈ Movie: <b>{safe_movie_title}</b>\n"
-        message += f"◈ User: {user_display}\n"
-        message += f"◈ ID: <code>{user.id}</code>\n"
-        message += f"◈ From: {'Group: '+str(group_info) if group_info else 'Private Message'}\n"
-        message += f"◈ Time: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}\n"
-        message += f"<b>━━━━━━━━━━━━━━━━━━━</b>"
-
-        # ⚡ LIFETIME BUTTONS LOGIC
-        # Telegram me button data limit 64 bytes hoti hai, isliye title chota kiya hai
-        short_title = safe_movie_title[:15].replace('_', ' ') 
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Movie Add Kar Di Gai Hai", callback_data=f"reqA_{user.id}_{short_title}")],
-            [InlineKeyboardButton("❌ Nahi Mili", callback_data=f"reqN_{user.id}_{short_title}")]
-        ])
-
-        await context.bot.send_message(
-            chat_id=REQUEST_CHANNEL_ID,
-            text=message,
-            parse_mode='HTML',
-            reply_markup=keyboard
-        )
-    except Exception as e:
-        logger.error(f"Error sending admin notification: {e}")
-
-async def notify_users_for_movie(context: ContextTypes.DEFAULT_TYPE, movie_title, movie_url_or_file_id):
-    logger.info(f"Attempting to notify users for movie: {movie_title}")
-    conn = None
-    cur = None
-    notified_count = 0
-
-    caption_text = (
-        f"🎬 <b>{movie_title}</b>\n\n"
-        "➖➖➖➖➖➖➖➖➖➖\n"
-        "🔹 <b>Please drop the movie name, and I'll find it for you as soon as possible. 🎬✨👇</b>\n"
-        "➖➖➖➖➖➖➖➖➖➖\n"
-        "🔹 <b>Support group:</b> https://t.me/+dxaCr_cMmGpkYTFl\n"
-    )
-    join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return 0
-
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT user_id, username, first_name FROM user_requests WHERE movie_title ILIKE %s AND notified = FALSE",
-            (f'%{movie_title}%',)
-        )
-        users_to_notify = cur.fetchall()
-
-        for user_id, username, first_name in users_to_notify:
-            try:
-                # 🌟 Premium Mention Format
-                safe_name = (first_name or username or 'there').replace('<', '&lt;').replace('>', '&gt;')
-                if username:
-                    user_display = f"<a href='https://t.me/{username}'>{safe_name}</a>"
-                else:
-                    user_display = f"<a href='tg://user?id={user_id}'>{safe_name}</a>"
-
-                # Optional heads-up text with premium mention
+        if results:
+            best_match = results[0] if is_imdb_id else _find_best_tmdb_match(results, clean_title, clean_year)
+            if best_match:
                 try:
-                    await safe_send(context.bot.send_message(
-                        chat_id=user_id,
-                        text=(
-                            f"<b>━━━━━ 🎉 𝗚𝗼𝗼𝗱 𝗡𝗲𝘄𝘀! ━━━━━</b>\n\n"
-                            f"✦ Hey {user_display}!\n\n"
-                            f"◈ आपकी requested movie '<b>{movie_title}</b>' अब उपलब्ध है! 🥳\n\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━</b>"
-                        ),
-                        parse_mode='HTML'
-                    ))
-                except Exception:
-                    pass
-
-                warning_msg = None
-                try:
-                    warning_msg = await safe_send(context.bot.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=int(DUMP_CHANNEL_ID),
-                        message_id=3384
-                    ))
-                except Exception:
-                    warning_msg = None
-
-                sent_msg = None
-
-                val = str(movie_url_or_file_id or "").strip()
-
-                # Telegram file_id heuristics (your existing logic)
-                is_file_id = any(val.startswith(prefix) for prefix in ["BQAC", "BAAC", "CAAC", "AQAC"])
-
-                if is_file_id:
-                    # try video then document
-                    try:
-                        sent_msg = await safe_send(context.bot.send_video(
-                            chat_id=user_id, video=val, caption=caption_text,
-                            parse_mode='HTML', reply_markup=join_keyboard
-                        ))
-                    except telegram.error.BadRequest:
-                        sent_msg = await safe_send(context.bot.send_document(
-                            chat_id=user_id, document=val, caption=caption_text,
-                            parse_mode='HTML', reply_markup=join_keyboard
-                        ))
-
-                elif val.startswith("https://t.me/c/"):
-                    parts = val.split('/')
-                    from_chat_id = int("-100" + parts[-2])
-                    msg_id = int(parts[-1])
-                    sent_msg = await safe_send(context.bot.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=from_chat_id,
-                        message_id=msg_id,
-                        caption=caption_text,
-                        parse_mode='HTML',
-                        reply_markup=join_keyboard
-                    ))
-
-                elif val.startswith("http"):
-                    sent_msg = await safe_send(context.bot.send_message(
-                        chat_id=user_id,
-                        text=f"{caption_text}\n\n<b>Link:</b> {val}",
-                        parse_mode='HTML',
-                        disable_web_page_preview=True,
-                        reply_markup=join_keyboard
-                    ))
-
-                else:
-                    # last fallback: try send as document
-                    sent_msg = await safe_send(context.bot.send_document(
-                        chat_id=user_id,
-                        document=val,
-                        caption=caption_text,
-                        parse_mode='HTML',
-                        reply_markup=join_keyboard
-                    ))
-
-                # Auto delete both after 60 seconds
-                ids = []
-                if sent_msg:
-                    ids.append(sent_msg.message_id)
-                if warning_msg:
-                    ids.append(warning_msg.message_id)
-                if ids:
-                    asyncio.create_task(delete_messages_after_delay(context, user_id, ids, 60))
-
-                cur.execute(
-                    "UPDATE user_requests SET notified = TRUE WHERE user_id = %s AND movie_title ILIKE %s",
-                    (user_id, f'%{movie_title}%')
-                )
-                conn.commit()
-                notified_count += 1
-
-                await asyncio.sleep(0.1)
-
-            except telegram.error.Forbidden:
-                logger.error(f"User {user_id} blocked the bot")
-                continue
-            except Exception as e:
-                logger.error(f"Error notifying user {user_id}: {e}", exc_info=True)
-                continue
-
-        return notified_count
-
-    except Exception as e:
-        logger.error(f"Error in notify_users_for_movie: {e}", exc_info=True)
-        return 0
-    finally:
-        if cur:
-            try: cur.close()
-            except Exception: pass
-        if conn:
-            close_db_connection(conn)
-
-async def notify_in_group(context: ContextTypes.DEFAULT_TYPE, movie_title):
-    """Notify users in group when a requested movie becomes available"""
-    logger.info(f"Attempting to notify users in group for movie: {movie_title}")
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return
-
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT user_id, username, first_name, group_id, message_id FROM user_requests WHERE movie_title ILIKE %s AND notified = FALSE",
-            (f'%{movie_title}%',)
-        )
-        users_to_notify = cur.fetchall()
-
-        if not users_to_notify:
-            return
-
-        groups_to_notify = defaultdict(list)
-        for user_id, username, first_name, group_id, message_id in users_to_notify:
-            if group_id:
-                groups_to_notify[group_id].append((user_id, username, first_name, message_id))
-
-        for group_id, users in groups_to_notify.items():
-            try:
-                notification_text = "<b>━━━━━ 🎉 𝗨𝗽𝗱𝗮𝘁𝗲! ━━━━━</b>\n\n✦ आपकी requested movie अब आ गई है! 🥳\n\n"
-                notified_users_ids = []
-                user_mentions = []
-                for user_id, username, first_name, message_id in users:
-                    name_to_show = first_name or username
-                    if username:
-                        mention = f"[{name_to_show}](https://t.me/{username})"
-                    else:
-                        mention = f"[{name_to_show}](tg://user?id={user_id})"
-                    user_mentions.append(mention)
-                    notified_users_ids.append(user_id)
-
-                notification_text += "◈ " + ", ".join(user_mentions)
-                notification_text += f"\n\n◈ आपकी फिल्म '{movie_title}' अब उपलब्ध है! इसे पाने के लिए, कृपया मुझे private में नाम भेजें...\n\n**━━━━━━━━━━━━━━━━━━━**"
-
-                await context.bot.send_message(
-                    chat_id=group_id,
-                    text=notification_text,
-                    parse_mode='Markdown'
-                )
-
-                for user_id in notified_users_ids:
-                    cur.execute(
-                        "UPDATE user_requests SET notified = TRUE WHERE user_id = %s AND movie_title ILIKE %s",
-                        (user_id, f'%{movie_title}%')
+                    media_type = best_match.get('media_type', 'movie')
+                    tmdb_id = best_match.get('id')
+                    det_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={tmdb_api_key}", timeout=5).json()
+                    genres = [g['name'] for g in det_resp.get('genres', [])]
+                    imdb_id = det_resp.get('imdb_id')
+                    if not imdb_id and media_type == 'tv':
+                        try: imdb_id = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids?api_key={tmdb_api_key}", timeout=5).json().get('imdb_id')
+                        except: pass
+                    cat = "Movies" if media_type == "movie" else "Web Series"
+                    s_data = _fetch_tmdb_series_details(tmdb_id, tmdb_api_key) if media_type == 'tv' else {}
+                    return (
+                        det_resp.get('title') or det_resp.get('name') or clean_title,
+                        int(str(det_resp.get('release_date', det_resp.get('first_air_date', '')))[:4] or 0),
+                        f"https://image.tmdb.org/t/p/original{det_resp.get('poster_path')}" if det_resp.get('poster_path') else None,
+                        ", ".join(genres) if genres else "Unknown", imdb_id,
+                        str(round(det_resp.get('vote_average', 0), 1)) if det_resp.get('vote_average') else 'N/A',
+                        det_resp.get('overview', 'No story available.'), cat, s_data
                     )
-                conn.commit()
+                except Exception as e: logger.error(f"TMDb Details Fetch Error: {e}")
 
-            except Exception as e:
-                logger.error(f"Failed to send message to group {group_id}: {e}")
-                continue
+    if omdb_api_key:
+        try:
+            url = f"https://www.omdbapi.com/?apikey={omdb_api_key}&plot=full&" + (f"i={search_query}" if is_imdb_id else f"t={quote(clean_title)}")
+            if not is_imdb_id and clean_year and str(clean_year).isdigit(): url += f"&y={clean_year}"
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("Response") == "True":
+                if not is_imdb_id:
+                    from fuzzywuzzy import fuzz
+                    score = fuzz.token_set_ratio(clean_title.lower(), resp.get('Title', '').lower())
+                    o_year = str(resp.get('Year', ''))[:4]
+                    if clean_year and str(clean_year).isdigit() and o_year.isdigit() and abs(int(clean_year) - int(o_year)) > 3: 
+                        logger.warning(f"OMDb year mismatch ({clean_year} vs {o_year}). REJECTING.")
+                        resp = {}
+                        
+                    if resp and clean_category:
+                        o_type = resp.get('Type', '').lower()
+                        cat_lower = clean_category.lower()
+                        if 'movie' in cat_lower and o_type != 'movie':
+                            logger.warning(f"OMDb type conflict. Expected movie, got {o_type}. REJECTING.")
+                            resp = {}
+                        elif ('series' in cat_lower or 'tv' in cat_lower or 'web' in cat_lower) and o_type != 'series':
+                            logger.warning(f"OMDb type conflict. Expected series, got {o_type}. REJECTING.")
+                            resp = {}
 
-    except Exception as e:
-        logger.error(f"Error in notify_in_group: {e}")
-    finally:
-        if cur: cur.close()
-        if conn: close_db_connection(conn)
+                    if resp and score < 55: resp = {}
+                
+                if resp.get("Response") == "True":
+                    poster_url, imdb_id, s_data = resp.get('Poster'), resp.get('imdbID'), {}
+                    if imdb_id and tmdb_api_key:
+                        try:
+                            t_resp = requests.get(f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
+                            if t_resp.get('tv_results'):
+                                s_data = _fetch_tmdb_series_details(t_resp['tv_results'][0].get('id'), tmdb_api_key)
+                                if t_resp['tv_results'][0].get('poster_path'): poster_url = f"https://image.tmdb.org/t/p/original{t_resp['tv_results'][0].get('poster_path')}"
+                            elif t_resp.get('movie_results') and t_resp['movie_results'][0].get('poster_path'):
+                                poster_url = f"https://image.tmdb.org/t/p/original{t_resp['movie_results'][0].get('poster_path')}"
+                        except: pass
+                    return (
+                        resp.get('Title'), int(resp.get('Year', '0').split('–')[0]) if resp.get('Year') else 0, None if poster_url == "N/A" else poster_url,
+                        resp.get('Genre', 'Unknown'), imdb_id, str(resp.get('imdbRating', 'N/A')), resp.get('Plot', 'No story available.'),
+                        "Web Series" if resp.get('Type', '').lower() == 'series' else "Movies", s_data
+                    )
+        except Exception as e: logger.error(f"OMDb Fallback Error: {e}")
 
-# ==================== NEW GENRE FUNCTIONS ====================
+    wm_data = fetch_watchmode_metadata(clean_title, clean_year, tmdb_api_key)
+    if wm_data: return wm_data
+
+    cat_lower = str(clean_category).lower()
+    if "anime" in cat_lower or "animation" in cat_lower:
+        anime_data = fetch_anilist_metadata(clean_title)
+        if anime_data: return anime_data
+        
+    if "series" in cat_lower or "tv" in cat_lower or "web" in cat_lower:
+        tv_data = fetch_tvmaze_metadata(clean_title, clean_year)
+        if tv_data: return tv_data
+
+    return None
+
+def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True):
+    return resolve_media_identity(query, search_year, search_lang, adult_mode, hint_category, already_reconciled, requested_season, use_cache)
 
 def get_all_genres_from_db():
     """Fetch all unique genres from database"""
@@ -8059,6 +7811,8 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         movie_lang,
         False,
         gemini_category,
+        bool(reconciled_data),
+        season_number
     )
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
@@ -9571,7 +9325,7 @@ async def fetch_adult_metadata_combo(
     try:
         tmdb_data = await run_async(fetch_movie_metadata, movie_name, movie_year, movie_lang, adult_mode=True)
         if tmdb_data:
-            t_title, t_year, t_poster, t_genre, t_imdb, t_rating, t_plot, t_cat = tmdb_data
+            t_title, t_year, t_poster, t_genre, t_imdb, t_rating, t_plot, t_cat, t_seasons = tmdb_data
 
             # Year mismatch check
             year_ok = True
@@ -9600,7 +9354,7 @@ async def fetch_adult_metadata_combo(
                 elif t_imdb:
                     # IMDB ID se TMDB poster
                     try:
-                        tmdb_api_key = "9fa44f5e9fbd41415df930ce5b81c4d7"
+                        tmdb_api_key = os.environ.get("TMDB_API_KEY")
                         find_url = f"https://api.themoviedb.org/3/find/{t_imdb}?api_key={tmdb_api_key}&external_source=imdb_id"
                         find_resp = await run_async(requests.get, find_url, timeout=8)
                         find_data = find_resp.json()
@@ -9615,7 +9369,7 @@ async def fetch_adult_metadata_combo(
                 else:
                     # Title se TMDB poster search
                     try:
-                        tmdb_api_key = "9fa44f5e9fbd41415df930ce5b81c4d7"
+                        tmdb_api_key = os.environ.get("TMDB_API_KEY")
                         search_url = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(result['title'])}&include_adult=true"
                         search_resp = await run_async(requests.get, search_url, timeout=8)
                         search_data = search_resp.json()
@@ -10425,7 +10179,7 @@ async def admin_post_18(update: Update, context: ContextTypes.DEFAULT_TYPE):
         imdb_poster = None
 
         if metadata:
-            m_title, m_year, m_poster, m_genre, m_imdb, m_rating, m_plot, m_cat = metadata
+            m_title, m_year, m_poster, m_genre, m_imdb, m_rating, m_plot, m_cat, m_seasons = metadata
             if m_title and m_title != "N/A": display_title = f"<b>{get_safe_font(m_title)}</b>"
             if m_year and str(m_year) != "0": year_str = str(m_year)
             if m_genre and m_genre != "N/A": genre_str = m_genre
@@ -11884,7 +11638,7 @@ async def fix_missing_metadata(update: Update, context: ContextTypes.DEFAULT_TYP
                     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
                 # ✅ FETCH CORRECT METADATA (6 Values)
-                metadata = fetch_movie_metadata(title)
+                metadata = fetch_movie_metadata(title, use_cache=False)
                 if metadata:
                     new_title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
 
@@ -12312,7 +12066,7 @@ flask_app = Flask(__name__)
 CORS(flask_app, resources={r"/*": {"origins": "*"}})
 
 # --- TMDB API Key (for fetching trailers & cast) ---
-TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "9fa44f5e9fbd41415df930ce5b81c4d7")
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY")
 # ==================== DATABASE HELPERS (use existing functions) ====================
 # Make sure these functions are already defined in your main code:
 # get_db_connection(), close_db_connection(), store_user_request()
