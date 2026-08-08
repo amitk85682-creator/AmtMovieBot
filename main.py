@@ -2826,77 +2826,335 @@ def get_movies_from_db(user_query, limit=10):
     search_cache.set(cache_key, result)
     return result
 
+def _ffb_normalize_search_text(value):
+    """
+    Search normalization:
+    Spider-Man == spider man == spider.man == SPIDER_MAN
+    """
+    text = str(value or "").casefold()
+
+    # Har punctuation/separator ko space bana do
+    text = re.sub(r'[\W_]+', ' ', text, flags=re.UNICODE)
+
+    # Extra spaces clean
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _ffb_compact_search_text(value):
+    """
+    Compact identity version:
+    Spider-Man -> spiderman
+    spider man -> spiderman
+    spider.man -> spiderman
+    """
+    normalized = _ffb_normalize_search_text(value)
+    return ''.join(ch for ch in normalized if ch.isalnum())
+
+
+def _ffb_search_score(query_text, candidate_text):
+    """
+    Title/alias ko rank karta hai.
+
+    Structural match fuzzy match se hamesha upar rahega.
+    """
+    query_space = _ffb_normalize_search_text(query_text)
+    candidate_space = _ffb_normalize_search_text(candidate_text)
+
+    query_compact = _ffb_compact_search_text(query_text)
+    candidate_compact = _ffb_compact_search_text(candidate_text)
+
+    if not query_compact or not candidate_compact:
+        return 0.0
+
+    # 1. Perfect punctuation-insensitive match
+    # spiderman == Spider-Man
+    if candidate_compact == query_compact:
+        return 1000.0
+
+    # 2. Candidate query se start hota hai
+    # spiderman -> Spider-Man: Brand New Day
+    if candidate_compact.startswith(query_compact):
+        extra_length = len(candidate_compact) - len(query_compact)
+        return 950.0 - min(extra_length, 100) * 0.05
+
+    # 3. Query candidate ke andar exact compact form me hai
+    # spiderman -> Ultimate Spider Man
+    position = candidate_compact.find(query_compact)
+    if position >= 0:
+        return 900.0 - min(position, 100) * 0.1
+
+    # 4. Normal word-level match
+    query_tokens = query_space.split()
+    candidate_tokens = set(candidate_space.split())
+
+    if query_tokens and all(token in candidate_tokens for token in query_tokens):
+        return 870.0
+
+    # 5. Real spelling mistakes ke liye fuzzy fallback
+    compact_ratio = fuzz.ratio(query_compact, candidate_compact)
+    token_ratio = fuzz.token_set_ratio(query_space, candidate_space)
+    partial_ratio = fuzz.partial_ratio(query_compact, candidate_compact)
+
+    fuzzy_score = max(
+        compact_ratio,
+        token_ratio,
+        partial_ratio * 0.92
+    )
+
+    # Superman jaisi false matches ko control karo.
+    #
+    # Example:
+    # spiderman ≠ superman
+    #
+    # Lekin small typo:
+    # spidermen ≈ spiderman
+    # abhi bhi pass ho sakta hai.
+    if len(query_compact) >= 5 and len(candidate_compact) >= 5:
+        if query_compact[:2] != candidate_compact[:2] and fuzzy_score < 88:
+            return 0.0
+
+    return float(fuzzy_score)
+
+
 def _get_movies_from_db_nocache(user_query, limit=10):
-    """Search for MULTIPLE movies in database with fuzzy matching"""
+    """
+    FlimfyBox Smart Search v2
+
+    Handles:
+      spiderman
+      spider man
+      spider-man
+      spider.man
+      Spider_Man
+
+    as the same search intent.
+
+    Searches both:
+      - official movie title
+      - movie_aliases
+
+    Returns same 8-column movie tuple expected by existing bot.
+    """
     conn = None
+    cur = None
+
     try:
+        raw_query = str(user_query or "").strip()
+
+        if not raw_query:
+            return []
+
+        # ---------------------------------------------------------
+        # YEAR ALAG KARO
+        # "Spider Man 2026" -> title query "Spider Man", year 2026
+        # ---------------------------------------------------------
+        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', raw_query)
+
+        requested_year = None
+
+        if year_match:
+            try:
+                requested_year = int(year_match.group(1))
+            except (TypeError, ValueError):
+                requested_year = None
+
+        title_query = re.sub(
+            r'\b(?:19\d{2}|20\d{2})\b',
+            ' ',
+            raw_query
+        )
+
+        title_query = re.sub(r'\s+', ' ', title_query).strip()
+
+        # Agar query sirf year thi etc., original query use karo
+        if not _ffb_compact_search_text(title_query):
+            title_query = raw_query
+
+        logger.info(
+            "🔎 Smart Search: raw=%r | title=%r | year=%r | compact=%r",
+            raw_query,
+            title_query,
+            requested_year,
+            _ffb_compact_search_text(title_query)
+        )
+
         conn = get_db_connection()
+
         if not conn:
             return []
 
         cur = conn.cursor()
 
-        logger.info(f"Searching for: '{user_query}'")
-
-        # ✅ Updated to include new columns
-        cur.execute(
-            """SELECT id, title, url, file_id, imdb_id, poster_url, year, genre 
-               FROM movies WHERE LOWER(title) LIKE LOWER(%s) ORDER BY title LIMIT %s""",
-            (f'%{user_query}%', limit)
-        )
-        exact_matches = cur.fetchall()
-
-        if exact_matches:
-            logger.info(f"Found {len(exact_matches)} exact matches")
-            cur.close()
-            close_db_connection(conn)
-            return exact_matches
-
+        # ---------------------------------------------------------
+        # SAARI MOVIES
+        # Existing bot jis exact tuple format ko expect karta hai,
+        # wahi preserve kar rahe hain.
+        # ---------------------------------------------------------
         cur.execute("""
-            SELECT DISTINCT m.id, m.title, m.url, m.file_id, m.imdb_id, m.poster_url, m.year, m.genre
-            FROM movies m
-            JOIN movie_aliases ma ON m.id = ma.movie_id
-            WHERE LOWER(ma.alias) LIKE LOWER(%s)
-            ORDER BY m.title
-            LIMIT %s
-        """, (f'%{user_query}%', limit))
-        alias_matches = cur.fetchall()
+            SELECT
+                id,
+                title,
+                url,
+                file_id,
+                imdb_id,
+                poster_url,
+                year,
+                genre
+            FROM movies
+        """)
 
-        if alias_matches:
-            logger.info(f"Found {len(alias_matches)} alias matches")
-            cur.close()
-            close_db_connection(conn)
-            return alias_matches
-
-        cur.execute("SELECT id, title, url, file_id, imdb_id, poster_url, year, genre FROM movies")
-        all_movies = cur.fetchall()
+        all_movies = cur.fetchall() or []
 
         if not all_movies:
-            cur.close()
-            close_db_connection(conn)
             return []
 
-        movie_titles = [movie[1] for movie in all_movies]
-        movie_dict = {movie[1]: movie for movie in all_movies}
+        # ---------------------------------------------------------
+        # SAARE ALIASES EK BAAR ME
+        # ---------------------------------------------------------
+        alias_map = {}
 
-        matches = process.extract(user_query, movie_titles, scorer=fuzz.token_sort_ratio, limit=limit)
+        try:
+            cur.execute("""
+                SELECT movie_id, alias
+                FROM movie_aliases
+                WHERE alias IS NOT NULL
+            """)
 
-        filtered_movies = [movie_dict[title] for title, score, index in matches if score >= 65]
+            for movie_id, alias in cur.fetchall() or []:
+                if not alias:
+                    continue
 
-        logger.info(f"Found {len(filtered_movies)} fuzzy matches")
+                alias_map.setdefault(movie_id, []).append(str(alias))
 
-        cur.close()
-        close_db_connection(conn)
-        return filtered_movies[:limit]
+        except Exception as alias_error:
+            # Alias table issue search ko crash nahi karega
+            logger.warning(
+                "⚠️ Alias search unavailable: %s",
+                alias_error
+            )
+
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+            alias_map = {}
+
+        # ---------------------------------------------------------
+        # RANK EACH MOVIE
+        # ---------------------------------------------------------
+        ranked = []
+
+        for movie in all_movies:
+
+            movie_id = movie[0]
+            movie_title = movie[1] or ""
+            movie_year = movie[6]
+
+            # Official title score
+            title_score = _ffb_search_score(
+                title_query,
+                movie_title
+            )
+
+            best_score = title_score
+            matched_source = "title"
+
+            # Alias score
+            for alias in alias_map.get(movie_id, []):
+
+                alias_score = _ffb_search_score(
+                    title_query,
+                    alias
+                )
+
+                # Official title ko tiny tie advantage
+                alias_score -= 5.0
+
+                if alias_score > best_score:
+                    best_score = alias_score
+                    matched_source = "alias"
+
+            # -----------------------------------------------------
+            # YEAR BOOST
+            # -----------------------------------------------------
+            if requested_year:
+
+                try:
+                    db_year = int(movie_year or 0)
+                except (TypeError, ValueError):
+                    db_year = 0
+
+                if db_year == requested_year:
+                    best_score += 50.0
+
+                elif db_year and abs(db_year - requested_year) > 1:
+                    best_score -= 25.0
+
+            # Structural matches 850-1000 range me hain.
+            # Fuzzy typos ko ~68+ se allow karte hain.
+            if best_score >= 68:
+
+                ranked.append(
+                    (
+                        best_score,
+                        str(movie_title).casefold(),
+                        movie,
+                        matched_source
+                    )
+                )
+
+        # Highest score first
+        ranked.sort(
+            key=lambda item: (
+                -item[0],
+                item[1]
+            )
+        )
+
+        results = [
+            item[2]
+            for item in ranked[:int(limit or 10)]
+        ]
+
+        logger.info(
+            "✅ Smart Search found %s result(s) for %r: %s",
+            len(results),
+            raw_query,
+            [
+                (
+                    item[2][1],
+                    round(item[0], 2),
+                    item[3]
+                )
+                for item in ranked[:int(limit or 10)]
+            ]
+        )
+
+        return results
 
     except Exception as e:
-        logger.error(f"Database query error: {e}")
+
+        logger.error(
+            "❌ Smart Search Database Error: %s",
+            e,
+            exc_info=True
+        )
+
         return []
+
     finally:
+
+        if cur:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
         if conn:
             try:
                 close_db_connection(conn)
-            except:
+            except Exception:
                 pass
 
 
