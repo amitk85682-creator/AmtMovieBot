@@ -3401,6 +3401,15 @@ import os
 
 logger = logging.getLogger(__name__)
 
+import json
+import logging
+import requests
+import re
+from urllib.parse import quote
+import os
+
+logger = logging.getLogger(__name__)
+
 def clean_probable_identity(query: str, year: str, category_hint: str):
     import google.generativeai as genai
     gemini_key = os.environ.get('GEMINI_API_KEY')
@@ -3541,7 +3550,7 @@ def fetch_anilist_metadata(query: str):
     except Exception as e: logger.error(f"AniList Error: {e}")
     return None
 
-def resolve_media_identity(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True):
+def resolve_media_identity(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True, local_title: str = ""):
     search_query = query.strip()
     is_imdb_id = bool(re.match(r'^tt\d{7,8}$', search_query))
     clean_title, clean_year, clean_category, seasons_data = search_query, search_year, hint_category, {}
@@ -3602,88 +3611,133 @@ def resolve_media_identity(query: str, search_year: str = "", search_lang: str =
         except: pass
         return None
 
-    results = []
-    if tmdb_api_key:
-        try:
-            if is_imdb_id:
-                t_resp = requests.get(f"https://api.themoviedb.org/3/find/{search_query}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
-                res = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
-                if res:
-                    res[0]['media_type'] = 'tv' if res[0] in t_resp.get('tv_results', []) else 'movie'
-                    results = res
-            else:
-                tmdb_url = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(clean_title)}"
-                if clean_year and str(clean_year).isdigit(): tmdb_url += f"&year={clean_year}"
-                results = [r for r in requests.get(tmdb_url, timeout=10).json().get('results', []) if r.get('media_type') in ('movie', 'tv')]
-        except Exception as e: logger.error(f"TMDb Primary Search Error: {e}")
+    parent_title_candidate = None
+    if local_title and not is_imdb_id and requested_season is not None:
+        local_clean = local_title.strip()
+        if len(local_clean) >= 3 and local_clean.lower() in clean_title.lower() and local_clean.lower() != clean_title.lower():
+            parent_title_candidate = local_clean
+            logger.info(f"🛡️ Preserving local parent title '{parent_title_candidate}' over Gemini subtitle bloat.")
 
-        if results:
-            best_match = results[0] if is_imdb_id else _find_best_tmdb_match(results, clean_title, clean_year)
-            if best_match:
-                try:
-                    media_type = best_match.get('media_type', 'movie')
-                    tmdb_id = best_match.get('id')
-                    det_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={tmdb_api_key}", timeout=5).json()
-                    genres = [g['name'] for g in det_resp.get('genres', [])]
-                    imdb_id = det_resp.get('imdb_id')
-                    if not imdb_id and media_type == 'tv':
-                        try: imdb_id = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids?api_key={tmdb_api_key}", timeout=5).json().get('imdb_id')
-                        except: pass
-                    cat = "Movies" if media_type == "movie" else "Web Series"
-                    s_data = _fetch_tmdb_series_details(tmdb_id, tmdb_api_key) if media_type == 'tv' else {}
-                    return (
-                        det_resp.get('title') or det_resp.get('name') or clean_title,
-                        int(str(det_resp.get('release_date', det_resp.get('first_air_date', '')))[:4] or 0),
-                        f"https://image.tmdb.org/t/p/original{det_resp.get('poster_path')}" if det_resp.get('poster_path') else None,
-                        ", ".join(genres) if genres else "Unknown", imdb_id,
-                        str(round(det_resp.get('vote_average', 0), 1)) if det_resp.get('vote_average') else 'N/A',
-                        det_resp.get('overview', 'No story available.'), cat, s_data
-                    )
-                except Exception as e: logger.error(f"TMDb Details Fetch Error: {e}")
+    queries_to_try = []
+    if parent_title_candidate:
+        queries_to_try.append(parent_title_candidate)
+    if not is_imdb_id:
+        queries_to_try.append(clean_title)
+    else:
+        queries_to_try.append(search_query)
 
+    # ━━━ STEP 1: RESTORED OMDb PRIMARY SEARCH ━━━
     if omdb_api_key:
-        try:
-            url = f"https://www.omdbapi.com/?apikey={omdb_api_key}&plot=full&" + (f"i={search_query}" if is_imdb_id else f"t={quote(clean_title)}")
-            if not is_imdb_id and clean_year and str(clean_year).isdigit(): url += f"&y={clean_year}"
-            resp = requests.get(url, timeout=10).json()
-            if resp.get("Response") == "True":
-                if not is_imdb_id:
-                    from fuzzywuzzy import fuzz
-                    score = fuzz.token_set_ratio(clean_title.lower(), resp.get('Title', '').lower())
-                    o_year = str(resp.get('Year', ''))[:4]
-                    if clean_year and str(clean_year).isdigit() and o_year.isdigit() and abs(int(clean_year) - int(o_year)) > 3: 
-                        logger.warning(f"OMDb year mismatch ({clean_year} vs {o_year}). REJECTING.")
-                        resp = {}
-                        
-                    if resp and clean_category:
-                        o_type = resp.get('Type', '').lower()
-                        cat_lower = clean_category.lower()
-                        if 'movie' in cat_lower and o_type != 'movie':
-                            logger.warning(f"OMDb type conflict. Expected movie, got {o_type}. REJECTING.")
-                            resp = {}
-                        elif ('series' in cat_lower or 'tv' in cat_lower or 'web' in cat_lower) and o_type != 'series':
-                            logger.warning(f"OMDb type conflict. Expected series, got {o_type}. REJECTING.")
-                            resp = {}
-
-                    if resp and score < 55: resp = {}
+        for try_title in queries_to_try:
+            try:
+                url_no_type = f"https://www.omdbapi.com/?apikey={omdb_api_key}&plot=full&" + (f"i={try_title}" if is_imdb_id else f"t={quote(try_title)}")
+                if not is_imdb_id and clean_year and str(clean_year).isdigit(): url_no_type += f"&y={clean_year}"
+                
+                resp = requests.get(url_no_type, timeout=10).json()
+                
+                if resp.get("Response") != "True" and not is_imdb_id:
+                    is_series = "series" in clean_category.lower() if clean_category else False
+                    if is_series:
+                        url_with_type = f"https://www.omdbapi.com/?apikey={omdb_api_key}&plot=full&type=series&t={quote(try_title)}"
+                        if clean_year and str(clean_year).isdigit(): url_with_type += f"&y={clean_year}"
+                        resp2 = requests.get(url_with_type, timeout=10).json()
+                        if resp2.get("Response") == "True": resp = resp2
                 
                 if resp.get("Response") == "True":
-                    poster_url, imdb_id, s_data = resp.get('Poster'), resp.get('imdbID'), {}
-                    if imdb_id and tmdb_api_key:
-                        try:
-                            t_resp = requests.get(f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
-                            if t_resp.get('tv_results'):
-                                s_data = _fetch_tmdb_series_details(t_resp['tv_results'][0].get('id'), tmdb_api_key)
-                                if t_resp['tv_results'][0].get('poster_path'): poster_url = f"https://image.tmdb.org/t/p/original{t_resp['tv_results'][0].get('poster_path')}"
-                            elif t_resp.get('movie_results') and t_resp['movie_results'][0].get('poster_path'):
-                                poster_url = f"https://image.tmdb.org/t/p/original{t_resp['movie_results'][0].get('poster_path')}"
-                        except: pass
-                    return (
-                        resp.get('Title'), int(resp.get('Year', '0').split('–')[0]) if resp.get('Year') else 0, None if poster_url == "N/A" else poster_url,
-                        resp.get('Genre', 'Unknown'), imdb_id, str(resp.get('imdbRating', 'N/A')), resp.get('Plot', 'No story available.'),
-                        "Web Series" if resp.get('Type', '').lower() == 'series' else "Movies", s_data
-                    )
-        except Exception as e: logger.error(f"OMDb Fallback Error: {e}")
+                    if not is_imdb_id:
+                        from fuzzywuzzy import fuzz
+                        score = fuzz.token_set_ratio(try_title.lower(), resp.get('Title', '').lower())
+                        o_year = str(resp.get('Year', ''))[:4]
+                        if clean_year and str(clean_year).isdigit() and o_year.isdigit() and abs(int(clean_year) - int(o_year)) > 3: 
+                            logger.warning(f"OMDb year mismatch ({clean_year} vs {o_year}). REJECTING.")
+                            resp = {}
+                            
+                        if resp and clean_category:
+                            o_type = resp.get('Type', '').lower()
+                            cat_lower = clean_category.lower()
+                            if 'movie' in cat_lower and o_type != 'movie':
+                                logger.warning(f"OMDb type conflict. Expected movie, got {o_type}. REJECTING.")
+                                resp = {}
+                            elif ('series' in cat_lower or 'tv' in cat_lower or 'web' in cat_lower) and o_type != 'series':
+                                logger.warning(f"OMDb type conflict. Expected series, got {o_type}. REJECTING.")
+                                resp = {}
+
+                        if resp and score < 55: resp = {}
+                    
+                    if resp.get("Response") == "True":
+                        poster_url, imdb_id, s_data = resp.get('Poster'), resp.get('imdbID'), {}
+                        category = "Web Series" if resp.get('Type', '').lower() == 'series' else "Movies"
+                        
+                        if imdb_id and tmdb_api_key:
+                            try:
+                                t_resp = requests.get(f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
+                                if category == "Web Series" and t_resp.get('tv_results'):
+                                    tmdb_id = t_resp['tv_results'][0].get('id')
+                                    s_data = _fetch_tmdb_series_details(tmdb_id, tmdb_api_key)
+                                    if t_resp['tv_results'][0].get('poster_path'): 
+                                        poster_url = f"https://image.tmdb.org/t/p/original{t_resp['tv_results'][0].get('poster_path')}"
+                                elif t_resp.get('movie_results') and t_resp['movie_results'][0].get('poster_path'):
+                                    poster_url = f"https://image.tmdb.org/t/p/original{t_resp['movie_results'][0].get('poster_path')}"
+                            except: pass
+                            
+                        if category == "Web Series" and requested_season is not None:
+                            if str(requested_season) not in s_data:
+                                logger.warning(f"OMDb match '{resp.get('Title')}' missing requested season {requested_season}. REJECTING.")
+                                resp = {}
+                                continue
+
+                        if poster_url == "N/A": poster_url = None
+                        return (
+                            resp.get('Title'), int(resp.get('Year', '0').split('–')[0]) if resp.get('Year') else 0, poster_url,
+                            resp.get('Genre', 'Unknown'), imdb_id, str(resp.get('imdbRating', 'N/A')), resp.get('Plot', 'No story available.'),
+                            category, s_data
+                        )
+            except Exception as e: logger.error(f"OMDb Error: {e}")
+
+    # ━━━ STEP 2: RESTORED TMDb SMART FALLBACK ━━━
+    if tmdb_api_key:
+        for try_title in queries_to_try:
+            try:
+                results = []
+                if is_imdb_id:
+                    t_resp = requests.get(f"https://api.themoviedb.org/3/find/{try_title}?api_key={tmdb_api_key}&external_source=imdb_id", timeout=10).json()
+                    res = t_resp.get('movie_results', []) + t_resp.get('tv_results', [])
+                    if res:
+                        res[0]['media_type'] = 'tv' if res[0] in t_resp.get('tv_results', []) else 'movie'
+                        results = res
+                else:
+                    tmdb_url = f"https://api.themoviedb.org/3/search/multi?api_key={tmdb_api_key}&query={quote(try_title)}"
+                    if clean_year and str(clean_year).isdigit(): tmdb_url += f"&year={clean_year}"
+                    results = [r for r in requests.get(tmdb_url, timeout=10).json().get('results', []) if r.get('media_type') in ('movie', 'tv')]
+                    
+                if results:
+                    best_match = results[0] if is_imdb_id else _find_best_tmdb_match(results, try_title, clean_year)
+                    if best_match:
+                        media_type = best_match.get('media_type', 'movie')
+                        tmdb_id = best_match.get('id')
+                        det_resp = requests.get(f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={tmdb_api_key}", timeout=5).json()
+                        genres = [g['name'] for g in det_resp.get('genres', [])]
+                        imdb_id = det_resp.get('imdb_id')
+                        if not imdb_id and media_type == 'tv':
+                            try: imdb_id = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids?api_key={tmdb_api_key}", timeout=5).json().get('imdb_id')
+                            except: pass
+                        cat = "Movies" if media_type == "movie" else "Web Series"
+                        s_data = _fetch_tmdb_series_details(tmdb_id, tmdb_api_key) if media_type == 'tv' else {}
+                        
+                        if cat == "Web Series" and requested_season is not None:
+                            if str(requested_season) not in s_data:
+                                logger.warning(f"TMDb match '{det_resp.get('name')}' missing requested season {requested_season}. REJECTING.")
+                                continue
+
+                        return (
+                            det_resp.get('title') or det_resp.get('name') or try_title,
+                            int(str(det_resp.get('release_date', det_resp.get('first_air_date', '')))[:4] or 0),
+                            f"https://image.tmdb.org/t/p/original{det_resp.get('poster_path')}" if det_resp.get('poster_path') else None,
+                            ", ".join(genres) if genres else "Unknown", imdb_id,
+                            str(round(det_resp.get('vote_average', 0), 1)) if det_resp.get('vote_average') else 'N/A',
+                            det_resp.get('overview', 'No story available.'), cat, s_data
+                        )
+            except Exception as e: logger.error(f"TMDb Fallback Error: {e}")
 
     wm_data = fetch_watchmode_metadata(clean_title, clean_year, tmdb_api_key)
     if wm_data: return wm_data
@@ -3699,8 +3753,8 @@ def resolve_media_identity(query: str, search_year: str = "", search_lang: str =
 
     return None
 
-def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True):
-    return resolve_media_identity(query, search_year, search_lang, adult_mode, hint_category, already_reconciled, requested_season, use_cache)
+def fetch_movie_metadata(query: str, search_year: str = "", search_lang: str = "", adult_mode: bool = False, hint_category: str = "", already_reconciled: bool = False, requested_season: int = None, use_cache: bool = True, local_title: str = ""):
+    return resolve_media_identity(query, search_year, search_lang, adult_mode, hint_category, already_reconciled, requested_season, use_cache, local_title)
 
 def get_all_genres_from_db():
     """Fetch all unique genres from database"""
@@ -7473,10 +7527,12 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename_raw=representative.get('file_name', ''),
             )
 
+            local_title = representative.get('caption_evidence', {}).get('title') or representative.get('filename_evidence', {}).get('title') or ""
             result_dict = await _core_movie_processor(
                 representative.get('caption') or representative.get('file_name') or display_name,
                 image_bytes,
                 reconciled_data=reconciled_data,
+                local_title=local_title
             )
 
             if not result_dict:
@@ -7758,7 +7814,7 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #         → DB INSERT  (pm_file_listener wala COMPLETE ON CONFLICT logic)
 #         → Returns dict with movie_id aur saari details
 # ==============================================================================
-async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconciled_data: dict = None) -> dict:
+async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconciled_data: dict = None, local_title: str = "") -> dict:
     """
     Ek jagah se sab kuch. Returns movie dict ya None agar fail ho.
     """
@@ -7812,7 +7868,9 @@ async def _core_movie_processor(raw_text: str, image_bytes: bytes = None, reconc
         False,
         gemini_category,
         bool(reconciled_data),
-        season_number
+        season_number,
+        True,
+        local_title
     )
     if metadata:
         title, year, poster_url, genre, imdb_id, rating, plot, category, seasons_data = metadata
