@@ -427,8 +427,7 @@ SUPER_BATCH_SESSION = {'active': False, 'admin_id': None, 'files': []}
 # Fail-closed design: Superbatch files DB mein save hongi, lekin Telegram channel
 # par tab tak auto-post nahi hoga jab tak editorial Brain ka action layer ready na ho.
 ACTIVEPIECES_BRAIN_WEBHOOK_URL = os.environ.get('ACTIVEPIECES_BRAIN_WEBHOOK_URL', '').strip()
-SUPERBATCH_BRAIN_HOLD = os.environ.get('SUPERBATCH_BRAIN_HOLD', 'true').strip().lower() in {'1', 'true', 'yes', 'on'}
-
+SUPERBATCH_BRAIN_HOLD = False
 # ==================== SUPERBATCH POST CARDS ====================
 # Per-card independent posting state for superbatch items.
 # Each card has a short unique ID and its own status lifecycle.
@@ -8667,51 +8666,197 @@ async def superbatch_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 continue
             
-            # --- SEND AUTO/MANUAL POST BUTTONS (Legacy mode, BRAIN_HOLD=False) ---
-            _cleanup_old_sb_cards()
-            card_id = _create_sb_card_id()
-            card = {
-                'card_id': card_id,
-                'batch_id': batch_id,
-                'movie_id': movie_id,
-                'title': title,
-                'season_number': season_number,
-                'saved_count': len(saved_labels),
-                'poster_url': poster_url,
-                'year': str(year) if year else '',
-                'genre': genre or '',
-                'rating': rating or '',
-                'category': category or '',
-                'content_type': 'Movie', # default fallback if not computed here
-                'event_key': '',
-                'imdb_id': imdb_id,
-                'status': 'READY',
-                'control_chat_id': None,
-                'control_message_id': None,
-                'created_at': time.time(),
-            }
-            
-            season_line = f"📺 Season {season_number}\n" if season_number else ""
-            report = (
-                f"🎬 Superbatch Post Ready\n\n"
-                f"📌 {title}\n"
-                f"{season_line}"
-                f"📁 {len(saved_labels)} files saved\n"
+            # ==========================================================
+            # 🚀 SUPERBATCH DIRECT AUTO-POST
+            # Activepieces/button click ki zaroorat nahi.
+            # Files save hote hi movie automatically channel me post hogi.
+            # ==========================================================
+
+            # 7 din duplicate protection
+            if is_movie_posted_recently(movie_id, days=7):
+                logger.info(
+                    "⏭️ Superbatch auto-post skipped: '%s' "
+                    "already posted within 7 days.",
+                    title
+                )
+
+                success_movies += 1
+                continue
+
+            # Category ke hisaab se target channel
+            target_channels = _sb_resolve_target_channels(category)
+
+            if not target_channels:
+                logger.error(
+                    "❌ Superbatch Auto-Post: No target channels for '%s'",
+                    title
+                )
+                continue
+
+            # ----------------------------------------------------------
+            # POSTER
+            # ----------------------------------------------------------
+            raw_photo = (
+                poster_url
+                if poster_url
+                and poster_url != 'N/A'
+                and str(poster_url).startswith('http')
+                else None
             )
 
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🤖 Auto Post", callback_data=f"sb_auto_{card_id}")],
-                [InlineKeyboardButton("🖼 Manual Post", callback_data=f"sb_manual_{card_id}")]
-            ])
+            # TMDB poster nahi mila to uploaded file thumbnail try karo
+            if not raw_photo:
+                thumb_id = representative.get('thumb_id')
 
-            sent_card = await update.message.reply_text(report, parse_mode='Markdown', reply_markup=keyboard)
-            card['control_chat_id'] = sent_card.chat_id
-            card['control_message_id'] = sent_card.message_id
-            SUPERBATCH_POST_CARDS[card_id] = card
-            
-            success_movies += 1
-            movies_posted_list.append(title)
-            await asyncio.sleep(0.5)
+                if thumb_id:
+                    try:
+                        tg_file = await context.bot.get_file(thumb_id)
+                        raw_photo = bytes(
+                            await tg_file.download_as_bytearray()
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Superbatch thumbnail fallback failed "
+                            "for '%s': %s",
+                            title,
+                            exc
+                        )
+
+            # Poster process karo
+            try:
+                if raw_photo:
+                    photo_to_send = await make_landscape_poster(
+                        raw_photo
+                    )
+                else:
+                    photo_to_send = DEFAULT_POSTER
+            except Exception as exc:
+                logger.warning(
+                    "Landscape poster failed for '%s': %s",
+                    title,
+                    exc
+                )
+                photo_to_send = raw_photo or DEFAULT_POSTER
+
+            # ----------------------------------------------------------
+            # CAPTION + DOWNLOAD BUTTONS
+            # Existing tested helper reuse kar rahe hain
+            # ----------------------------------------------------------
+            caption_result = await _sb_build_post_caption_and_keyboard(
+                movie_id,
+                title,
+                genre,
+                movie_lang,
+                context
+            )
+
+            channel_caption, post_keyboard = caption_result
+
+            if not channel_caption:
+                logger.error(
+                    "❌ Superbatch caption build failed for '%s'",
+                    title
+                )
+                continue
+
+            # ----------------------------------------------------------
+            # SEND TO CHANNELS
+            # ----------------------------------------------------------
+            sent_count = 0
+            telegram_photo_id = None
+
+            for chat_id_str in target_channels:
+                try:
+                    chat_id = int(chat_id_str)
+
+                    # First channel ke baad Telegram file_id reuse
+                    if telegram_photo_id:
+                        sent_msg = await context.bot.send_photo(
+                            chat_id=chat_id,
+                            photo=telegram_photo_id,
+                            caption=channel_caption,
+                            parse_mode='HTML',
+                            reply_markup=post_keyboard
+                        )
+
+                    else:
+                        if hasattr(photo_to_send, 'seek'):
+                            photo_to_send.seek(0)
+
+                        sent_msg = await context.bot.send_photo(
+                            chat_id=chat_id,
+                            photo=photo_to_send,
+                            caption=channel_caption,
+                            parse_mode='HTML',
+                            reply_markup=post_keyboard
+                        )
+
+                        if sent_msg and sent_msg.photo:
+                            telegram_photo_id = (
+                                sent_msg.photo[-1].file_id
+                            )
+
+                    if sent_msg:
+                        sent_count += 1
+
+                        try:
+                            save_post_to_db(
+                                movie_id,
+                                chat_id,
+                                sent_msg.message_id,
+                                "FlimfyBoxBot",
+                                channel_caption,
+                                telegram_photo_id
+                                or (
+                                    sent_msg.photo[-1].file_id
+                                    if sent_msg.photo
+                                    else None
+                                ),
+                                "photo",
+                                post_keyboard.to_dict(),
+                                None,
+                                "movies"
+                            )
+
+                        except Exception as db_exc:
+                            logger.error(
+                                "Superbatch post DB save error: %s",
+                                db_exc
+                            )
+
+                    await asyncio.sleep(1)
+
+                except Exception as exc:
+                    logger.error(
+                        "❌ Superbatch auto-post failed "
+                        "for '%s' in %s: %s",
+                        title,
+                        chat_id_str,
+                        exc
+                    )
+
+            # ----------------------------------------------------------
+            # RESULT
+            # ----------------------------------------------------------
+            if sent_count > 0:
+                success_movies += 1
+                movies_posted_list.append(title)
+
+                logger.info(
+                    "✅ Superbatch Auto-Posted: '%s' "
+                    "to %s channel(s)",
+                    title,
+                    sent_count
+                )
+
+            else:
+                logger.error(
+                    "❌ Superbatch: '%s' saved in DB "
+                    "but channel post failed.",
+                    title
+                )
+
+            await asyncio.sleep(1.5)
 
         except Exception as e:
             logger.error(f"SuperBatch Movie Error: {e}")
