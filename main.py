@@ -1776,8 +1776,21 @@ Required JSON example:
                 raise ValueError("Gemini returned no JSON object")
 
             parsed = json.loads(json_match.group())
+
             if not isinstance(parsed, dict):
                 raise ValueError("Gemini JSON was not an object")
+
+            final_data = _normalize_evidence_dict(parsed)
+
+            for field in _EVIDENCE_KEYS:
+                if not final_data.get(field):
+                    final_data[field] = fallback.get(field, "")
+
+            if not _valid_evidence_title(final_data.get("title")):
+                final_data["title"] = fallback.get(
+                    "title",
+                    "UNKNOWN"
+                )
 
             final_data = _validate_reconciled_evidence(
                 final_data,
@@ -1785,18 +1798,13 @@ Required JSON example:
                 caption_raw=caption_raw,
                 filename_raw=filename_raw,
             )
-            final_data = _normalize_evidence_dict(parsed)
-            for field in _EVIDENCE_KEYS:
-                if not final_data.get(field):
-                    final_data[field] = fallback.get(field, "")
-            if not _valid_evidence_title(final_data.get("title")):
-                final_data["title"] = fallback.get("title", "UNKNOWN")
 
             logger.info(
                 "✅ Evidence reconciliation success: %s (%s)",
                 final_data.get("title"),
                 final_data.get("year") or "no year",
             )
+
             return final_data
         except Exception as exc:
             last_error = exc
@@ -1892,58 +1900,162 @@ def _best_local_identity(record):
 
 def _build_superbatch_groups(files):
     """
-    Conservative local grouping:
-    exact canonical title + compatible year first; fuzzy merge only when one
-    unambiguous very-high-confidence match exists. Ambiguous remakes stay separate.
+    Sequel-safe conservative local grouping.
+
+    Rules:
+    - Years conflict -> never merge
+    - Sequel/part number conflict -> never merge
+    - Exact canonical title -> merge
+    - Fuzzy merge only at 98+
     """
     prepared = []
+
     for index, record in enumerate(files):
         title, year, canonical = _best_local_identity(record)
-        record["display_title"] = f"{title} ({year})" if year else title
-        prepared.append((record, title, year, canonical, index))
 
-    prepared.sort(key=lambda item: (bool(item[2]), _evidence_record_score(item[0])), reverse=True)
+        number_signature = _title_number_signature(
+            title
+        )
+
+        record["display_title"] = (
+            f"{title} ({year})"
+            if year
+            else title
+        )
+
+        prepared.append(
+            (
+                record,
+                title,
+                year,
+                canonical,
+                number_signature,
+                index,
+            )
+        )
+
+    prepared.sort(
+        key=lambda item: (
+            bool(item[2]),
+            _evidence_record_score(item[0]),
+        ),
+        reverse=True,
+    )
+
     groups = []
 
-    for record, title, year, canonical, original_index in prepared:
+    for (
+        record,
+        title,
+        year,
+        canonical,
+        number_signature,
+        original_index,
+    ) in prepared:
+
         compatible = []
+
         for group in groups:
             group_year = group["year"]
-            years_ok = not year or not group_year or year == group_year
+
+            years_ok = (
+                not year
+                or not group_year
+                or year == group_year
+            )
+
             if not years_ok:
                 continue
-            if canonical and canonical == group["canonical"]:
-                compatible.append((100, group))
-            elif canonical and group["canonical"]:
-                similarity = fuzz.token_set_ratio(canonical, group["canonical"])
-                if similarity >= 96:
-                    compatible.append((similarity, group))
 
-        compatible.sort(key=lambda item: item[0], reverse=True)
+            # ==========================================
+            # CRITICAL SEQUEL PROTECTION
+            # ==========================================
+            if (
+                number_signature
+                != group["number_signature"]
+            ):
+                continue
+
+            if (
+                canonical
+                and canonical == group["canonical"]
+            ):
+                compatible.append(
+                    (100, group)
+                )
+
+            elif (
+                canonical
+                and group["canonical"]
+            ):
+                similarity = fuzz.token_set_ratio(
+                    canonical,
+                    group["canonical"],
+                )
+
+                # Old threshold 96 tha.
+                # Accuracy priority ke liye 98.
+                if similarity >= 98:
+                    compatible.append(
+                        (similarity, group)
+                    )
+
+        compatible.sort(
+            key=lambda item: item[0],
+            reverse=True,
+        )
+
         selected = None
+
         if len(compatible) == 1:
             selected = compatible[0][1]
-        elif len(compatible) > 1 and compatible[0][0] >= compatible[1][0] + 3:
+
+        elif (
+            len(compatible) > 1
+            and compatible[0][0]
+            >= compatible[1][0] + 3
+        ):
             selected = compatible[0][1]
 
         if selected is None:
             selected = {
-                "canonical": canonical or f"unknown-{original_index}",
+                "canonical": (
+                    canonical
+                    or f"unknown-{original_index}"
+                ),
+                "number_signature": number_signature,
                 "year": year,
-                "display_title": record.get("display_title") or title,
+                "display_title": (
+                    record.get("display_title")
+                    or title
+                ),
                 "files": [],
             }
+
             groups.append(selected)
+
         elif not selected["year"] and year:
             selected["year"] = year
-            selected["display_title"] = f"{title} ({year})"
+            selected["display_title"] = (
+                f"{title} ({year})"
+            )
 
         selected["files"].append(record)
 
     grouped = {}
-    for idx, group in enumerate(groups, 1):
-        key = f"{group['canonical']}_{group['year'] or 'unknown'}_{idx}"
+
+    for idx, group in enumerate(
+        groups,
+        1
+    ):
+        key = (
+            f"{group['canonical']}_"
+            f"{group['year'] or 'unknown'}_"
+            f"{idx}"
+        )
+
         grouped[key] = group["files"]
+
     return grouped
 
 
@@ -2013,7 +2125,8 @@ async def fallback_extraction(caption_text):
             r')'
         )
 
-season_match = strong_series_pattern.search(text)
+        season_match = strong_series_pattern.search(text)
+
         if season_match:
             ws_result = await _extract_web_series(text, original)
             ws_title = str(ws_result.get("title", "")).strip()
