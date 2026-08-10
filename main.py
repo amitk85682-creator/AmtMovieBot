@@ -1101,6 +1101,51 @@ async def _sb_direct_post_saved_movie(
         **result,
     }
 
+def _clean_post_scope(post_scope):
+    if not post_scope or post_scope.lower() == "movie":
+        return post_scope
+    import re
+    from collections import defaultdict
+    pattern = r"S(\d+)(?:\s*E(\d+)(?:-E?(\d+))?)?"
+    matches = re.finditer(pattern, post_scope, re.IGNORECASE)
+    season_episodes = defaultdict(set)
+    found_any = False
+    for match in matches:
+        found_any = True
+        s = int(match.group(1))
+        e_start = match.group(2)
+        e_end = match.group(3)
+        if e_start:
+            start = int(e_start)
+            if e_end:
+                end = int(e_end)
+                for ep in range(start, end + 1):
+                    season_episodes[s].add(ep)
+            else:
+                season_episodes[s].add(start)
+        else:
+            if s not in season_episodes:
+                season_episodes[s] = set()
+    if not found_any:
+        return post_scope
+    cleaned_parts = []
+    for s in sorted(season_episodes.keys()):
+        eps = sorted(list(season_episodes[s]))
+        if not eps:
+            cleaned_parts.append(f"S{s:02d}")
+        else:
+            min_ep = min(eps)
+            max_ep = max(eps)
+            if min_ep == max_ep:
+                cleaned_parts.append(f"S{s:02d} E{min_ep:02d}")
+            else:
+                cleaned_parts.append(f"S{s:02d} E{min_ep:02d}-E{max_ep:02d}")
+    if len(cleaned_parts) == 1:
+        return "All Episodes Added (" + cleaned_parts[0] + ")"
+    elif len(cleaned_parts) > 1:
+        return "All Episodes Added (" + ", ".join(cleaned_parts) + ")"
+    return post_scope
+
 async def _sb_build_post_caption_and_keyboard(
     movie_id,
     title,
@@ -1155,7 +1200,7 @@ async def _sb_build_post_caption_and_keyboard(
 
     safe_title = _sb_html(display_title)
     safe_quality = _sb_html(quality_text)
-    safe_scope = _sb_html(post_scope)
+    safe_scope = _sb_html(_clean_post_scope(post_scope))
     
     # 🟢 NAYA FIX: Agar blank ho toh line hi hide kar do, 'Unknown' mat dikhao
     year_line = f"📅 <b>Year:</b> {year}\n" if year and str(year) != "0" else ""
