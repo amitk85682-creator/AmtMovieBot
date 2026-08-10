@@ -1832,7 +1832,7 @@ IMPORTANT Rules:
 - IGNORE channel names, group promotions, @usernames, "Join" text — these are NOT the movie name.
 - If multiple lines, the movie name is usually the line with quality tags (720p, 1080p) or file extension (.mkv, .mp4).
 - year: 4-digit year if present (like 2023, 2024)
-- language: Audio languages mentioned (Hindi, English, Multi Audio, Dual Audio, etc.)
+language = p- language: Audio languages EXPLICITLY mentioned in the caption. If no language is explicitly written, return an empty string "". Do NOT guess or invent the language!arts[2] if len(parts) > 2 else ""
 - extra_info: Season/episode info (e.g., "S01 E01-12 COMBINED")
 - category: 'Web Series' if season/episode found, 'Anime' if anime, else 'Movies'
 
@@ -2215,7 +2215,7 @@ Rules:
 - year must be a 4-digit year literally supported by raw evidence, otherwise empty.
 - category: Movies, Web Series, or Anime. Part/P alone is NOT series proof.
 - preserve supported season/episode/part markers in extra_info.
-- Merge supported languages; do not invent language.
+- Merge explicitly supported languages. If NO language is written in the raw text, return an empty string "". Do NOT guess or invent the language.
 
 RAW CAPTION: {caption_raw!r}
 RAW FILENAME: {filename_raw!r}
@@ -3702,7 +3702,7 @@ def get_movies_fast_sql(query: str, limit: int = 5):
 def _get_movies_fast_sql_nocache(query: str, limit: int = 5):
     """
     Smart SQL Search: Fast like SQL + Smart like FuzzyWuzzy.
-    Handles typos using PostgreSQL 'pg_trgm' (Similarity).
+    Handles typos using PostgreSQL 'pg_trgm' (Similarity) AND ignores punctuation.
     """
     conn = None
     try:
@@ -3714,17 +3714,26 @@ def _get_movies_fast_sql_nocache(query: str, limit: int = 5):
         
         cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
         
-        # ✅ Updated to include new columns
+        # 👇 NAYA LOGIC: 'spider man' aur 'spiderman' dono ko ek jaisa banane ke liye
+        # Ye user ki query se space aur hyphen hata dega
+        compact_query = re.sub(r'[\s\-]+', '', query).lower()
+        
+        # ✅ NAYA SQL: Normal search ke sath-sath bina space/hyphen wali search bhi karega
         sql = """
             SELECT m.id, m.title, m.url, m.file_id, m.imdb_id, m.poster_url, m.year, m.genre,
-                   SIMILARITY(m.title, %s) as sim_score
+                   GREATEST(
+                       SIMILARITY(LOWER(m.title), LOWER(%s)),
+                       SIMILARITY(REGEXP_REPLACE(LOWER(m.title), '[\s\-]+', '', 'g'), %s)
+                   ) as sim_score
             FROM movies m
-            WHERE SIMILARITY(m.title, %s) > 0.3
+            WHERE SIMILARITY(LOWER(m.title), LOWER(%s)) > 0.25 
+               OR SIMILARITY(REGEXP_REPLACE(LOWER(m.title), '[\s\-]+', '', 'g'), %s) > 0.3
             ORDER BY sim_score DESC
             LIMIT %s
         """
         
-        cur.execute(sql, (query, query, limit))
+        # Ab 4 values pass karni hain query ke liye
+        cur.execute(sql, (query, compact_query, query, compact_query, limit))
         results = cur.fetchall()
         
         # Format results (remove score from tuple)
@@ -5231,18 +5240,20 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 
                 f_size = f_data[3] if len(f_data)>3 else "Unknown"
                 
+                # 👇 LANGUAGE BHI NIKALO
+                lang_name = str(f_data[4]).strip() if len(f_data)>4 and f_data[4] else ""
+                lang_tag = f"[{lang_name}] " if lang_name else ""
+                
                 e_info = str(f_data[5]) if len(f_data)>5 else ""
                 e_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', e_info)
-                e_info = re.sub(r'\(https?://[^\)]+\)', '', e_info)
-                e_info = re.sub(r'https?://[^\s]+', '', e_info)
-                e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
+                # ... (keep your regex lines)
                 e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info)
                 
                 ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
                 
-                # ✅ NAYA: HTML wala Neela (Inline) link
+                # ✅ NAYA: HTML wala Neela (Inline) link (Ab Lang Tag ke sath)
                 real_idx = all_qualities.index(f_data)
-                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
+                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{f_size} | {title} {lang_tag}{ep_tag}{q_name.strip()}</a></b>\n\n"
                 
             keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
             
@@ -6557,8 +6568,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
 
         m_title = m_data[0] if m_data[0] else "Unknown Movie"
-        m_genre = m_data[1] if m_data[1] else "Action, Drama"
-        m_lang = m_data[2] if m_data[2] else "Hindi + English"
+        m_genre = m_data[1] if m_data[1] else ""
+        m_lang = m_data[2] if m_data[2] else ""
         m_poster = m_data[3] if len(m_data) > 3 and m_data[3] else None
         m_category = m_data[4] if len(m_data) > 4 and m_data[4] else ""
 
@@ -7047,12 +7058,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for idx, file_data in enumerate(qualities[:10], start=1):
                 quality = file_data[0]
                 file_size = file_data[3] if len(file_data) > 3 else "Unknown Size"
+                lang_name = str(file_data[4]).strip() if len(file_data) > 4 and file_data[4] else ""
                 extra_info = file_data[5] if len(file_data) > 5 else ""
                 
-                ep_tag = f"[{extra_info}] " if extra_info else ""
+                lang_tag = f"[{lang_name}] " if lang_name else ""
+                ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
+                
                 # ✅ CLEAN HTML LINK: Naruto bot jaisa neela text!
                 real_idx = qualities.index(file_data)
-                file_list_text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{file_size} | {title} {ep_tag}{quality}</a></b>\n\n"
+                file_list_text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{file_size} | {title} {lang_tag}{ep_tag}{quality}</a></b>\n\n"
 
             selection_text = file_list_text
             
@@ -8072,7 +8086,7 @@ async def batch_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "cast" = EXCLUDED."cast",
             seasons_data = EXCLUDED.seasons_data
             RETURNING id
-        """, (title, imdb_id_f, poster, year, genre, rating, plot, category, "Hindi", cast_str, json.dumps(seasons_data) if seasons_data else '{}'))
+        """, (title, imdb_id_f, poster, year, genre, rating, plot, category, "", cast_str, json.dumps(seasons_data) if seasons_data else '{}'))
         
         movie_id = cur.fetchone()[0]
         
@@ -8145,7 +8159,7 @@ async def batch_add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     title = parts[0] if len(parts) > 0 else "Unknown Title"
     year = parts[1] if len(parts) > 1 else ""
-    language = parts[2] if len(parts) > 2 else "Hindi"
+    language = parts[2] if len(parts) > 2 else ""
     genre = parts[3] if len(parts) > 3 else "Adult, Drama"
     category = parts[4] if len(parts) > 4 else "Web Series"
     
@@ -9207,13 +9221,14 @@ async def batch_done_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         close_db_connection(conn)
 
         db_genre = minfo[0] if minfo and minfo[0] else "Unknown"
-        db_lang = minfo[1] if minfo and minfo[1] else "Hindi (LiNE) + HC-ESubs"
+        db_lang = minfo[1] if minfo and minfo[1] else "" # Hardcoded hata diya
         m_poster = minfo[3] if minfo else None
         m_rating = minfo[4] if minfo else "N/A"
 
-        # क्वालिटी अलाइनमेंट
         res_list = sorted(list(set(re.search(r'(\d{3,4}p)', r[0]).group(1) for r in qrows if re.search(r'(\d{3,4}p)', r[0]))), key=lambda x: int(x.replace('p','')), reverse=True)
         dynamic_res = " | ".join(res_list) if res_list else "1080p | 720p | 480p"
+
+        lang_text = f"🔊 Language: {db_lang}\n" if db_lang else ""
 
         # 🎯 आपका पसंदीदा क्लीन फॉर्मेट
         caption = (
