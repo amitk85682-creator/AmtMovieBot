@@ -1034,6 +1034,9 @@ async def _sb_direct_post_saved_movie(
         genre,
         movie_lang,
         context,
+        year=year, 
+        rating=rating, 
+        season_number=season_number, # <-- year=year ADD karein
         rating=rating,
         season_number=season_number,
         post_scope=post_scope,
@@ -1106,6 +1109,7 @@ async def _sb_build_post_caption_and_keyboard(
     genre,
     language,
     context,
+    year=None, # <--- 🟢 NAYA PARAMETER ADD KIYA
     rating=None,
     season_number=None,
     post_scope="",
@@ -1152,15 +1156,18 @@ async def _sb_build_post_caption_and_keyboard(
         display_title = f"{display_title} — Season {int(season_number)}"
 
     safe_title = _sb_html(display_title)
-    safe_genre = _sb_html(genre or "Unknown")
-    safe_lang = _sb_html(language or "Unknown")
     safe_quality = _sb_html(quality_text)
     safe_scope = _sb_html(post_scope)
+    
+    # 🟢 NAYA FIX: Agar blank ho toh line hi hide kar do, 'Unknown' mat dikhao
+    year_line = f"📅 <b>Year:</b> {year}\n" if year and str(year) != "0" else ""
+    genre_line = f"🎭 <b>Genre:</b> {_sb_html(genre)}\n" if genre and genre != "Unknown" else ""
+    lang_line = f"🔊 <b>Language:</b> {_sb_html(language)}\n" if language and language != "Unknown" else ""
+    
     rating_value = str(rating or "").strip()
     rating_display = "N/A" if not rating_value or rating_value.upper() == "N/A" else f"{rating_value}/10"
-    safe_rating = _sb_html(rating_display)
-    current_date = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%d %b %Y")
-
+    rating_line = f"⭐ <b>iMDB Rating:</b> {_sb_html(rating_display)}\n" if rating_display != "N/A" else ""
+    
     scope_line = f"📺 <b>Update:</b> {safe_scope}\n" if safe_scope and safe_scope != "Movie" else ""
 
     raw_font_title = re.sub(r"[<>&]", "", display_title)
@@ -1171,10 +1178,10 @@ async def _sb_build_post_caption_and_keyboard(
         channel_caption = (
             f"🎬 <b>{safe_title}</b>\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"📅 <b>Date:</b> {current_date}\n"
-            f"⭐ <b>iMDB Rating:</b> {safe_rating}\n"
-            f"🎭 <b>Genre:</b> {safe_genre}\n"
-            f"🔊 <b>Language:</b> {safe_lang}\n"
+            f"{year_line}"
+            f"{rating_line}"
+            f"{genre_line}"
+            f"{lang_line}"
             f"{scope_line}"
             f"💿 <b>Quality:</b> {safe_quality}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
@@ -1185,10 +1192,10 @@ async def _sb_build_post_caption_and_keyboard(
         channel_caption = (
             f"🔥 <b>{unicode_title}</b>\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
-            f"📅 <b>Date:</b> {current_date}\n"
-            f"⭐ <b>iMDB Rating:</b> {safe_rating}\n"
-            f"🎭 <b>Genre:</b> {safe_genre}\n"
-            f"🔊 <b>Language:</b> {safe_lang}\n"
+            f"{year_line}"
+            f"{rating_line}"
+            f"{genre_line}"
+            f"{lang_line}"
             f"{scope_line}"
             f"💿 <b>Quality:</b> {safe_quality}\n"
             f"➖➖➖➖➖➖➖➖➖➖\n"
@@ -1282,6 +1289,8 @@ async def _sb_execute_auto_post(card_id, query, context):
             genre or card.get("genre"),
             language,
             context,
+            year=year or card.get("year"), 
+            rating=rating or card.get("rating"), # <-- year=year ADD karein
             rating=rating or card.get("rating"),
             season_number=season_number,
             post_scope=post_scope,
@@ -1402,6 +1411,8 @@ async def _sb_execute_manual_post(card_id, file_id, update, context):
             genre or card.get("genre"),
             language,
             context,
+            year=year or card.get("year"),
+            rating=rating or card.get("rating"), # <-- year=year ADD karein
             rating=rating or card.get("rating"),
             season_number=season_number,
             post_scope=post_scope,
@@ -9350,7 +9361,7 @@ async def handle_admin_poster(update: Update, context: ContextTypes.DEFAULT_TYPE
     target_channels=_sb_resolve_target_channels(category)
     if not target_channels:
         await status.edit_text("❌ No target channels configured."); return
-    caption,keyboard=await _sb_build_post_caption_and_keyboard(movie_id,title,genre,language,context,rating=rating)
+    caption,keyboard=await _sb_build_post_caption_and_keyboard(movie_id,title,genre,language,context,year=year,rating=rating)
     sent=failed=0; photo_ref=file_id
     for raw in target_channels:
         try:
@@ -14934,6 +14945,7 @@ def register_handlers(application: Application):
 
     # 🚀 NEW: Add this line to catch the poster image
     application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_admin_poster), group=0)
+    
 
     # 🚀 SUPER BATCH COMMANDS
     # ✅ superbatch_listener HATA DIYA — ab pm_file_listener hi "muh" hai
