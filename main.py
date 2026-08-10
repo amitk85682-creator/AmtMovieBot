@@ -1289,7 +1289,6 @@ async def _sb_execute_auto_post(card_id, query, context):
             context,
             year=year or card.get("year"), 
             rating=rating or card.get("rating"), # <-- year=year ADD karein
-            rating=rating or card.get("rating"),
             season_number=season_number,
             post_scope=post_scope,
             saved_file_details=saved_file_details,
@@ -1411,7 +1410,6 @@ async def _sb_execute_manual_post(card_id, file_id, update, context):
             context,
             year=year or card.get("year"),
             rating=rating or card.get("rating"), # <-- year=year ADD karein
-            rating=rating or card.get("rating"),
             season_number=season_number,
             post_scope=post_scope,
             saved_file_details=saved_file_details,
