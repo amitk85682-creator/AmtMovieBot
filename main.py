@@ -5251,8 +5251,8 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 
                 f_size = f_data[3] if len(f_data)>3 else "Unknown"
                 
-                # 👇 LANGUAGE BHI NIKALO
-                lang_name = str(f_data[4]).strip() if len(f_data)>4 and f_data[4] else ""
+                # 👇 LANGUAGE BHI NIKALO (Agar file me lang nahi hai, toh main movie ki lang use karo)
+                lang_name = str(f_data[4]).strip() if len(f_data)>4 and f_data[4] else db_lang
                 lang_tag = f"[{lang_name}] " if lang_name else ""
                 
                 e_info = str(f_data[5]) if len(f_data)>5 else ""
@@ -5456,9 +5456,8 @@ async def background_search_and_send(update: Update, context: ContextTypes.DEFAU
         if exact_movie:
             movies_found = [exact_movie] # Exact match found, skip fuzzy search
         else:
-            # Agar exact nahi mila to hi Fuzzy Search karein (Slower process)
-            # Assuming get_movies_from_db is your existing function
-            movies_found = await run_async(get_movies_from_db, query_text, limit=1)
+            # Fast SQL Search lagao
+            movies_found = await run_async(get_movies_fast_sql, query_text, limit=1)
 
         # 2. Result Handle karein
         if not movies_found:
@@ -5967,8 +5966,8 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clean_query = re.sub(r'(?i)\b(s\d{1,2}|season\s*\d+|ep\s?\d+|e\d{1,2})\b.*', '', query).strip()
         search_term = clean_query if (clean_query and len(clean_query) > 1) else query
 
-        # 1. Search DB (Ab bot 'The Great' dhoondhega, 'The Great S03' nahi)
-        movies = await run_async(get_movies_from_db, search_term, limit=10)
+        # 1. Search DB (Lightning Fast SQL)
+        movies = await run_async(get_movies_fast_sql, search_term, limit=10)
         
         # 2. Not Found
         if not movies:
@@ -7041,8 +7040,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             conn = get_db_connection()
             cur = conn.cursor()
-            # 🚀 FIX: Yahan 'category' bhi nikal rahe hain taaki pata chale Web Series hai ya nahi
-            cur.execute("SELECT id, title, category FROM movies WHERE id = %s", (movie_id,))
+            # 🚀 FIX: Yahan 'category' aur 'language' bhi nikal rahe hain
+            cur.execute("SELECT id, title, category, language FROM movies WHERE id = %s", (movie_id,))
             movie = cur.fetchone()
             cur.close()
             close_db_connection(conn)
@@ -7051,7 +7050,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text("❌ Movie not found in database.")
                 return
 
-            movie_id, title, category = movie
+            movie_id, title, category, main_lang = movie
             qualities = get_all_movie_qualities(movie_id)
 
             if not qualities:
@@ -7063,6 +7062,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'id': movie_id,
                 'title': title,
                 'category': category,
+                'main_lang': main_lang, # <-- Yahan main_lang add kiya
                 'qualities': qualities
             }
 
@@ -7340,8 +7340,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
                         extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
                         
-                        lang_name = str(file_data[4]).strip() if len(file_data) > 4 and file_data[4] else ""
-                        lang_tag = f"[{lang_name}] " if lang_name else ""
+                        main_lang = movie_data.get('main_lang', '')
+                        lang_name = str(file_data[4]).strip() if len(file_data) > 4 and file_data[4] else main_lang
                         
                         ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
                         
