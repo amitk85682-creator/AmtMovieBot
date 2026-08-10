@@ -5307,6 +5307,14 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         join_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Join Channel", url=FILMFYBOX_CHANNEL_URL)]])
 
+        # 👇 NAYA CODE: File send hone se theek MILLI-SECONDS pehle sticker delete hoga!
+        loader_id = context.user_data.pop('loader_to_delete', None)
+        if loader_id:
+            try:
+                await context.bot.delete_message(chat_id=target_chat_id, message_id=loader_id)
+            except:
+                pass
+
         sent_msg = None
         if url and ("t.me/c/" in url or "t.me/" in url) and "http" in url:
             try:
@@ -5691,16 +5699,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         close_db_connection(conn)
                         title = res[0] if res else "Requested File"
                         
-                        # ✅ FIX: Sticker PEHLE delete karo, phir file bhejo
-                        # Taaki user ko lage: "file mil gayi, ab aa rahi hai"
-                        try:
-                            if status_msg:
-                                await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-                        except Exception as e:
-                            logger.error(f"Failed to delete status message: {e}")
+                        # ✅ FIX: Sticker ko yahan delete nahi karenge, balki uski ID save kar lenge
+                        # Taaki bot DB ka kaam khatam karne ke baad milli-seconds pehle ise delete kare
+                        if status_msg:
+                            context.user_data['loader_to_delete'] = status_msg.message_id
                         
                         # Tera premium thumbnail wala function!
-                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)  # Single file → ek GIF
+                        await send_movie_to_user(update, context, movie_id, title, url, file_id, send_warning=True)
                     else:
                         try:
                             if status_msg:
