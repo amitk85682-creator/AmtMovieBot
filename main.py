@@ -7970,14 +7970,16 @@ def auto_upgrade_delete(movie_id, new_quality_label, new_extra_info="", conn=Non
 def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id):
     """
     Bulletproof UPSERT for movie_files table.
-    Works regardless of which constraints exist in the DB:
-    - Old: UNIQUE (movie_id, quality) 
-    - New: UNIQUE (file_unique_id)
-    - Both at same time
-    
-    Strategy: Try INSERT → catch any constraint violation → UPDATE by file_unique_id
     """
     cur = conn.cursor()
+    
+    # 🔥 BULLETPROOF FIX: Har baar check karega aur purani rok hata dega
+    try:
+        cur.execute("ALTER TABLE movie_files DROP CONSTRAINT IF EXISTS movie_files_movie_id_quality_key;")
+        conn.commit()
+    except:
+        conn.rollback()
+
     try:
         cur.execute("""
             INSERT INTO movie_files (movie_id, quality, file_size, url, backup_map, languages, extra_info, file_unique_id)
@@ -7988,7 +7990,6 @@ def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map
         return True  # Fresh insert
     except Exception as insert_err:
         conn.rollback()
-        # Constraint violation — update the existing row instead
         try:
             cur2 = conn.cursor()
             cur2.execute("""
@@ -7999,14 +8000,14 @@ def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map
             """, (label, file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id))
             
             if cur2.rowcount == 0:
-                # file_unique_id doesn't exist yet but (movie_id, quality) does
-                # This means a DIFFERENT file has the same quality → just update that row
+                # 🚀 NAYA FIX: Ab ye kisi bhi doosri file ko "sirf quality same hone par" overwrite nahi karega!
+                # Ye sirf tabhi overwrite karega agar 'quality' aur 'extra_info' (Episode Number) dono same honge.
                 cur2.execute("""
                     UPDATE movie_files 
                     SET file_size = %s, url = %s, backup_map = %s, 
-                        file_id = NULL, languages = %s, extra_info = %s, file_unique_id = %s
-                    WHERE movie_id = %s AND quality = %s
-                """, (file_size_str, main_url, backup_map_json, f_lang, f_extra, file_unique_id, movie_id, label))
+                        file_id = NULL, languages = %s, file_unique_id = %s
+                    WHERE movie_id = %s AND quality = %s AND extra_info = %s
+                """, (file_size_str, main_url, backup_map_json, f_lang, file_unique_id, movie_id, label, f_extra))
             
             conn.commit()
             cur2.close()
@@ -8016,7 +8017,6 @@ def upsert_movie_file(conn, movie_id, label, file_size_str, main_url, backup_map
             conn.rollback()
             logger.error(f"❌ upsert_movie_file FAILED: insert_err={insert_err}, update_err={update_err}")
             raise update_err
-
 
 def generate_quality_label(file_name, file_size_str="", ai_language=""):
     """
