@@ -382,6 +382,9 @@ BACKUP_FSUB_LIST = [
 # 👇👇 YAHAN YE EK LINE PASTE KAR DO 👇👇
 FILMFYBOX_CHANNEL_URL = ACTIVE_FSUB['url']
 
+# 📢 Update/Backup Channel (search results, not-found message, etc. me use hoga)
+UPDATE_CHANNEL_URL = "https://t.me/FlimfyBoxBackUp"
+
 REQUIRED_GROUP_ID = os.environ.get('REQUIRED_GROUP_ID', '-1003930961567')
 FILMFYBOX_GROUP_URL = 'https://t.me/+dxaCr_cMmGpkYTFl'
 REQUEST_CHANNEL_ID = os.environ.get('REQUEST_CHANNEL_ID', '-1003078990647')
@@ -1887,7 +1890,6 @@ def setup_database():
             CREATE TABLE IF NOT EXISTS movies (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL UNIQUE,
-                title TEXT NOT NULL UNIQUE,
                 url TEXT NOT NULL DEFAULT '',
                 file_id TEXT,
                 is_unreleased BOOLEAN DEFAULT FALSE,
@@ -2009,11 +2011,21 @@ def setup_database():
         # Indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_title ON movies (title);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_title_trgm ON movies USING gin (title gin_trgm_ops);")
+        # 🔧 FIX: Normalized (space/hyphen/punctuation-stripped) title par trigram index —
+        # taaki "Spider-Man" / "Spider Man" / "SpiderMan" search DB-index-backed rahe aur fast rahe.
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_movies_title_norm_trgm
+            ON movies USING gin (regexp_replace(LOWER(title), '[^a-z0-9]', '', 'g') gin_trgm_ops);
+        """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_imdb_id ON movies (imdb_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movies_year ON movies (year);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_user_requests_movie_title ON user_requests (movie_title);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_user_requests_user_id ON user_requests (user_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movie_aliases_alias ON movie_aliases (alias);")
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_movie_aliases_alias_norm_trgm
+            ON movie_aliases USING gin (regexp_replace(LOWER(alias), '[^a-z0-9]', '', 'g') gin_trgm_ops);
+        """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_movie_files_movie_id ON movie_files (movie_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_channel_posts_movie_id ON channel_posts (movie_id);")
 
@@ -2404,6 +2416,16 @@ def update_movies_in_db():
         if conn: close_db_connection(conn)
 
 
+def _normalize_search_text(text: str) -> str:
+    """
+    Search query aur DB title dono ko sirf lowercase letters/numbers tak todta hai
+    (spaces, hyphens, colons, punctuation sab hata deta hai).
+    Isse "spider man", "spiderman", "Spider-Man" — teeno ek hi cheez maane jaate hain,
+    chahe DB me title kaise bhi likha ho.
+    """
+    return re.sub(r'[^a-z0-9]', '', (text or '').lower())
+
+
 def get_movies_from_db(user_query, limit=10):
     cache_key = f"db_fuzzy_{user_query}_{limit}"
     cached = search_cache.get(cache_key)
@@ -2425,11 +2447,26 @@ def _get_movies_from_db_nocache(user_query, limit=10):
 
         logger.info(f"Searching for: '{user_query}'")
 
+        # 🔧 FIX: query ko normalize karo (lowercase + sirf letters/numbers).
+        # Isse "spider man", "spiderman", "Spider-Man" sab same ban jaate hain,
+        # aur neeche wali query DB me title chahe space se ho ya hyphen se, dono match karegi.
+        norm_query = _normalize_search_text(user_query)
+
+        if not norm_query:
+            # Sirf symbols/spaces type kiye the — kuch bhi search karne layak nahi hai
+            cur.close()
+            close_db_connection(conn)
+            return []
+
         # ✅ Updated to include new columns
+        # Title ko bhi query jaisa hi normalize karke compare karte hain (DB-side),
+        # taaki alag-alag spacing/hyphen/case wale titles bhi pakde jaayein.
         cur.execute(
             """SELECT id, title, url, file_id, imdb_id, poster_url, year, genre 
-               FROM movies WHERE LOWER(title) LIKE LOWER(%s) ORDER BY title LIMIT %s""",
-            (f'%{user_query}%', limit)
+               FROM movies
+               WHERE regexp_replace(LOWER(title), '[^a-z0-9]', '', 'g') LIKE %s
+               ORDER BY title LIMIT %s""",
+            (f'%{norm_query}%', limit)
         )
         exact_matches = cur.fetchall()
 
@@ -2443,10 +2480,10 @@ def _get_movies_from_db_nocache(user_query, limit=10):
             SELECT DISTINCT m.id, m.title, m.url, m.file_id, m.imdb_id, m.poster_url, m.year, m.genre
             FROM movies m
             JOIN movie_aliases ma ON m.id = ma.movie_id
-            WHERE LOWER(ma.alias) LIKE LOWER(%s)
+            WHERE regexp_replace(LOWER(ma.alias), '[^a-z0-9]', '', 'g') LIKE %s
             ORDER BY m.title
             LIMIT %s
-        """, (f'%{user_query}%', limit))
+        """, (f'%{norm_query}%', limit))
         alias_matches = cur.fetchall()
 
         if alias_matches:
@@ -2466,7 +2503,13 @@ def _get_movies_from_db_nocache(user_query, limit=10):
         movie_titles = [movie[1] for movie in all_movies]
         movie_dict = {movie[1]: movie for movie in all_movies}
 
-        matches = process.extract(user_query, movie_titles, scorer=fuzz.token_sort_ratio, limit=limit)
+        # 🔧 FIX: pre-filter pool ko result 'limit' se bada rakha hai (kam se kam 50),
+        # taaki score >= 65 filter lagne se PEHLE hi koi sahi match discard na ho jaaye
+        # (jaise pehle "spiderman" jaisi short query ke liye ho raha tha).
+        # Speed par asar nahi: fuzzywuzzy already sabhi titles ko score karta hai,
+        # sirf top-N return karta hai — N badhane se extra compute nahi lagta.
+        pool_size = max(limit * 5, 50)
+        matches = process.extract(user_query, movie_titles, scorer=fuzz.token_sort_ratio, limit=pool_size)
 
         filtered_movies = [movie_dict[title] for title, score, index in matches if score >= 65]
 
@@ -3764,6 +3807,7 @@ def create_movie_selection_keyboard(movies, page=0, movies_per_page=5, requester
     if nav_buttons:
         keyboard.append(nav_buttons)
 
+    keyboard.append([InlineKeyboardButton("📢 Update Channel: Join BackUp", url=UPDATE_CHANNEL_URL)])
     keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_selection{u_suffix}")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -4041,7 +4085,9 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 # ✅ NAYA: HTML wala Neela (Inline) link
                 real_idx = all_qualities.index(f_data)
                 text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
-                
+            
+            text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
+
             keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
             
             # ✅ NAYA: parse_mode='HTML' kar diya aur link preview off kar diya
@@ -4086,6 +4132,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             f"{year}"        
             f"{genre}"       
             f"{lang_display}"  
+            f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
             f"\n◈ <b>JOIN »</b> <a href='{FILMFYBOX_CHANNEL_URL}'>FilmfyBox</a>\n\n"
             f"◈ <b>Drop the movie name, I'll find it for you 🎬✨👇</b>\n"
             f"◈ <b><a href='https://t.me/+dxaCr_cMmGpkYTFl'>FlimfyBox Chat</a></b>\n"
@@ -4772,7 +4819,8 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
             web_app_url = f"https://flimfybox-bot-yht0.onrender.com/webapp?req={safe_query}"
 
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🌐 Open Request Portal", web_app=WebAppInfo(url=web_app_url))]
+                [InlineKeyboardButton("🌐 Open Request Portal", web_app=WebAppInfo(url=web_app_url))],
+                [InlineKeyboardButton("📢 Update Channel: Join BackUp", url=UPDATE_CHANNEL_URL)]
             ])
             
             msg = await update.message.reply_text(
