@@ -8098,6 +8098,18 @@ def get_readable_file_size(size_in_bytes):
         return "Unknown"
     return "Unknown"
 
+async def fixdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to drop old restrictive DB constraints."""
+    if not is_admin(update.effective_user.id):
+        return
+    
+    status = await update.message.reply_text("⏳ Fixing Database constraints...")
+    try:
+        fix_movie_files_table() 
+        await status.edit_text("✅ **Database Fix Complete!**\nPurane restrictions hata diye gaye hain. Ab ek hi quality ki multiple files (Episodes) bina overwrite hue save hongi.", parse_mode='Markdown')
+    except Exception as e:
+        await status.edit_text(f"❌ Error: {e}")
+        
 # ============================================================================
 # 🎬 BATCH ID COMMAND (Fully Automatic via TMDB/IMDb)
 # ============================================================================
@@ -15010,6 +15022,7 @@ def register_handlers(application: Application):
     application.add_handler(CommandHandler("batch", batch_add_command))
     application.add_handler(CommandHandler("done", batch_done_command))
     application.add_handler(CommandHandler("batchid", batch_id_command))
+    application.add_handler(CommandHandler("fixdb", fixdb_command))
     application.add_handler(CommandHandler("fixdata", fix_missing_metadata))
     application.add_handler(CommandHandler("post", post_to_topic_command))
     
