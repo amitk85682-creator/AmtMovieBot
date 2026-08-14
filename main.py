@@ -6976,6 +6976,38 @@ async def superbatch_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+# 🎵 SONG FILTER: Superbatch me kabhi-kabhi movie ke saath "Song.mkv" jaisi
+# standalone video-song files bhi aa jaati hain, jo galti se movie/episode
+# samajh ke DB me save aur channel pe auto-post ho jaati hain. Neeche wala
+# helper aisi files ko pehchan ke superbatch collection se hi bahar rakh deta hai.
+_SONG_FILENAME_PATTERN = re.compile(
+    r'(?i)(?<![a-z0-9])('
+    r'video[\s._-]*song|full[\s._-]*song|song[\s._-]*video|title[\s._-]*track|'
+    r'lyrical(?:[\s._-]*video)?|jukebox|ost|soundtrack|item[\s._-]*song|'
+    r'audio[\s._-]*song|music[\s._-]*video|song'
+    r')(?![a-z0-9])'
+)
+_SONG_MAX_DURATION_SECONDS = 480  # 8 min — extended/unplugged songs bhi cover, real movie/episode kabhi itni chhoti nahi hoti
+
+
+def _looks_like_song_file(message, record) -> bool:
+    """
+    True agar filename/caption me koi song-indicator keyword mile ("Video Song",
+    "Jukebox", "OST", etc.) YA file bahut chhoti duration (< 5 min) ki video/audio ho —
+    dono hi cases me ye asli movie/episode nahi, balki ek standalone song lagti hai.
+    """
+    text = f"{record.get('file_name') or ''} {record.get('caption') or ''}"
+    if _SONG_FILENAME_PATTERN.search(text):
+        return True
+
+    media_with_duration = getattr(message, "video", None) or getattr(message, "audio", None)
+    duration = getattr(media_with_duration, "duration", 0) or 0
+    if duration and duration < _SONG_MAX_DURATION_SECONDS:
+        return True
+
+    return False
+
+
 async def _collect_superbatch_file(message):
     """Telegram file ka raw data + local evidence ek consistent record mein collect karta hai."""
     if not message or not (message.document or message.video or message.audio):
@@ -7543,6 +7575,15 @@ async def pm_file_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         record = await _collect_superbatch_file(update.effective_message)
+        if record and _looks_like_song_file(update.effective_message, record):
+            logger.info(f"Superbatch: skipping likely song file: {record.get('file_name')}")
+            await update.effective_message.reply_text(
+                f"⏭️ **Skip kiya (Song lag rahi hai):** `{record.get('file_name')}`\n"
+                f"Agar ye galat hai (genuine movie/episode thi), ise `/batch` se manually add kar dena.",
+                parse_mode='Markdown',
+            )
+            return
+
         if record:
             SUPER_BATCH_SESSION['files'].append(record)
             count = len(SUPER_BATCH_SESSION['files'])
