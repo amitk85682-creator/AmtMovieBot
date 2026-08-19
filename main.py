@@ -8969,12 +8969,281 @@ async def batch18_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 
 # ============================================================================
+# 🔞 BATCH18 MULTI-SOURCE EVIDENCE HELPERS (ISOLATED)
+# ============================================================================
+
+def batch18_parse_filename_evidence(raw_text: str) -> dict:
+    """Deterministically parse an adult-series filename/caption without inventing facts."""
+    raw = str(raw_text or '').strip()
+    base = re.sub(r'\.(?:mkv|mp4|avi|mov|webm|ts)$', '', raw, flags=re.I)
+    year_match = re.search(r'\b((?:19|20)\d{2})\b', base)
+    year = year_match.group(1) if year_match else ''
+    compact = re.search(r'\bS(?:EASON)?\s*0*(\d{1,2})\s*P(?:ART)?\s*0*(\d{1,3})\b', base, re.I)
+    season = re.search(r'\bS(?:EASON)?\s*0*(\d{1,2})(?=\b|P)', base, re.I)
+    part = re.search(r'(?:\b|(?<=\d))P(?:ART)?\s*0*(\d{1,3})\b', base, re.I)
+    if compact:
+        season = compact
+        part = re.search(r'P(?:ART)?\s*0*(\d{1,3})\b', compact.group(0), re.I)
+    extras = []
+    if season:
+        extras.append(f'S{int(season.group(1)):02d}')
+    if part:
+        extras.append(f'P{int(part.group(1)):02d}')
+    for tag in ('UNRATED', 'UNCUT', 'EXTENDED', 'COMBINED', 'COMPLETE'):
+        if re.search(rf'\b{tag}\b', base, re.I):
+            extras.append(tag)
+    technical = re.compile(
+        r'\b(?:19|20)\d{2}\b|\bS(?:EASON)?\s*\d{1,2}\s*P(?:ART)?\s*\d{1,3}\b|\bS(?:EASON)?\s*\d{1,2}(?=\b|P)|(?:\b|(?<=\d))P(?:ART)?\s*\d{1,3}\b|'
+        r'\b(?:UNRATED|UNCUT|EXTENDED|COMBINED|COMPLETE|SERIES|WEB\s*SERIES|HOT|ADULT|18\+|ULLU|WOOW|ATRANGII|VOOVI|KOOKU|PRIMESHOTS|PRIME\s*SHOTS|NEONX|ALTT)\b|'
+        r'\b(?:\d{3,4}p|2160p|4K|HEVC|H\.?265|H\.?264|HDRIP|WEB[- ]?DL|HDTV|x26[45]|AAC|DDP?\d*|DTS|MULTI|DUAL|HINDI|ENGLISH)\b',
+        re.I,
+    )
+    title = technical.sub(' ', base)
+    title = re.sub(r'[_\.\[\]\(\){}]+', ' ', title)
+    title = re.sub(r'[-]+', ' ', title)
+    title = re.sub(r'\s+', ' ', title).strip(' -')
+    # Remove common uploader prefixes/suffixes only after technical cleanup.
+    title = re.sub(r'^(?:www\.)?[^ ]+\s+(?=[A-Z][a-z])', '', title, flags=re.I) if title.lower().startswith(('www.', 'www ')) else title
+    title = re.sub(r'\b(?:x265|x264|aac|mkv|mp4)\b', '', title, flags=re.I)
+    title = re.sub(r'\s+', ' ', title).strip(' -')
+    return {
+        'title': title or 'UNKNOWN',
+        'year': year,
+        'extra_info': ' '.join(extras),
+        'category': 'Adult',
+        'raw': raw,
+    }
+
+
+def _batch18_merge_source(source_names, source_name):
+    if source_name and source_name not in source_names:
+        source_names.append(source_name)
+
+
+def _batch18_relevant_candidate(item: dict, title: str, year: str = '') -> bool:
+    """Reject generic same-word search hits before they become metadata evidence."""
+    blob = re.sub(r'[^a-z0-9]+', ' ', f"{item.get('title', '')} {item.get('snippet', '')}".lower()).strip()
+    target = re.sub(r'[^a-z0-9]+', ' ', str(title or '').lower()).strip()
+    if not target or not blob:
+        return False
+    if target in blob:
+        return True
+    tokens = [token for token in target.split() if len(token) > 2]
+    if len(tokens) < 2:
+        return False
+    overlap = sum(1 for token in set(tokens) if re.search(rf'\b{re.escape(token)}\b', blob))
+    required = max(2, int(round(len(set(tokens)) * 0.75)))
+    if overlap < required:
+        return False
+    return not year or str(year) in blob or overlap == len(set(tokens))
+
+
+async def _batch18_cse_search(query: str, image: bool = False) -> list:
+    """Use configured Google CSE only as a search transport; never treat one hit as truth."""
+    api_key = os.environ.get('GOOGLE_API_KEY')
+    cx_id = os.environ.get('GOOGLE_CX_ID')
+    if not api_key or not cx_id:
+        logger.info('Batch18 source unavailable: Google CSE credentials missing')
+        return []
+    try:
+        params = {'key': api_key, 'cx': cx_id, 'q': query, 'num': 10}
+        if image:
+            params['searchType'] = 'image'
+        response = await run_async(requests.get, 'https://www.googleapis.com/customsearch/v1', params=params, timeout=12)
+        data = response.json()
+        return data.get('items', []) or []
+    except Exception as exc:
+        logger.warning('Batch18 CSE query failed (%s): %s', query, exc)
+        return []
+
+
+async def _batch18_html_search(query: str) -> list:
+    """No-key fallback: parse public search-result HTML, not search snippets as facts."""
+    encoded = quote(query)
+    headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36'}
+    results = []
+    for engine, url in (
+        ('Bing HTML', f'https://www.bing.com/search?q={encoded}'),
+        ('DDG HTML', f'https://html.duckduckgo.com/html/?q={encoded}'),
+    ):
+        try:
+            response = await run_async(requests.get, url, headers=headers, timeout=12)
+            if response.status_code != 200:
+                continue
+            soup = BeautifulSoup(response.text, 'html.parser')
+            selectors = ('li.b_algo', '.result')
+            nodes = []
+            for selector in selectors:
+                nodes.extend(soup.select(selector))
+            for node in nodes[:10]:
+                anchor = node.select_one('h2 a, .result__a, a.result__url')
+                if not anchor:
+                    continue
+                href = anchor.get('href', '')
+                label = anchor.get_text(' ', strip=True)
+                snippet_node = node.select_one('.b_caption p, .result__snippet')
+                snippet = snippet_node.get_text(' ', strip=True) if snippet_node else node.get_text(' ', strip=True)
+                if href and label:
+                    results.append({'title': label, 'snippet': snippet[:600], 'link': href, 'pagemap': {}, 'engine': engine})
+            if results:
+                return results
+        except Exception as exc:
+            logger.info('Batch18 %s fallback failed: %s', engine, exc)
+    return results
+
+
+async def _batch18_youtube_search(title: str, year: str) -> list:
+    """Prefer YouTube Data API when configured, otherwise search indexed YouTube pages."""
+    key = os.environ.get('YOUTUBE_API_KEY')
+    if key:
+        try:
+            response = await run_async(requests.get, 'https://www.googleapis.com/youtube/v3/search', params={
+                'key': key, 'part': 'snippet', 'q': f'{title} {year} official trailer',
+                'type': 'video', 'maxResults': 10,
+            }, timeout=12)
+            items = response.json().get('items', []) or []
+            return [{'title': x.get('snippet', {}).get('title', ''),
+                     'snippet': x.get('snippet', {}).get('description', ''),
+                     'link': f"https://www.youtube.com/watch?v={x.get('id', {}).get('videoId', '')}",
+                     'pagemap': {}} for x in items]
+        except Exception as exc:
+            logger.warning('Batch18 YouTube API failed: %s', exc)
+    items = await _batch18_cse_search(f'site:youtube.com "{title}" {year} (trailer OR teaser OR "official")')
+    return items or await _batch18_html_search(f'site:youtube.com "{title}" {year} (trailer OR teaser OR "official")')
+
+
+async def _batch18_ocr_image(url: str) -> str:
+    """Best-effort OCR from a public poster/thumbnail; optional dependency, never fatal."""
+    if not url:
+        return ''
+    try:
+        import pytesseract
+        response = await run_async(requests.get, url, timeout=12, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code != 200 or not response.content:
+            return ''
+        image = Image.open(BytesIO(response.content))
+        return (await run_async(pytesseract.image_to_string, image))[:1000].strip()
+    except Exception as exc:
+        logger.info('Batch18 poster OCR unavailable/failed: %s', exc)
+        return ''
+
+
+async def _batch18_internal_history(title: str, year: str) -> list:
+    """Look for prior locally stored series records; failure must not block the batch."""
+    hits = []
+    conn = None
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return hits
+        cur = conn.cursor()
+        cur.execute('SELECT id, title, year, poster_url, extra_info FROM movies WHERE title ILIKE %s LIMIT 10', (f'%{title}%',))
+        for row in cur.fetchall() or []:
+            hits.append({'id': row[0], 'title': row[1], 'year': row[2], 'poster': row[3], 'extra_info': row[4]})
+        cur.close()
+    except Exception as exc:
+        logger.info('Batch18 internal history unavailable: %s', exc)
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+    return hits
+
+
+async def _batch18_public_evidence(title: str, year: str) -> dict:
+    """Search promotional ecosystems and return evidence, not fabricated metadata."""
+    sources, candidates, snippets, posters, ocr_text = [], [], [], [], []
+    queries = [
+        ('YouTube', f'site:youtube.com "{title}" {year} official trailer'),
+        ('Ullu social', f'site:facebook.com/Ulluappnow "{title}"'),
+        ('Atrangii social', f'site:youtube.com "{title}" "Atrangii Originals"'),
+        ('OTT social', f'("{title}" OR "{title.replace(" ", "-")}") {year} (Ullu OR WOOW OR Atrangii OR Kooku OR PrimeShots) trailer'),
+        ('Instagram promo', f'site:instagram.com "{title}" {year}'),
+        ('Archive trace', f'site:web.archive.org "{title}"'),
+        ('News promo', f'"{title}" {year} cast release trailer web series'),
+    ]
+    for source_name, query in queries:
+        items = await _batch18_cse_search(query, image=False)
+        if not items:
+            items = await _batch18_html_search(query)
+            if items:
+                source_name = f'{source_name} via web search'
+        accepted_from_source = False
+        for item in items[:10]:
+            title_text = item.get('title', '')
+            snippet = item.get('snippet', '')
+            link = item.get('link', '')
+            item = {'source': source_name, 'title': title_text, 'snippet': snippet, 'link': link}
+            if not _batch18_relevant_candidate(item, title, year):
+                continue
+            candidates.append(item)
+            accepted_from_source = True
+            if snippet:
+                snippets.append(snippet)
+        if accepted_from_source:
+            _batch18_merge_source(sources, source_name)
+    # Direct archive lookup works even when the original OTT page is gone.
+    try:
+        archive_response = await run_async(requests.get, 'https://web.archive.org/cdx/search/cdx', params={
+            'url': f'*{title.replace(" ", "*")}*', 'output': 'json', 'filter': 'statuscode:200',
+            'fl': 'timestamp,original,statuscode,mimetype', 'collapse': 'urlkey', 'limit': 20,
+        }, timeout=12)
+        archive_rows = archive_response.json() if archive_response.status_code == 200 else []
+        if isinstance(archive_rows, list) and len(archive_rows) > 1:
+            _batch18_merge_source(sources, 'Internet Archive')
+            for row in archive_rows[1:]:
+                if len(row) >= 2:
+                    candidates.append({'source': 'Internet Archive', 'title': title, 'snippet': f'Archived URL: {row[1]}', 'link': f'https://web.archive.org/web/{row[0]}/{row[1]}'})
+    except Exception as exc:
+        logger.info('Batch18 Internet Archive lookup unavailable: %s', exc)
+
+    image_items = await _batch18_cse_search(f'"{title}" {year} poster thumbnail official', image=True)
+    if image_items:
+        _batch18_merge_source(sources, 'Poster/Image search')
+    for item in image_items[:10]:
+        image = item.get('link') or item.get('pagemap', {}).get('cse_image', [{}])[0].get('src')
+        if image:
+            posters.append(image)
+    for poster in posters[:3]:
+        text = await _batch18_ocr_image(poster)
+        if text:
+            ocr_text.append(text)
+            candidates.append({'source': 'Poster OCR', 'title': title, 'snippet': text, 'link': poster})
+            _batch18_merge_source(sources, 'Poster OCR')
+    return {'sources': sources, 'candidates': candidates, 'snippets': snippets, 'posters': posters, 'ocr': ocr_text}
+
+
+async def _batch18_source_pipeline(title: str, year: str) -> dict:
+    evidence = await _batch18_public_evidence(title, year)
+    yt = await _batch18_youtube_search(title, year)
+    accepted_youtube = [x for x in yt[:10] if _batch18_relevant_candidate(x, title, year)]
+    if accepted_youtube:
+        _batch18_merge_source(evidence['sources'], 'YouTube')
+        evidence['candidates'].extend(
+            {'source': 'YouTube', 'title': x.get('title', ''), 'snippet': x.get('snippet', ''), 'link': x.get('link', '')}
+            for x in accepted_youtube
+        )
+    history = await _batch18_internal_history(title, year)
+    if history:
+        _batch18_merge_source(evidence['sources'], 'Internal history')
+    evidence['history'] = history
+    evidence['source_count'] = len(evidence['sources'])
+    evidence['candidate_count'] = len(evidence['candidates'])
+    logger.info('Batch18 evidence sources=%s candidates=%s posters=%s ocr=%s history=%s', evidence['sources'] or ['none'], evidence['candidate_count'], len(evidence['posters']), len(evidence['ocr']), len(history))
+    return evidence
+
+
+# ============================================================================
 # 🔞 ADULT METADATA COMBO ENGINE - 5 Sources Pipeline
 # ============================================================================
 async def fetch_adult_metadata_combo(
     movie_name: str,
     movie_year: str = "",
-    movie_lang: str = "Hindi"
+    movie_lang: str = "Hindi",
+    raw_caption: str = "",
+    raw_filename: str = ""
 ) -> dict:
     """
     5-source combo pipeline for adult/OTT content:
@@ -8996,10 +9265,48 @@ async def fetch_adult_metadata_combo(
         "plot": None,
         "cast": "",
         "category": "Adult",
-        "source": "Default"
+        "source": "Filename/Caption",
+        "evidence_sources": [],
+        "identity_status": "Filename-confirmed"
     }
 
-    logger.info(f"🔍 Adult Combo Search: '{movie_name}' ({movie_year})")
+    logger.info(f"🔍 Batch18 multi-source search: '{movie_name}' ({movie_year})")
+    evidence = await _batch18_source_pipeline(movie_name, movie_year)
+    result["evidence_sources"] = evidence.get("sources", [])
+    if evidence.get("history"):
+        result["identity_status"] = "Internally corroborated"
+    elif evidence.get("sources"):
+        result["identity_status"] = "Public-trace corroborated"
+    else:
+        result["identity_status"] = "Filename-confirmed; public trace not found"
+    # Score independent clues; do not accept a random same-name result.
+    scored = []
+    normalized_title = re.sub(r'[^a-z0-9]+', ' ', movie_name.lower()).strip()
+    title_tokens = {token for token in normalized_title.split() if len(token) > 2}
+    for item in evidence.get("candidates", []):
+        blob = re.sub(r'[^a-z0-9]+', ' ', f"{item.get('title', '')} {item.get('snippet', '')}".lower())
+        overlap = len(title_tokens.intersection(blob.split()))
+        score = overlap * 10
+        if normalized_title and normalized_title in blob:
+            score += 30
+        if str(movie_year) and str(movie_year) in blob:
+            score += 10
+        if any(tag in blob for tag in ('official trailer', 'ullu originals', 'atrangii originals', 'woow', 'kooku', 'primeshots')):
+            score += 15
+        if item.get('source') in ('YouTube', 'Ullu social', 'Atrangii social', 'Internet Archive', 'Poster OCR'):
+            score += 8
+        scored.append((score, item))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    if scored and scored[0][0] >= 35:
+        best_score, best_item = scored[0]
+        if best_item.get('snippet') and not result["plot"]:
+            result["plot"] = best_item['snippet'][:500]
+        result["source"] = best_item.get("source", "Public trace")
+        result["identity_status"] = f"Evidence score {best_score}"
+        result["evidence_sources"] = list(dict.fromkeys(result["evidence_sources"] + [best_item.get('source', 'Public trace')]))
+    if not result["poster_url"] and evidence.get("posters"):
+        result["poster_url"] = evidence["posters"][0]
+    _batch18_merge_source(result["evidence_sources"], "Filename/Caption")
 
     # ─────────────────────────────────────────────
     # SOURCE 1: TMDB with include_adult=true
@@ -9168,7 +9475,7 @@ async def fetch_adult_metadata_combo(
             pass
 
     # ─────────────────────────────────────────────
-    # SOURCE 5: Gemini AI - Most reliable for Indian OTT
+    # SOURCE 5: Gemini AI (optional evidence extraction only; never invent)
     # Training data mein Ullu/AltBalaji content hai
     # ─────────────────────────────────────────────
     # Sirf tab call karo jab plot ya cast khaali ho
@@ -9206,7 +9513,7 @@ Content Type: Adult / 18+ Web Series (NOT classic cinema)
 STRICT RULES:
 - "year" MUST be {movie_year or "2024"} or close to it — do NOT return years like 1972, 1990 etc.
 - This is a web series, NOT an old film
-- If you know this series, give real data; if not, generate realistic data for this title
+- If you do not have verified information, return empty plot and cast. Never generate realistic or guessed facts.
 
 Respond ONLY in this exact JSON format (no markdown, no backticks):
 {{
@@ -9278,9 +9585,9 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     # FINAL: Default fallback values fill karo
     # ─────────────────────────────────────────────
     if not result["plot"]:
-        result["plot"] = f"{movie_name} - Exclusive premium 18+ content. Watch on FlimfyBox Premium."
+        result["plot"] = ""
     if not result["genre"]:
-        result["genre"] = "Adult, Romance, Drama"
+        result["genre"] = "Adult"
     if not result["rating"]:
         result["rating"] = "18+"
 
@@ -9382,7 +9689,7 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
 
-        combo = await fetch_adult_metadata_combo(movie_name, movie_year, movie_lang)
+        combo = await fetch_adult_metadata_combo(movie_name, movie_year, movie_lang, raw_caption, raw_filename)
 
         title     = combo["title"]
         year      = combo["year"]
@@ -9394,6 +9701,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cast_str  = combo["cast"]
         category  = gemini_category  # Always keep Adult category
         data_source = combo["source"]
+        evidence_sources = combo.get("evidence_sources", [])
+        identity_status = combo.get("identity_status", "Unverified")
 
         # IMDB cast fetch (extra — agar imdb_id mila ho)
         if imdb_id and not cast_str:
@@ -9478,7 +9787,8 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             success_msg = (
                 f"✅ **18+ Metadata Ready**\n"
-                f"📡 **Source:** {data_source}\n\n"
+                f"📡 **Sources:** {', '.join(evidence_sources) if evidence_sources else data_source}\n"
+                f"🧾 **Identity:** {identity_status}\n\n"
                 f"🎬 **Title:** `{title}`\n"
                 f"📅 **Year:** {year if year else 'N/A'}\n"
                 f"🎭 **Genre:** {genre}\n"
