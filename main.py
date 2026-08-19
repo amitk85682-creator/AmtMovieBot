@@ -9315,16 +9315,18 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === PHASE 1: FIRST FILE = METADATA & MOVIE CREATION ===
     if BATCH_18_SESSION.get('movie_id') is None:
-        raw_caption = message.caption or ""
-        if not raw_caption:
+        raw_caption = (message.caption or message.text or "").strip()
+        media = message.document or message.video
+        raw_filename = (getattr(media, 'file_name', None) or "").strip() if media else ""
+        if not raw_caption and not raw_filename:
             await message.reply_text(
-                "❌ **18+ बैच:** पहली फाइल के साथ caption में movie का naam zaroor dein.",
+                "❌ **18+ बैच:** पहली फाइल के साथ caption या filename mein series ka naam zaroor dein.",
                 parse_mode='Markdown'
             )
             return
         
-        # 🎯 Adult content auto-detection from filename
-        raw_lower = raw_caption.lower()
+        # 🎯 Adult content auto-detection from both caption and actual filename
+        raw_lower = f"{raw_caption} {raw_filename}".lower()
         force_adult = any(tag in raw_lower for tag in ['unrated', '18+', 'adult', 'hot', 'bhabhi', 'mastani'])
         
         status_msg = await message.reply_text(
@@ -9332,24 +9334,33 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
             quote=True
         )
 
-        # === AI EXTRACTION ===
-        image_bytes = None
+        # === BATCH18 EVIDENCE EXTRACTION ===
+        # Read the exact same file's caption and Telegram filename together.
+        # This stays inside batch18; other batch flows are not changed here.
         try:
-            ai_data = await get_movie_name_from_caption(raw_caption, image_bytes)
+            ai_data = await process_file_with_evidence_engine(message)
             movie_name = ai_data.get("title", "UNKNOWN")
             movie_year = ai_data.get("year", "")
             movie_lang = ai_data.get("language", "Hindi") or "Hindi"
             movie_extra = ai_data.get("extra_info", "")
-            
-            # Force adult if detected in filename
-            gemini_category = "Adult" if force_adult else (ai_data.get("category", "Web Series") or "Web Series")
+            evidence_category = ai_data.get("category", "Web Series") or "Web Series"
+            logger.info(
+                "Batch18 identity evidence: title=%s year=%s filename=%s extra=%s",
+                movie_name, movie_year, raw_filename or "<none>", movie_extra or "<none>",
+            )
+
+            # Batch18 always remains Adult; the reconciler supplies only identity
+            # fields such as clean title/year/language/season/part evidence.
+            gemini_category = "Adult"
             
         except Exception as e:
-            logger.error(f"AI extraction failed: {e}")
-            movie_name = clean_telegram_text(raw_caption.split('\n')[0][:50])
-            movie_year = ""
-            movie_lang = "Hindi"
-            movie_extra = ""
+            logger.error(f"Batch18 evidence extraction failed: {e}")
+            fallback_text = raw_caption or raw_filename
+            fallback_data = await fallback_extraction(fallback_text)
+            movie_name = fallback_data.get("title", "UNKNOWN")
+            movie_year = fallback_data.get("year", "")
+            movie_lang = fallback_data.get("language", "Hindi") or "Hindi"
+            movie_extra = fallback_data.get("extra_info", "")
             gemini_category = "Adult" if force_adult else "Web Series"
 
         if movie_name == "UNKNOWN" or len(movie_name) < 2:
@@ -9360,14 +9371,14 @@ async def batch18_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await status_msg.edit_text(
             f"✅ **Extracted:** 🎬 `{movie_name}` ({movie_year or 'N/A'})\n"
-            f"⏳ Fetching metadata from TMDB/Google...",
+            f"⏳ Fetching adult metadata and public evidence...",
             parse_mode='Markdown'
         )
 
         # === 🚀 COMBO METADATA ENGINE (5 Sources) ===
         await status_msg.edit_text(
             f"🔍 **Searching:** `{movie_name}`\n"
-            f"⏳ Trying TMDB → Wikipedia → DuckDuckGo → Google → Gemini AI...",
+            f"⏳ Trying available public traces; filename/caption evidence remains primary...",
             parse_mode='Markdown'
         )
 
