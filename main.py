@@ -12091,26 +12091,36 @@ register_webapp_routes(
     logger=logger
 )
 
+# Guaranteed dependency-free health endpoint. Register it only if the imported
+# webapp route module has not already provided one.
+def _miniapp_healthz():
+    return jsonify({'status': 'ok', 'service': 'flimfybox-mini-app'}), 200
+
+if not any(rule.rule == '/healthz' for rule in flask_app.url_map.iter_rules()):
+    flask_app.add_url_rule(
+        '/healthz', 'miniapp_healthz', _miniapp_healthz, methods=['GET', 'HEAD']
+    )
+
 # ==================== RUN FLASK ====================
 
 def run_flask():
     """Run the Mini App HTTP server safely on Render and in production."""
     port = int(os.environ.get('PORT', '10000'))
     try:
-        # Flask's built-in development server is not intended for a public
-        # Render service. Waitress is already pinned in requirements.txt and
-        # handles concurrent Mini App API requests reliably.
-        from waitress import serve
-        logger.info("🌐 Mini App HTTP server listening on 0.0.0.0:%s", port)
-        serve(flask_app, host='0.0.0.0', port=port, threads=8)
-        # Waitress should block for the process lifetime. If it ever returns,
-        # do not leave Telegram polling alive with a dead Mini App server.
-        logger.error("❌ Mini App HTTP server exited unexpectedly; restarting service")
+        try:
+            from waitress import serve
+            logger.info("🌐 Mini App HTTP server listening via Waitress on 0.0.0.0:%s", port)
+            serve(flask_app, host='0.0.0.0', port=port, threads=8)
+        except ImportError:
+            # Keep the service reachable even if a deployment forgot waitress.
+            logger.warning("⚠️ waitress is unavailable; using Flask threaded fallback")
+            flask_app.run(host='0.0.0.0', port=port, debug=False, threaded=True, use_reloader=False)
+        logger.error("❌ Mini App HTTP server exited unexpectedly")
     except Exception:
         logger.exception("❌ Mini App HTTP server stopped unexpectedly")
-    # This thread is otherwise independent from polling. Exit the process so
-    # Render restarts the complete service instead of leaving Mini App down.
-    os._exit(1)
+        # Flask/Waitress failure means the web process is unhealthy. Let Render
+        # restart the complete service instead of leaving Telegram alive alone.
+        os._exit(1)
 
 
 # Uncomment the following lines only if you want to run Flask standalone (not recommended inside main)
@@ -12484,29 +12494,36 @@ async def auto_delete_worker(app: Application):
 
 
 async def keep_miniapp_alive_worker():
-    """Ping the public Mini App health URL so Render keeps its web route warm."""
+    """Check the local server and, when configured, the public health URL."""
+    port = int(os.environ.get('PORT', '10000'))
+    local_url = f'http://127.0.0.1:{port}/healthz'
     configured_url = (os.environ.get('PUBLIC_URL') or WEB_APP_URL or '').strip()
     parsed_url = urlparse(configured_url)
-    if parsed_url.scheme and parsed_url.netloc:
-        health_url = f"{parsed_url.scheme}://{parsed_url.netloc}/healthz"
-    else:
-        # Local fallback is useful outside Render; production must set a public
-        # WEB_APP_URL or PUBLIC_URL for an inbound Render request.
-        health_url = f"http://127.0.0.1:{os.environ.get('PORT', '10000')}/healthz"
+    public_url = (
+        f'{parsed_url.scheme}://{parsed_url.netloc}/healthz'
+        if parsed_url.scheme and parsed_url.netloc else ''
+    )
+    targets = list(dict.fromkeys([local_url] + ([public_url] if public_url else [])))
+    logger.info('💓 Mini App keep-alive worker started: %s', ', '.join(targets))
 
-    logger.info("💓 Mini App keep-alive worker started: %s", health_url)
     timeout = aiohttp.ClientTimeout(total=15)
-    while True:
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(health_url, allow_redirects=True) as response:
-                    if response.status != 200:
-                        logger.warning("⚠️ Mini App keep-alive returned HTTP %s", response.status)
-        except Exception as exc:
-            # Never interrupt bot polling because a health ping failed. Render
-            # or UptimeRobot can recover the route on the next probe.
-            logger.warning("⚠️ Mini App keep-alive ping failed: %s", exc)
-        await asyncio.sleep(600)
+    headers = {'User-Agent': 'FlimfyBox-MiniApp-HealthCheck/1.0'}
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            while True:
+                for health_url in targets:
+                    try:
+                        async with session.get(health_url, allow_redirects=False) as response:
+                            if response.status != 200:
+                                logger.warning('⚠️ Mini App health check %s returned HTTP %s', health_url, response.status)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        logger.warning('⚠️ Mini App health check failed for %s: %s', health_url, exc)
+                await asyncio.sleep(300)
+    except asyncio.CancelledError:
+        logger.info('🛑 Mini App keep-alive worker stopped')
+        raise
 
 # 👇 YAHAN SE COPY KARO AUR EXACTLY 'def register_handlers' KE THEEK UPAR PASTE KARO 👇
 
