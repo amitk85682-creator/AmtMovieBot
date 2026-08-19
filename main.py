@@ -341,7 +341,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 # still hard-coded in several buttons, so Telegram opened the retired Mini App.
 WEB_APP_URL = os.environ.get(
     'WEB_APP_URL',
-    'https://urmoviebot-1-7d7f.onrender.com/webapp'
+    'https://flimfybox-bot-yht0.onrender.com/webapp'
 ).rstrip('/')
     # 👇👇👇 START COPY HERE 👇👇👇
 db_pool = None
