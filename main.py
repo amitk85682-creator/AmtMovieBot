@@ -12161,6 +12161,32 @@ async def auto_delete_worker(app: Application):
         # Har 5 second me database check karega
         await asyncio.sleep(5)
 
+
+async def keep_miniapp_alive_worker():
+    """Ping the public Mini App health URL so Render keeps its web route warm."""
+    configured_url = (os.environ.get('PUBLIC_URL') or WEB_APP_URL or '').strip()
+    parsed_url = urlparse(configured_url)
+    if parsed_url.scheme and parsed_url.netloc:
+        health_url = f"{parsed_url.scheme}://{parsed_url.netloc}/healthz"
+    else:
+        # Local fallback is useful outside Render; production must set a public
+        # WEB_APP_URL or PUBLIC_URL for an inbound Render request.
+        health_url = f"http://127.0.0.1:{os.environ.get('PORT', '10000')}/healthz"
+
+    logger.info("💓 Mini App keep-alive worker started: %s", health_url)
+    timeout = aiohttp.ClientTimeout(total=15)
+    while True:
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(health_url, allow_redirects=True) as response:
+                    if response.status != 200:
+                        logger.warning("⚠️ Mini App keep-alive returned HTTP %s", response.status)
+        except Exception as exc:
+            # Never interrupt bot polling because a health ping failed. Render
+            # or UptimeRobot can recover the route on the next probe.
+            logger.warning("⚠️ Mini App keep-alive ping failed: %s", exc)
+        await asyncio.sleep(600)
+
 # 👇 YAHAN SE COPY KARO AUR EXACTLY 'def register_handlers' KE THEEK UPAR PASTE KARO 👇
 
 async def payment_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -12425,6 +12451,10 @@ async def main():
     if not apps:
         logger.error("❌ No bots could be started.")
         return
+
+    # Keep the Mini App route warm independently of Telegram updates. This is
+    # intentionally one task for the process, not one per bot token.
+    asyncio.create_task(keep_miniapp_alive_worker())
 
     # =================================================================
     # 5. Keep Script Alive
