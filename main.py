@@ -11782,9 +11782,14 @@ def run_flask():
         from waitress import serve
         logger.info("🌐 Mini App HTTP server listening on 0.0.0.0:%s", port)
         serve(flask_app, host='0.0.0.0', port=port, threads=8)
+        # Waitress should block for the process lifetime. If it ever returns,
+        # do not leave Telegram polling alive with a dead Mini App server.
+        logger.error("❌ Mini App HTTP server exited unexpectedly; restarting service")
     except Exception:
         logger.exception("❌ Mini App HTTP server stopped unexpectedly")
-        raise
+    # This thread is otherwise independent from polling. Exit the process so
+    # Render restarts the complete service instead of leaving Mini App down.
+    os._exit(1)
 
 
 # Uncomment the following lines only if you want to run Flask standalone (not recommended inside main)
