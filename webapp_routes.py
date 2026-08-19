@@ -63,11 +63,17 @@ def register_webapp_routes(
             return None, (jsonify({'status': 'error', 'message': 'Open My List inside Telegram.'}), 401)
         return user, None
 
-    # 👇 NAYA FIX: UptimeRobot ke liye Root URL (Taaki 404 na aaye) 👇
+    @flask_app.route('/healthz', methods=['GET', 'HEAD'])
+    def healthz():
+        """Fast Render health probe; intentionally independent of TMDB/DB."""
+        response = jsonify({'status': 'ok', 'service': 'flimfybox-miniapp'})
+        response.headers['Cache-Control'] = 'no-store'
+        return response, 200
+
+    # Root remains useful for a browser or external uptime monitor.
     @flask_app.route('/', methods=['GET', 'HEAD'])
     def home():
         return "Bot is Alive & Running!", 200
-    # 👆 NAYA FIX END 👆
     
     @flask_app.route('/api/movies', methods=['GET'])
     def get_movies():

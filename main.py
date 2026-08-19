@@ -11773,8 +11773,18 @@ register_webapp_routes(
 # ==================== RUN FLASK ====================
 
 def run_flask():
-    port = int(os.environ.get('PORT', 8080))
-    flask_app.run(host='0.0.0.0', port=port, debug=False)
+    """Run the Mini App HTTP server safely on Render and in production."""
+    port = int(os.environ.get('PORT', '10000'))
+    try:
+        # Flask's built-in development server is not intended for a public
+        # Render service. Waitress is already pinned in requirements.txt and
+        # handles concurrent Mini App API requests reliably.
+        from waitress import serve
+        logger.info("🌐 Mini App HTTP server listening on 0.0.0.0:%s", port)
+        serve(flask_app, host='0.0.0.0', port=port, threads=8)
+    except Exception:
+        logger.exception("❌ Mini App HTTP server stopped unexpectedly")
+        raise
 
 
 # Uncomment the following lines only if you want to run Flask standalone (not recommended inside main)
