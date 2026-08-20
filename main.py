@@ -12104,23 +12104,43 @@ if not any(rule.rule == '/healthz' for rule in flask_app.url_map.iter_rules()):
 # ==================== RUN FLASK ====================
 
 def run_flask():
-    """Run the Mini App HTTP server safely on Render and in production."""
+    """Run and supervise the Mini App HTTP server without stopping Telegram polling."""
     port = int(os.environ.get('PORT', '10000'))
-    try:
+    restart_delay = max(3, int(os.environ.get('MINIAPP_RESTART_DELAY', '5')))
+
+    while True:
+        server_started = False
         try:
-            from waitress import serve
-            logger.info("🌐 Mini App HTTP server listening via Waitress on 0.0.0.0:%s", port)
-            serve(flask_app, host='0.0.0.0', port=port, threads=8)
-        except ImportError:
-            # Keep the service reachable even if a deployment forgot waitress.
-            logger.warning("⚠️ waitress is unavailable; using Flask threaded fallback")
-            flask_app.run(host='0.0.0.0', port=port, debug=False, threaded=True, use_reloader=False)
-        logger.error("❌ Mini App HTTP server exited unexpectedly")
-    except Exception:
-        logger.exception("❌ Mini App HTTP server stopped unexpectedly")
-        # Flask/Waitress failure means the web process is unhealthy. Let Render
-        # restart the complete service instead of leaving Telegram alive alone.
-        os._exit(1)
+            try:
+                from waitress import serve
+                logger.info("🌐 Mini App HTTP server listening via Waitress on 0.0.0.0:%s", port)
+                server_started = True
+                serve(flask_app, host='0.0.0.0', port=port, threads=8)
+            except ImportError:
+                # Keep the service reachable if a deployment omitted waitress.
+                logger.warning("⚠️ waitress unavailable; using Flask threaded fallback")
+                server_started = True
+                flask_app.run(
+                    host='0.0.0.0',
+                    port=port,
+                    debug=False,
+                    threaded=True,
+                    use_reloader=False
+                )
+
+            # A serving function returning means the web server stopped without
+            # taking down the Telegram bot. Restart it after a short backoff.
+            logger.error("❌ Mini App HTTP server returned unexpectedly")
+        except Exception:
+            logger.exception("❌ Mini App HTTP server failed")
+
+        state = 'after start' if server_started else 'before start'
+        logger.warning(
+            "🔁 Mini App server supervisor restarting %s in %s seconds",
+            state,
+            restart_delay
+        )
+        time.sleep(restart_delay)
 
 
 # Uncomment the following lines only if you want to run Flask standalone (not recommended inside main)
