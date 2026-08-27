@@ -5921,6 +5921,8 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
         return MAIN_MENU
 
 async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
+    import re
+    from collections import defaultdict
     # Fetch additional info for premium message
     res = await db_query(
         "SELECT poster_url, year, language FROM movies WHERE id = %s",
@@ -5936,15 +5938,44 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
     caption = f"🎬 <b>{title}</b>{year_str}\n\n"
     
-    # Render all qualities
+    # Group qualities by base name
+    grouped = defaultdict(list)
     for q in qualities:
-        q_name = str(q[0])
+        q_name_full = str(q[0])
         url = str(q[1]) if len(q) > 1 and q[1] else ""
         size = str(q[3]) if len(q) > 3 and q[3] else ""
         
+        match = re.search(r'^(.*?)\s*\((.*?)\)$', q_name_full)
+        if match:
+            base_name = match.group(1).strip()
+            server_raw = match.group(2).strip()
+            srv_match = re.search(r'Server\s*[:\-]?\s*([a-zA-Z0-9\s]+)', server_raw, re.IGNORECASE)
+            if srv_match:
+                server_clean = f"Server {srv_match.group(1).strip()}"
+            else:
+                server_clean = "Download Now"
+        else:
+            base_name = q_name_full
+            server_clean = "Download Now"
+            
         size_str = f" [{size}]" if size and size.lower() != "unknown" else ""
-        caption += f"{q_name}{size_str}\n"
-        caption += f"🔗 <a href='{url}'>Download</a> | 📄 Mediainfo\n\n"
+        key = f"{base_name}{size_str}"
+        grouped[key].append({"url": url, "server": server_clean})
+
+    for base_title, links in grouped.items():
+        caption += f"<b>{base_title}</b>\n<blockquote>"
+        link_strs = []
+        for i, link in enumerate(links, start=1):
+            srv = link['server']
+            if srv == "Download Now":
+                srv = f"Server {i}"
+            link_strs.append(f"<i>{srv}</i> | <a href='{link['url']}'>Download Now</a>")
+            
+        lines = []
+        for i in range(0, len(link_strs), 2):
+            lines.append(" | ".join(link_strs[i:i+2]))
+            
+        caption += "\n".join(lines) + "</blockquote>\n"
 
     # Audio Tracks / Languages
     if res and len(res) > 2 and res[2] and str(res[2]).strip():
@@ -5957,18 +5988,16 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     chat_id = update.effective_chat.id
     
     sent_msg = None
-    if poster_url and len(caption) <= 1024:
+    if poster_url:
         try:
-            sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
+            # Force sending as a real photo since caption is now grouped and short
+            sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption[:1024], parse_mode='HTML')
             return sent_msg
         except Exception as e:
             logger.error(f"Failed to send premium photo message: {e}")
             pass
             
-    # Fallback for > 1024 chars or failed photo
-    if poster_url:
-        caption = f"<a href='{poster_url}'>&#8203;</a>" + caption
-    
+    # Absolute fallback if photo completely fails (no link preview tricks)
     if not sent_msg:
         sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML')
     
