@@ -5986,12 +5986,38 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     chat_id = update.effective_chat.id
     
     sent_msg = None
-    try:
-        # User explicitly requested a clean TEXT message (NO photo, NO link preview) to match their screenshot.
-        sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
-    except Exception as e:
-        logger.error(f"Failed to send premium message: {e}")
-        
+    if poster_url:
+        if len(caption) <= 1024:
+            try:
+                # Send poster with full caption
+                sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Failed to send premium photo message: {e}")
+        else:
+            try:
+                # Caption too long for one photo message (Telegram limit is 1024 chars).
+                # Send photo with just the title, then send the links as a text message.
+                short_caption = f"🎬 <b>{title}</b>{year_str}"
+                photo_msg = await context.bot.send_photo(chat_id, poster_url, caption=short_caption, parse_mode='HTML')
+                
+                # Send the rest as a clean text message with no link previews
+                sent_msg = await context.bot.send_message(
+                    chat_id, 
+                    caption, 
+                    parse_mode='HTML', 
+                    disable_web_page_preview=True,
+                    reply_to_message_id=photo_msg.message_id
+                )
+            except Exception as e:
+                logger.error(f"Failed to send split premium message: {e}")
+
+    # Fallback if both above fail or no poster_url
+    if not sent_msg:
+        try:
+            sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
+        except Exception as e:
+            logger.error(f"Failed to send fallback premium message: {e}")
+            
     return sent_msg
 
 
