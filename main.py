@@ -5944,11 +5944,15 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         
         size_str = f" [{size}]" if size and size.lower() != "unknown" else ""
         caption += f"{q_name}{size_str}\n"
-        caption += f"🔗 <a href='{url}'>Download</a>\n\n"
+        caption += f"🔗 <a href='{url}'>Download</a> | 📄 Mediainfo\n\n"
 
     # Audio Tracks / Languages
     if res and len(res) > 2 and res[2] and str(res[2]).strip():
-        caption += f"🎧 <b>Audio:</b> {res[2]}\n"
+        caption += "<blockquote>🎧 <b>Audio Tracks:</b>\n"
+        langs = [l.strip() for l in str(res[2]).split(',')]
+        for i, l in enumerate(langs, start=1):
+            caption += f"{i}. {l}\n"
+        caption = caption.rstrip('\n') + "</blockquote>\n"
         
     chat_id = update.effective_chat.id
     
