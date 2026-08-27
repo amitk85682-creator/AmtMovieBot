@@ -5956,10 +5956,11 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         
     chat_id = update.effective_chat.id
     
+    sent_msg = None
     if poster_url and len(caption) <= 1024:
         try:
-            await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
-            return
+            sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
+            return sent_msg
         except Exception as e:
             logger.error(f"Failed to send premium photo message: {e}")
             pass
@@ -5968,7 +5969,10 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     if poster_url:
         caption = f"<a href='{poster_url}'>&#8203;</a>" + caption
     
-    await context.bot.send_message(chat_id, caption, parse_mode='HTML')
+    if not sent_msg:
+        sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML')
+    
+    return sent_msg
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6857,7 +6861,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if is_scraped_only:
                 try: await query.message.delete()
                 except: pass
-                await send_premium_scraped_message(update, context, movie_id, title, qualities)
+                sent_msg = await send_premium_scraped_message(update, context, movie_id, title, qualities)
+                if sent_msg:
+                    track_message_for_deletion(context, update.effective_chat.id, sent_msg.message_id, 120)
                 return
 
             # Data context mein save karo aage ke liye
