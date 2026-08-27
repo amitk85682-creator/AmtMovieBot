@@ -5928,10 +5928,8 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         "SELECT poster_url, year, language FROM movies WHERE id = %s",
         (movie_id,), mode='one'
     )
-    poster_url = None
     year_str = ""
     if res:
-        poster_url = res[0]
         year = res[1]
         if year and int(year) > 0:
             year_str = f" - ({year})"
@@ -5988,19 +5986,12 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     chat_id = update.effective_chat.id
     
     sent_msg = None
-    if poster_url:
-        try:
-            # Force sending as a real photo since caption is now grouped and short
-            sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption[:1024], parse_mode='HTML')
-            return sent_msg
-        except Exception as e:
-            logger.error(f"Failed to send premium photo message: {e}")
-            pass
-            
-    # Absolute fallback if photo completely fails (no link preview tricks)
-    if not sent_msg:
-        sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML')
-    
+    try:
+        # User explicitly requested a clean TEXT message (NO photo, NO link preview) to match their screenshot.
+        sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Failed to send premium message: {e}")
+        
     return sent_msg
 
 
