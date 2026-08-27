@@ -5920,6 +5920,53 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
         logger.error(f"Error in request_movie_from_button: {e}")
         return MAIN_MENU
 
+async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
+    # Fetch additional info for premium message
+    res = await db_query(
+        "SELECT poster_url, year, language FROM movies WHERE id = %s",
+        (movie_id,), mode='one'
+    )
+    poster_url = None
+    year_str = ""
+    if res:
+        poster_url = res[0]
+        year = res[1]
+        if year and int(year) > 0:
+            year_str = f" - ({year})"
+
+    caption = f"🎬 <b>{title}</b>{year_str}\n\n"
+    
+    # Render all qualities
+    for q in qualities:
+        q_name = str(q[0])
+        url = str(q[1]) if len(q) > 1 and q[1] else ""
+        size = str(q[3]) if len(q) > 3 and q[3] else ""
+        
+        size_str = f" [{size}]" if size and size.lower() != "unknown" else ""
+        caption += f"{q_name}{size_str}\n"
+        caption += f"🔗 <a href='{url}'>Download</a>\n\n"
+
+    # Audio Tracks / Languages
+    if res and len(res) > 2 and res[2] and str(res[2]).strip():
+        caption += f"🎧 <b>Audio:</b> {res[2]}\n"
+        
+    chat_id = update.effective_chat.id
+    
+    if poster_url and len(caption) <= 1024:
+        try:
+            await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
+            return
+        except Exception as e:
+            logger.error(f"Failed to send premium photo message: {e}")
+            pass
+            
+    # Fallback for > 1024 chars or failed photo
+    if poster_url:
+        caption = f"<a href='{poster_url}'>&#8203;</a>" + caption
+    
+    await context.bot.send_message(chat_id, caption, parse_mode='HTML')
+
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -6799,6 +6846,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if not qualities:
                 await query.answer("❌ No files found!", show_alert=True)
+                return
+
+            # ✅ NEW LOGIC: Check if all qualities are just scraped URLs
+            is_scraped_only = all(q[2] is None and q[1] is not None for q in qualities)
+            if is_scraped_only:
+                try: await query.message.delete()
+                except: pass
+                await send_premium_scraped_message(update, context, movie_id, title, qualities)
                 return
 
             # Data context mein save karo aage ke liye
