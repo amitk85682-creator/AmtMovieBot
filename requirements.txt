@@ -1,6 +1,6 @@
 fuzzywuzzy==0.18.0
 python-Levenshtein>=0.12.0
-python-telegram-bot[job-queue]==20.7
+python-telegram-bot[job-queue,rate-limiter]==20.7
 Flask>=2.0
 Flask-Cors
 psycopg2-binary>=2.9
