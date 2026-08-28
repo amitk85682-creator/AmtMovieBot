@@ -5922,62 +5922,78 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
 
 async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
     import re
-    from collections import defaultdict
     # Fetch additional info for premium message
     res = await db_query(
         "SELECT poster_url, year, language FROM movies WHERE id = %s",
         (movie_id,), mode='one'
     )
     year_str = ""
+    poster_url = None
     if res:
+        poster_url = res[0]
         year = res[1]
         if year and int(year) > 0:
             year_str = f" - ({year})"
 
+    from collections import defaultdict
+
     caption = f"🎬 <b>{title}</b>{year_str}\n\n"
     
-    # Group qualities by base name
+    # Group by base quality (strip server name in parentheses)
     grouped = defaultdict(list)
     for q in qualities:
-        q_name_full = str(q[0])
+        q_name_full = str(q[0]).strip()
         url = str(q[1]) if len(q) > 1 and q[1] else ""
         size = str(q[3]) if len(q) > 3 and q[3] else ""
         
-        match = re.search(r'^(.*?)\s*\((.*?)\)$', q_name_full)
-        if match:
-            base_name = match.group(1).strip()
-            server_raw = match.group(2).strip()
-            srv_match = re.search(r'Server\s*[:\-]?\s*([a-zA-Z0-9\s]+)', server_raw, re.IGNORECASE)
-            if srv_match:
-                server_clean = f"Server {srv_match.group(1).strip()}"
-            else:
-                server_clean = "Download Now"
+        if not url:
+            continue
+
+        # Extract server name if stored as "480p (Server 3)"
+        import re
+        srv_match = re.match(r'^(.*?)\s*\(([^)]+)\)\s*$', q_name_full)
+        if srv_match:
+            base_quality = srv_match.group(1).strip()
+            server_label = srv_match.group(2).strip()
         else:
-            base_name = q_name_full
-            server_clean = "Download Now"
-            
-        size_str = f" [{size}]" if size and size.lower() != "unknown" else ""
-        key = f"{base_name}{size_str}"
-        grouped[key].append({"url": url, "server": server_clean})
+            base_quality = q_name_full
+            server_label = None
+
+        # Build group key with size
+        if size and size.lower() not in ("unknown", "none", "") and size not in base_quality:
+            group_key = f"{base_quality} [{size}]"
+        else:
+            group_key = base_quality
+
+        grouped[group_key].append({"url": url, "server": server_label})
 
     for base_title, links in grouped.items():
         caption += f"<b>{base_title}</b>\n<blockquote>"
-        link_strs = []
-        for i, link in enumerate(links, start=1):
-            srv = link['server']
-            if srv == "Download Now":
-                srv = f"Server {i}"
-            link_strs.append(f"<i>{srv}</i> | <a href='{link['url']}'>Download Now</a>")
+        
+        # Server counter resets per quality group — Server 1, 2, 3, 4...
+        i = 0
+        local_srv = 0
+        while i < len(links):
+            left = links[i]
+            local_srv += 1
+            left_label = left['server'] if left['server'] else f"Server {local_srv}"
             
-        lines = []
-        for i in range(0, len(link_strs), 2):
-            lines.append(" | ".join(link_strs[i:i+2]))
-            
-        caption += "\n".join(lines) + "</blockquote>\n"
+            if i + 1 < len(links):
+                right = links[i + 1]
+                local_srv += 1
+                right_label = right['server'] if right['server'] else f"Server {local_srv}"
+                # Symmetric format — both sides identical pattern
+                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now | <a href='{right['url']}'>{right_label}</a> | Download Now\n"
+                i += 2
+            else:
+                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now\n"
+                i += 1
+        
+        caption += "</blockquote>\n"
 
-    # Audio Tracks / Languages
+    # Audio Tracks at the bottom
     if res and len(res) > 2 and res[2] and str(res[2]).strip():
-        caption += "<blockquote>🎧 <b>Audio Tracks:</b>\n"
+        caption += "<blockquote>🎵 <b>Audio Tracks:</b>\n"
         langs = [l.strip() for l in str(res[2]).split(',')]
         for i, l in enumerate(langs, start=1):
             caption += f"{i}. {l}\n"
@@ -6017,6 +6033,9 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
             sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
         except Exception as e:
             logger.error(f"Failed to send fallback premium message: {e}")
+            
+    if sent_msg:
+        track_message_for_deletion(context, chat_id, sent_msg.message_id, 60)
             
     return sent_msg
 
