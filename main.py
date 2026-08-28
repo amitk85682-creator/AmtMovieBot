@@ -5979,16 +5979,21 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         while i < len(links):
             left = links[i]
             local_srv += 1
-            left_label = left['server'] if left['server'] else f"Server {local_srv}"
+            # Clean server name (remove 'Download', '[', ']')
+            raw_left = left['server'] if left['server'] else f"Server {local_srv}"
+            left_label = raw_left.replace("Download", "").replace("[", "").replace("]", "").strip()
 
             if i + 1 < len(links):
                 right = links[i + 1]
                 local_srv += 1
-                right_label = right['server'] if right['server'] else f"Server {local_srv}"
-                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now | <a href='{right['url']}'>{right_label}</a> | Download Now\n"
+                raw_right = right['server'] if right['server'] else f"Server {local_srv}"
+                right_label = raw_right.replace("Download", "").replace("[", "").replace("]", "").strip()
+                
+                # Format: Server 1 | Download Now | Server 2 | Download Now (where Download Now is the link)
+                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a> | {right_label} | <a href='{right['url']}'>Download Now</a>\n"
                 i += 2
             else:
-                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now\n"
+                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a>\n"
                 i += 1
 
         caption += "</blockquote>\n"
@@ -6006,6 +6011,7 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     sent_msg = None
     if poster_url:
         import re
+        import telegram
         clean_text_len = len(re.sub(r'<[^>]+>', '', caption))
         
         if clean_text_len <= 1024:
@@ -6017,15 +6023,29 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         
         if not sent_msg:
             try:
-                # 4096 character limit trick! (Zero-width space link to poster)
-                # It keeps image and text as ONE single message forever.
+                # Use LinkPreviewOptions to force a large media preview for texts > 1024 chars!
                 magic_caption = f"<a href='{poster_url}'>&#8203;</a>" + caption
-                sent_msg = await context.bot.send_message(
-                    chat_id, 
-                    magic_caption, 
-                    parse_mode='HTML', 
-                    disable_web_page_preview=False
-                )
+                try:
+                    preview_opts = telegram.LinkPreviewOptions(
+                        url=poster_url,
+                        prefer_large_media=True,
+                        show_above_text=True,
+                        is_disabled=False
+                    )
+                    sent_msg = await context.bot.send_message(
+                        chat_id, 
+                        magic_caption, 
+                        parse_mode='HTML', 
+                        link_preview_options=preview_opts
+                    )
+                except AttributeError:
+                    # Fallback if PTB version doesn't support link_preview_options
+                    sent_msg = await context.bot.send_message(
+                        chat_id, 
+                        magic_caption, 
+                        parse_mode='HTML', 
+                        disable_web_page_preview=False
+                    )
             except Exception as e:
                 logger.error(f"Failed to send magic text message: {e}")
 
