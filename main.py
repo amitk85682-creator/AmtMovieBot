@@ -5949,9 +5949,15 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
     from collections import defaultdict
 
-    caption = f"🎬 <b>{title}</b>{year_str}\n\n"
+    # ⚡ MAGIC TRICK: 1024 char limit bypass karne ke liye zero-width link use karenge!
+    # Isse Image aur Text KABHI alag nahi honge, chahe kitna bhi lamba text ho!
+    caption = ""
+    if poster_url:
+        caption += f"<a href='{poster_url}'>&#8203;</a>"
+        
+    caption += f"🎬 <b>{title}</b>{year_str}\n\n"
     
-    # Group by quality — server_name is now a direct column (index 6 in tuple)
+    # Group by quality
     grouped = defaultdict(list)
     for q in qualities:
         quality    = str(q[0]).strip()
@@ -5962,7 +5968,6 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         if not url:
             continue
 
-        # Group key: quality + size
         if file_size and file_size.lower() not in ("unknown", "none", "") and file_size not in quality:
             group_key = f"{quality} [{file_size}]"
         else:
@@ -5985,10 +5990,11 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
                 right = links[i + 1]
                 local_srv += 1
                 right_label = right['server'] if right['server'] else f"Server {local_srv}"
-                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now | <a href='{right['url']}'>{right_label}</a> | Download Now\n"
+                # USER DEMAND: "Server 1 | [Download Now] | Server 2 | [Download Now]"
+                caption += f"<b>{left_label}</b> | <a href='{left['url']}'>Download Now</a> | <b>{right_label}</b> | <a href='{right['url']}'>Download Now</a>\n"
                 i += 2
             else:
-                caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now\n"
+                caption += f"<b>{left_label}</b> | <a href='{left['url']}'>Download Now</a>\n"
                 i += 1
 
         caption += "</blockquote>\n"
@@ -6003,38 +6009,22 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         
     chat_id = update.effective_chat.id
     
-    sent_msg = None
-    if poster_url:
-        if len(caption) <= 1024:
-            try:
-                # Send poster with full caption
-                sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
-            except Exception as e:
-                logger.error(f"Failed to send premium photo message: {e}")
-        else:
-            try:
-                # Caption too long for one photo message (Telegram limit is 1024 chars).
-                # Send photo with just the title, then send the links as a text message.
-                short_caption = f"🎬 <b>{title}</b>{year_str}"
-                photo_msg = await context.bot.send_photo(chat_id, poster_url, caption=short_caption, parse_mode='HTML')
-                
-                # Send the rest as a clean text message with no link previews
-                sent_msg = await context.bot.send_message(
-                    chat_id, 
-                    caption, 
-                    parse_mode='HTML', 
-                    disable_web_page_preview=True,
-                    reply_to_message_id=photo_msg.message_id
-                )
-            except Exception as e:
-                logger.error(f"Failed to send split premium message: {e}")
-
-    # Fallback if both above fail or no poster_url
-    if not sent_msg:
+    # ⚡ Hamesha ek hi message jayega `send_message` se, 1024 char limit ki tension nahi!
+    try:
+        sent_msg = await context.bot.send_message(
+            chat_id=chat_id, 
+            text=caption, 
+            parse_mode='HTML', 
+            disable_web_page_preview=False # Taki upar image ka preview aaye!
+        )
+    except Exception as e:
+        logger.error(f"Failed to send premium message: {e}")
+        # Agar link preview fail ho toh bina preview ke bhej do
         try:
             sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
-        except Exception as e:
-            logger.error(f"Failed to send fallback premium message: {e}")
+        except Exception as fallback_e:
+            logger.error(f"Fallback also failed: {fallback_e}")
+            sent_msg = None
             
     if sent_msg:
         track_message_for_deletion(context, chat_id, sent_msg.message_id, 60)
