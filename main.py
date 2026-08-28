@@ -5970,8 +5970,9 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
         grouped[group_key].append({"url": url, "server": server_name})
 
+    number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     for base_title, links in grouped.items():
-        caption += f"<b>{base_title}</b>\n<blockquote>"
+        caption += f"<b>{base_title}</b>\n"
         
         # 2 servers per line, symmetric format
         i = 0
@@ -5979,29 +5980,29 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         while i < len(links):
             left = links[i]
             local_srv += 1
-            left_label = f"Server {local_srv}"
+            left_emoji = number_emojis[local_srv - 1] if local_srv <= 10 else f"{local_srv}."
 
             if i + 1 < len(links):
                 right = links[i + 1]
                 local_srv += 1
-                right_label = f"Server {local_srv}"
+                right_emoji = number_emojis[local_srv - 1] if local_srv <= 10 else f"{local_srv}."
                 
-                # EXACT format from user screenshot: Server 3 | Download Now | Server 4 Download Now
-                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a> | {right_label} <a href='{right['url']}'>Download Now</a>\n"
+                # EXACT format from user request: 1️⃣[Download] | 2️⃣[Download]
+                caption += f"{left_emoji}<a href='{left['url']}'>[Download]</a> | {right_emoji}<a href='{right['url']}'>[Download]</a>\n"
                 i += 2
             else:
-                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a>\n"
+                caption += f"{left_emoji}<a href='{left['url']}'>[Download]</a>\n"
                 i += 1
 
-        caption += "</blockquote>\n"
+        caption += "\n"
 
     # Audio Tracks at the bottom
     if res and len(res) > 2 and res[2] and str(res[2]).strip():
-        caption += "<blockquote>🎵 <b>Audio Tracks:</b>\n"
+        caption += "🎵 <b>Audio Tracks:</b>\n"
         langs = [l.strip() for l in str(res[2]).split(',')]
         for i, l in enumerate(langs, start=1):
             caption += f"{i}. {l}\n"
-        caption = caption.rstrip('\n') + "</blockquote>\n"
+        caption += "\n"
         
     chat_id = update.effective_chat.id
     
