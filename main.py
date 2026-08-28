@@ -2608,7 +2608,7 @@ def fix_movies_unique_constraint():
 def fix_movie_files_table():
     """
     movie_files table migration:
-    1. Missing columns add karta hai (languages, extra_info)
+    1. Missing columns add karta hai (languages, extra_info, file_unique_id, server_name, source)
     2. PURANE restrictive constraints DROP karta hai (movie_id+quality)
     3. NAYA file_unique_id based constraint ensure karta hai
     """
@@ -2620,12 +2620,14 @@ def fix_movie_files_table():
         # Step 1: Missing columns add karo (safe hai)
         cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS languages TEXT DEFAULT '';")
         cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS extra_info TEXT DEFAULT '';")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS file_unique_id TEXT;")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS server_name VARCHAR(50);")
+        cur.execute("ALTER TABLE movie_files ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'telegram';")
 
         # Step 2: PURANE restrictive constraints DROP karo
-        # Yeh zaroori hai kyunki ab ek movie ke andar same quality ke multiple files
-        # (episodes, parts, different encodes) store hone chahiye
         cur.execute("ALTER TABLE movie_files DROP CONSTRAINT IF EXISTS movie_files_movie_id_quality_key;")
         cur.execute("ALTER TABLE movie_files DROP CONSTRAINT IF EXISTS movie_files_unique_size;")
+        cur.execute("ALTER TABLE movie_files DROP CONSTRAINT IF EXISTS unique_movie_quality;")
         logger.info("✅ Old constraints (movie_id+quality) dropped successfully")
 
         # Step 3: NAYA file_unique_id constraint ensure karo
@@ -2638,6 +2640,20 @@ def fix_movie_files_table():
                 ) THEN
                     ALTER TABLE movie_files
                     ADD CONSTRAINT movie_files_file_unique_id_key UNIQUE (file_unique_id);
+                END IF;
+            END $$;
+        """)
+        
+        # Step 4: NAYA server_name constraint ensure karo (for scrap bot compatibility)
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'unique_movie_quality_server'
+                ) THEN
+                    ALTER TABLE movie_files
+                    ADD CONSTRAINT unique_movie_quality_server UNIQUE (movie_id, quality, server_name);
                 END IF;
             END $$;
         """)
