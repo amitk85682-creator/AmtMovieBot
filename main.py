@@ -5979,18 +5979,15 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         while i < len(links):
             left = links[i]
             local_srv += 1
-            # Clean server name (remove 'Download', '[', ']')
-            raw_left = left['server'] if left['server'] else f"Server {local_srv}"
-            left_label = raw_left.replace("Download", "").replace("[", "").replace("]", "").strip()
+            left_label = f"Server {local_srv}"
 
             if i + 1 < len(links):
                 right = links[i + 1]
                 local_srv += 1
-                raw_right = right['server'] if right['server'] else f"Server {local_srv}"
-                right_label = raw_right.replace("Download", "").replace("[", "").replace("]", "").strip()
+                right_label = f"Server {local_srv}"
                 
-                # Format: Server 1 | Download Now | Server 2 | Download Now (where Download Now is the link)
-                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a> | {right_label} | <a href='{right['url']}'>Download Now</a>\n"
+                # EXACT format from user screenshot: Server 3 | Download Now | Server 4 Download Now
+                caption += f"{left_label} | <a href='{left['url']}'>Download Now</a> | {right_label} <a href='{right['url']}'>Download Now</a>\n"
                 i += 2
             else:
                 caption += f"{left_label} | <a href='{left['url']}'>Download Now</a>\n"
