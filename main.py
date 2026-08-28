@@ -442,7 +442,7 @@ async def post_to_topic_command(update: Update, context: ContextTypes.DEFAULT_TY
 # ==================== ENVIRONMENT VARIABLES ====================
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = "postgresql://postgres.vzixjxeppvpxrhntaidb:l0aDck2NUeD4Jws5@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres"
 # Keep the Telegram Web App endpoint configurable. The old Render service was
 # still hard-coded in several buttons, so Telegram opened the retired Mini App.
 WEB_APP_URL = os.environ.get(
