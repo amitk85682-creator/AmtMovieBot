@@ -5990,11 +5990,10 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
                 right = links[i + 1]
                 local_srv += 1
                 right_label = right['server'] if right['server'] else f"Server {local_srv}"
-                # USER DEMAND: "Server 1 | [Download Now] | Server 2 | [Download Now]"
-                caption += f"<b>{left_label}</b> | <a href='{left['url']}'>Download Now</a> | <b>{right_label}</b> | <a href='{right['url']}'>Download Now</a>\n"
+                caption += f"Download [{left_label}] | <a href='{left['url']}'>[Download Now]</a> | Download [{right_label}] | <a href='{right['url']}'>[Download Now]</a>\n"
                 i += 2
             else:
-                caption += f"<b>{left_label}</b> | <a href='{left['url']}'>Download Now</a>\n"
+                caption += f"Download [{left_label}] | <a href='{left['url']}'>[Download Now]</a>\n"
                 i += 1
 
         caption += "</blockquote>\n"
