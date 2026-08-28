@@ -4680,18 +4680,14 @@ def get_all_movie_qualities(movie_id):
 
     try:
         cur = conn.cursor()
-        # NAYI QUERY: languages aur extra_info add kiya hai
+        # Fetch quality, url, file_id, file_size, languages, extra_info, server_name, source
         cur.execute("""
-            SELECT quality, url, file_id, file_size, languages, extra_info
+            SELECT quality, url, file_id, file_size, languages, extra_info,
+                   COALESCE(server_name, '') as server_name,
+                   COALESCE(source, '') as source
             FROM movie_files
             WHERE movie_id = %s AND (url IS NOT NULL OR file_id IS NOT NULL)
-            ORDER BY CASE quality
-                WHEN '4K' THEN 1
-                WHEN 'HD Quality' THEN 2
-                WHEN 'Standart Quality'  THEN 3
-                WHEN 'Low Quality'  THEN 4
-                ELSE 5
-            END DESC
+            ORDER BY quality, server_name
         """, (movie_id,))
         results = cur.fetchall()
         cur.close()
@@ -5939,56 +5935,46 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
     caption = f"🎬 <b>{title}</b>{year_str}\n\n"
     
-    # Group by base quality (strip server name in parentheses)
+    # Group by quality — server_name is now a direct column (index 6 in tuple)
     grouped = defaultdict(list)
     for q in qualities:
-        q_name_full = str(q[0]).strip()
-        url = str(q[1]) if len(q) > 1 and q[1] else ""
-        size = str(q[3]) if len(q) > 3 and q[3] else ""
-        
+        quality    = str(q[0]).strip()
+        url        = str(q[1]) if len(q) > 1 and q[1] else ""
+        file_size  = str(q[3]) if len(q) > 3 and q[3] else ""
+        server_name = str(q[6]).strip() if len(q) > 6 and q[6] else ""
+
         if not url:
             continue
 
-        # Extract server name if stored as "480p (Server 3)"
-        import re
-        srv_match = re.match(r'^(.*?)\s*\(([^)]+)\)\s*$', q_name_full)
-        if srv_match:
-            base_quality = srv_match.group(1).strip()
-            server_label = srv_match.group(2).strip()
+        # Group key: quality + size
+        if file_size and file_size.lower() not in ("unknown", "none", "") and file_size not in quality:
+            group_key = f"{quality} [{file_size}]"
         else:
-            base_quality = q_name_full
-            server_label = None
+            group_key = quality
 
-        # Build group key with size
-        if size and size.lower() not in ("unknown", "none", "") and size not in base_quality:
-            group_key = f"{base_quality} [{size}]"
-        else:
-            group_key = base_quality
-
-        grouped[group_key].append({"url": url, "server": server_label})
+        grouped[group_key].append({"url": url, "server": server_name})
 
     for base_title, links in grouped.items():
         caption += f"<b>{base_title}</b>\n<blockquote>"
         
-        # Server counter resets per quality group — Server 1, 2, 3, 4...
+        # 2 servers per line, symmetric format
         i = 0
         local_srv = 0
         while i < len(links):
             left = links[i]
             local_srv += 1
             left_label = left['server'] if left['server'] else f"Server {local_srv}"
-            
+
             if i + 1 < len(links):
                 right = links[i + 1]
                 local_srv += 1
                 right_label = right['server'] if right['server'] else f"Server {local_srv}"
-                # Symmetric format — both sides identical pattern
                 caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now | <a href='{right['url']}'>{right_label}</a> | Download Now\n"
                 i += 2
             else:
                 caption += f"<a href='{left['url']}'>{left_label}</a> | Download Now\n"
                 i += 1
-        
+
         caption += "</blockquote>\n"
 
     # Audio Tracks at the bottom
@@ -6921,8 +6907,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("❌ No files found!", show_alert=True)
                 return
 
-            # ✅ NEW LOGIC: Check if all qualities are just scraped URLs
-            is_scraped_only = all(q[2] is None and q[1] is not None for q in qualities)
+            # ✅ NEW LOGIC: Check if all qualities are scraped (source='scraped' OR no file_id)
+            is_scraped_only = all(
+                (len(q) > 7 and q[7] == 'scraped') or (q[2] is None and q[1] is not None)
+                for q in qualities
+            )
             if is_scraped_only:
                 try: await query.message.delete()
                 except: pass
