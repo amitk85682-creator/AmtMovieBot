@@ -5956,20 +5956,12 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
             langs = [l.strip() for l in str(res[2]).split(',')]
             audio_tracks = " / ".join(langs)
 
-    # 1. CLEAN CAPTION (No raw links)
-    caption = (
-        f"🎬 <b>{title}{year_str}</b>\n\n"
-        f"🎵 <b>Audio Tracks:</b> {audio_tracks}\n\n"
-        f"✨ <b>Choose your preferred quality below to download:</b>"
-    )
-    
-    # Group by quality
+    # 1. GROUP LINKS & IGNORE SERVER NAMES COMPLETELY
     grouped = defaultdict(list)
     for q in qualities:
         quality    = str(q[0]).strip()
         url        = str(q[1]) if len(q) > 1 and q[1] else ""
         file_size  = str(q[3]) if len(q) > 3 and q[3] else ""
-        server_name = str(q[6]).strip() if len(q) > 6 and q[6] else ""
 
         if not url:
             continue
@@ -5979,40 +5971,41 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         else:
             group_key = quality
 
-        grouped[group_key].append({"url": url, "server": server_name})
+        # Sirf URL save kar rahe hain, server name ko hata diya
+        grouped[group_key].append(url)
 
-    # 2. INLINE BUTTONS GENERATION
-    keyboard = []
-    for base_title, links in grouped.items():
-        # Display Button (Non-clickable category header)
-        keyboard.append([InlineKeyboardButton(f"💿 {base_title}", callback_data="ignore")])
-        
-        # Link Buttons (Max 2 per row for a clean UI)
-        link_buttons = []
-        for idx, link_data in enumerate(links, start=1):
-            # Show Server Name if available, otherwise just "Download 1, Download 2"
-            btn_text = f"📥 {link_data['server']}" if link_data['server'] else f"📥 Download {idx}"
-            link_buttons.append(InlineKeyboardButton(btn_text, url=link_data['url']))
-            
-            if len(link_buttons) == 2:
-                keyboard.append(link_buttons)
-                link_buttons = []
-        
-        # Append remaining button if odd number of links
-        if link_buttons:
-            keyboard.append(link_buttons)
-
-    # Add Join/Support Channel Button
-    keyboard.append([InlineKeyboardButton("📢 Join Updates Channel", url=UPDATE_CHANNEL_URL)])
+    # 2. BUILD CLEAN PREMIUM TEXT CAPTION
+    caption = (
+        f"🎬 <b>{title}{year_str}</b>\n\n"
+        f"🎵 <b>Audio:</b> {audio_tracks}\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+    )
     
+    for base_title, urls in grouped.items():
+        caption += f"📀 <b>{base_title}</b>\n"
+        
+        link_texts = []
+        for idx, url in enumerate(urls, start=1):
+            # Clean, anonymous links bina kisi server name ke
+            link_texts.append(f"📥 <a href='{url}'>Download {idx}</a>")
+        
+        # Links ko ek line mein separator ke sath join karna
+        caption += "  |  ".join(link_texts) + "\n\n"
+
+    caption += f"━━━━━━━━━━━━━━━━━━━"
+    
+    # 3. ONLY ONE BUTTON AT THE BOTTOM
+    keyboard = [[InlineKeyboardButton("📢 Join Updates Channel", url=UPDATE_CHANNEL_URL)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
     chat_id = update.effective_chat.id
     sent_msg = None
 
-    # 3. SEND MESSAGE
-    if poster_url:
+    # 4. SEND MESSAGE (Handling Telegram 1024 char limit intelligently)
+    clean_text_len = len(re.sub(r'<[^>]+>', '', caption))
+    
+    if poster_url and clean_text_len <= 1024:
         try:
-            # Nayi caption chhoti hai, isliye 1024 char limit ka issue nahi aayega
             sent_msg = await context.bot.send_photo(
                 chat_id, 
                 poster_url, 
@@ -6023,14 +6016,31 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         except Exception as e:
             logger.error(f"Failed to send premium photo message: {e}")
 
-    # Fallback agar poster_url na ho ya fail ho jaye
+    # Fallback to Text message with Large Image Preview if text is too long
     if not sent_msg:
+        magic_caption = f"<a href='{poster_url}'>&#8203;</a>{caption}" if poster_url else caption
         try:
+            import telegram
+            preview_opts = telegram.LinkPreviewOptions(
+                url=poster_url,
+                prefer_large_media=True,
+                show_above_text=True,
+                is_disabled=False
+            )
             sent_msg = await context.bot.send_message(
                 chat_id, 
-                caption, 
+                magic_caption, 
                 parse_mode='HTML', 
-                disable_web_page_preview=True,
+                link_preview_options=preview_opts,
+                reply_markup=reply_markup
+            )
+        except AttributeError:
+            # Old PTB library fallback
+            sent_msg = await context.bot.send_message(
+                chat_id, 
+                magic_caption, 
+                parse_mode='HTML', 
+                disable_web_page_preview=False,
                 reply_markup=reply_markup
             )
         except Exception as e:
