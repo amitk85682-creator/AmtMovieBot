@@ -5935,70 +5935,66 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
 async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
     import re
     
-    # Fetch year from DB
-    res = await db_query(
-        "SELECT year FROM movies WHERE id = %s",
-        (movie_id,), mode='one'
-    )
-    year_str = ""
-    if res and res[0] and int(res[0]) > 0:
-        year_str = f" ({res[0]})"
-
-    # EXACT Format from your main.py - Clean and Native HTML Text
-    text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}{year_str}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
+    chat_id = update.effective_chat.id
     
-    idx = 1
-    for f_data in qualities:
+    # Pagination calculate karo pehli baar ke liye (Exactly from main_3.py)
+    limit = 10
+    total_pages = (len(qualities) + limit - 1) // limit if qualities else 1
+    current_files = qualities[0:limit]
+    
+    # 👇 EXACT TEXT FORMAT FROM main_3.py 👇
+    text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
+    
+    for idx, f_data in enumerate(current_files, start=1):
+        q_name = str(f_data[0])
         url = str(f_data[1]) if len(f_data) > 1 and f_data[1] else ""
         
-        # Agar working link nahi hai, toh aage badho
         if not url:
             continue
-            
-        q_name = str(f_data[0])
         
-        # Kachra saaf karne wala logic (From your main.py)
+        # Kachra saaf kar rahe hain taaki deep links perfect banein
         q_name = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', q_name)
         q_name = re.sub(r'\(https?://[^\)]+\)', '', q_name)
         q_name = re.sub(r'https?://[^\s]+', '', q_name)
         q_name = re.sub(r'(?i)t\.me/[^\s]+', '', q_name)
         q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name)
         
-        f_size = str(f_data[3]) if len(f_data) > 3 and f_data[3] else "Unknown"
+        f_size = f_data[3] if len(f_data) > 3 and f_data[3] else "Unknown"
         
-        extra_info = str(f_data[5]) if len(f_data) > 5 and f_data[5] else ""
-        extra_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', extra_info)
-        extra_info = re.sub(r'\(https?://[^\)]+\)', '', extra_info)
-        extra_info = re.sub(r'https?://[^\s]+', '', extra_info)
-        extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
-        extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
+        e_info = str(f_data[5]) if len(f_data) > 5 and f_data[5] else ""
+        e_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', e_info)
+        e_info = re.sub(r'\(https?://[^\)]+\)', '', e_info)
+        e_info = re.sub(r'https?://[^\s]+', '', e_info)
+        e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
+        e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info)
         
-        ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
+        ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
         
-        # Yahan tumhare bot ka internal file ID nahi, balki external website ka link hoga
+        # ✅ NAYA: HTML wala Neela (Inline) link - External URL replaced here!
         text += f"<b>{idx}.</b> <b><a href='{url}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
-        idx += 1
     
     text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
-    
-    chat_id = update.effective_chat.id
+
+    # EXACT Keyboard function from main_3.py
+    keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
     
     try:
-        # Bina kisi photo aur bina kisi inline keyboard ke seedha text bhejna
-        sent_msg = await context.bot.send_message(
+        # EXACT message sending format from main_3.py
+        msg = await context.bot.send_message(
             chat_id=chat_id, 
             text=text, 
+            reply_markup=keyboard, 
             parse_mode='HTML', 
-            disable_web_page_preview=True # Badi image preview band karna zaroori hai
+            disable_web_page_preview=True
         )
         
-        if sent_msg:
-            # ✅ Auto-delete timer 5 minutes (300 seconds) par set kar diya
-            track_message_for_deletion(context, chat_id, sent_msg.message_id, 300)
+        if msg:
+            # ✅ 5 minutes auto-delete timer (300s)
+            track_message_for_deletion(context, chat_id, msg.message_id, 300)
             
-        return sent_msg
+        return msg
     except Exception as e:
-        logger.error(f"Failed to send links message: {e}")
+        logger.error(f"Failed to send premium scraped message: {e}")
         return None
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
