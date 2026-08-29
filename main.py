@@ -5937,7 +5937,7 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     chat_id = update.effective_chat.id
     
-    # Pagination calculate karo pehli baar ke liye (Exactly from main_3.py)
+    # Pagination calculate karo pehli baar ke liye
     limit = 10
     total_pages = (len(qualities) + limit - 1) // limit if qualities else 1
     current_files = qualities[0:limit]
@@ -5946,40 +5946,58 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
     
     for idx, f_data in enumerate(current_files, start=1):
-        q_name = str(f_data[0])
+        q_name = str(f_data[0]) if len(f_data) > 0 and f_data[0] else ""
         url = str(f_data[1]) if len(f_data) > 1 and f_data[1] else ""
         
         if not url:
             continue
         
-        # Kachra saaf kar rahe hain taaki deep links perfect banein
+        # Kachra saaf kar rahe hain
         q_name = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', q_name)
         q_name = re.sub(r'\(https?://[^\)]+\)', '', q_name)
         q_name = re.sub(r'https?://[^\s]+', '', q_name)
         q_name = re.sub(r'(?i)t\.me/[^\s]+', '', q_name)
-        q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name)
+        q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name).strip()
         
-        f_size = f_data[3] if len(f_data) > 3 and f_data[3] else "Unknown"
+        # Values DB se nikalo
+        f_size = str(f_data[3]).strip() if len(f_data) > 3 and f_data[3] else ""
+        lang_name = str(f_data[4]).strip() if len(f_data) > 4 and f_data[4] else ""
+        server_name = str(f_data[6]).strip() if len(f_data) > 6 and f_data[6] else ""
         
         e_info = str(f_data[5]) if len(f_data) > 5 and f_data[5] else ""
         e_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', e_info)
         e_info = re.sub(r'\(https?://[^\)]+\)', '', e_info)
         e_info = re.sub(r'https?://[^\s]+', '', e_info)
         e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
-        e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info)
+        e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info).strip()
         
-        ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
+        ep_tag = f" [{e_info}]" if e_info else ""
         
-        # ✅ NAYA: HTML wala Neela (Inline) link - External URL replaced here!
-        text += f"<b>{idx}.</b> <b><a href='{url}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
+        # 💡 NAYA LOGIC: "Unknown" hatakar Quality + Language + Size combine kar rahe hain
+        left_parts = []
+        if q_name and q_name.lower() not in ['n/a', 'unknown', 'none']:
+            left_parts.append(q_name)
+        if lang_name and lang_name.lower() not in ['n/a', 'unknown', 'none']:
+            left_parts.append(lang_name)
+            
+        if f_size and f_size.lower() not in ['n/a', 'unknown', 'none', 'unknown size', '']:
+            left_parts.append(f_size)
+        elif server_name and server_name.lower() not in ['n/a', 'unknown', 'none', '']:
+            # Agar scraped link ka size nahi pata, toh server ka naam dikha do
+            left_parts.append(server_name)
+            
+        # Join parts with dot separator
+        left_side = " • ".join(left_parts) if left_parts else "Download Link"
+        
+        # ✅ Final Format: 1. 1080p • Hindi • HubCloud | Movie Name [EPISODE 1]
+        text += f"<b>{idx}.</b> <b><a href='{url}'>{left_side} | {title}{ep_tag}</a></b>\n\n"
     
     text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
 
-    # EXACT Keyboard function from main_3.py
+    # EXACT Keyboard function 
     keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
     
     try:
-        # EXACT message sending format from main_3.py
         msg = await context.bot.send_message(
             chat_id=chat_id, 
             text=text, 
