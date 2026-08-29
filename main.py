@@ -5938,19 +5938,35 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     # Fetch additional info for premium message
     res = await db_query(
-        "SELECT poster_url, year FROM movies WHERE id = %s",
+        "SELECT poster_url, year, language FROM movies WHERE id = %s",
         (movie_id,), mode='one'
     )
     year_str = ""
     poster_url = None
+    audio_tracks = "Hindi / English" # Default safe fallback
     
     if res:
         poster_url = res[0]
         year = res[1]
         if year and int(year) > 0:
-            year_str = f" ({year})"
+            year_str = f" - ({year})"
+        
+        # Smart Audio track handling
+        db_lang = str(res[2]).strip() if len(res) > 2 and res[2] else ""
+        if db_lang and db_lang.upper() not in ["N/A", "UNKNOWN", "NONE"]:
+            langs = [l.strip().title() for l in db_lang.replace('/', ',').split(',')]
+            audio_tracks = " / ".join(langs)
+        else:
+            file_langs = set()
+            for q in qualities:
+                f_lang = str(q[4]).strip() if len(q) > 4 and q[4] else ""
+                if f_lang and f_lang.upper() not in ["N/A", "UNKNOWN", "NONE"]:
+                    for l in f_lang.replace('/', ',').split(','):
+                        file_langs.add(l.strip().title())
+            if file_langs:
+                audio_tracks = " / ".join(sorted(list(file_langs)))
 
-    # 1. GROUP LINKS & IGNORE SERVER NAMES COMPLETELY
+    # 1. GROUP LINKS
     grouped = defaultdict(list)
     for q in qualities:
         quality    = str(q[0]).strip()
@@ -5967,23 +5983,24 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
         grouped[group_key].append(url)
 
-    # 2. BUILD CLEAN PREMIUM TEXT CAPTION
+    # 2. BUILD CAPTION (Mixed Style: Theirs + Ours)
     caption = (
         f"🎬 <b>{title}{year_str}</b>\n\n"
+        f"🎵 <b>Audio:</b> {audio_tracks}\n"
         f"💡 <b>Note:</b> Agar pehla link kaam na kare, toh doosra try karein!\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
     )
     
     for base_title, urls in grouped.items():
-        caption += f"📀 <b>{base_title}</b>\n"
+        # Clean bold text jaisa screenshot mein hai
+        caption += f"<b>{base_title}</b>\n"
         
         link_texts = []
         for idx, url in enumerate(urls, start=1):
-            link_texts.append(f"📥 <a href='{url}'>Download {idx}</a>")
+            # 🔗 Emoji use kiya hai just like the screenshot
+            link_texts.append(f"🔗 <a href='{url}'>Download {idx}</a>")
         
         caption += "  |  ".join(link_texts) + "\n\n"
-
-    caption += f"━━━━━━━━━━━━━━━━━━━"
     
     # 3. ONLY ONE BUTTON AT THE BOTTOM
     keyboard = [[InlineKeyboardButton("📢 Join Updates Channel", url=UPDATE_CHANNEL_URL)]]
@@ -6037,7 +6054,7 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
             logger.error(f"Failed to send fallback premium message: {e}")
             
     if sent_msg:
-        # ✅ FIX: Auto-delete timer 60s se badha kar 300s (5 minute) kar diya gaya hai
+        # ✅ Auto-delete set to 5 minutes (300 seconds)
         track_message_for_deletion(context, chat_id, sent_msg.message_id, 300)
             
     return sent_msg
