@@ -5937,6 +5937,11 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     chat_id = update.effective_chat.id
     
+    # ✅ FIX: Filter buttons ke liye session data save karo (scraped movies ke liye bhi)
+    context.user_data['selected_movie_data'] = {'id': movie_id, 'title': title, 'qualities': qualities}
+    context.user_data['active_filter'] = None
+    context.user_data.pop('selected_season', None)
+    
     # Pagination calculate karo pehli baar ke liye
     limit = 10
     total_pages = (len(qualities) + limit - 1) // limit if qualities else 1
@@ -5982,9 +5987,8 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
             
         if f_size and f_size.lower() not in ['n/a', 'unknown', 'none', 'unknown size', '']:
             left_parts.append(f_size)
-        elif server_name and server_name.lower() not in ['n/a', 'unknown', 'none', '']:
-            # Agar scraped link ka size nahi pata, toh server ka naam dikha do
-            left_parts.append(server_name)
+        # ✅ FIX: server_name fallback hataya — "Buzz Server", "PixelServer" ab nahi dikhega
+        # Size na ho to khaali chhod do, server name dikhane ki zaroorat nahi
             
         # Join parts with dot separator
         left_side = " • ".join(left_parts) if left_parts else "Download Link"
