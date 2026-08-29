@@ -5938,23 +5938,17 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     # Fetch additional info for premium message
     res = await db_query(
-        "SELECT poster_url, year, language FROM movies WHERE id = %s",
+        "SELECT poster_url, year FROM movies WHERE id = %s",
         (movie_id,), mode='one'
     )
     year_str = ""
     poster_url = None
-    audio_tracks = "Hindi / English" # Default fallback
     
     if res:
         poster_url = res[0]
         year = res[1]
         if year and int(year) > 0:
             year_str = f" ({year})"
-        
-        # Audio tracks format
-        if len(res) > 2 and res[2] and str(res[2]).strip():
-            langs = [l.strip() for l in str(res[2]).split(',')]
-            audio_tracks = " / ".join(langs)
 
     # 1. GROUP LINKS & IGNORE SERVER NAMES COMPLETELY
     grouped = defaultdict(list)
@@ -5971,13 +5965,12 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         else:
             group_key = quality
 
-        # Sirf URL save kar rahe hain, server name ko hata diya
         grouped[group_key].append(url)
 
     # 2. BUILD CLEAN PREMIUM TEXT CAPTION
     caption = (
         f"🎬 <b>{title}{year_str}</b>\n\n"
-        f"🎵 <b>Audio:</b> {audio_tracks}\n"
+        f"💡 <b>Note:</b> Agar pehla link kaam na kare, toh doosra try karein!\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
     )
     
@@ -5986,10 +5979,8 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         
         link_texts = []
         for idx, url in enumerate(urls, start=1):
-            # Clean, anonymous links bina kisi server name ke
             link_texts.append(f"📥 <a href='{url}'>Download {idx}</a>")
         
-        # Links ko ek line mein separator ke sath join karna
         caption += "  |  ".join(link_texts) + "\n\n"
 
     caption += f"━━━━━━━━━━━━━━━━━━━"
@@ -6035,7 +6026,6 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
                 reply_markup=reply_markup
             )
         except AttributeError:
-            # Old PTB library fallback
             sent_msg = await context.bot.send_message(
                 chat_id, 
                 magic_caption, 
@@ -6047,10 +6037,10 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
             logger.error(f"Failed to send fallback premium message: {e}")
             
     if sent_msg:
-        track_message_for_deletion(context, chat_id, sent_msg.message_id, 60)
+        # ✅ FIX: Auto-delete timer 60s se badha kar 300s (5 minute) kar diya gaya hai
+        track_message_for_deletion(context, chat_id, sent_msg.message_id, 300)
             
     return sent_msg
-
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
