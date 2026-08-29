@@ -5934,130 +5934,72 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
 
 async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
     import re
-    from collections import defaultdict
     
-    # Fetch additional info for premium message
+    # Fetch year from DB
     res = await db_query(
-        "SELECT poster_url, year, language FROM movies WHERE id = %s",
+        "SELECT year FROM movies WHERE id = %s",
         (movie_id,), mode='one'
     )
     year_str = ""
-    poster_url = None
-    audio_tracks = "Hindi / English" # Default safe fallback
+    if res and res[0] and int(res[0]) > 0:
+        year_str = f" ({res[0]})"
+
+    # EXACT Format from your main.py - Clean and Native HTML Text
+    text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}{year_str}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
     
-    if res:
-        poster_url = res[0]
-        year = res[1]
-        if year and int(year) > 0:
-            year_str = f" - ({year})"
+    idx = 1
+    for f_data in qualities:
+        url = str(f_data[1]) if len(f_data) > 1 and f_data[1] else ""
         
-        # Smart Audio track handling
-        db_lang = str(res[2]).strip() if len(res) > 2 and res[2] else ""
-        if db_lang and db_lang.upper() not in ["N/A", "UNKNOWN", "NONE"]:
-            langs = [l.strip().title() for l in db_lang.replace('/', ',').split(',')]
-            audio_tracks = " / ".join(langs)
-        else:
-            file_langs = set()
-            for q in qualities:
-                f_lang = str(q[4]).strip() if len(q) > 4 and q[4] else ""
-                if f_lang and f_lang.upper() not in ["N/A", "UNKNOWN", "NONE"]:
-                    for l in f_lang.replace('/', ',').split(','):
-                        file_langs.add(l.strip().title())
-            if file_langs:
-                audio_tracks = " / ".join(sorted(list(file_langs)))
-
-    # 1. GROUP LINKS
-    grouped = defaultdict(list)
-    for q in qualities:
-        quality    = str(q[0]).strip()
-        url        = str(q[1]) if len(q) > 1 and q[1] else ""
-        file_size  = str(q[3]) if len(q) > 3 and q[3] else ""
-
+        # Agar working link nahi hai, toh aage badho
         if not url:
             continue
-
-        if file_size and file_size.lower() not in ("unknown", "none", "") and file_size not in quality:
-            group_key = f"{quality} [{file_size}]"
-        else:
-            group_key = quality
-
-        grouped[group_key].append(url)
-
-    # 2. BUILD CAPTION (Mixed Style: Theirs + Ours)
-    caption = (
-        f"🎬 <b>{title}{year_str}</b>\n\n"
-        f"🎵 <b>Audio:</b> {audio_tracks}\n"
-        f"💡 <b>Note:</b> Agar pehla link kaam na kare, toh doosra try karein!\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-    )
-    
-    for base_title, urls in grouped.items():
-        # Clean bold text jaisa screenshot mein hai
-        caption += f"<b>{base_title}</b>\n"
+            
+        q_name = str(f_data[0])
         
-        link_texts = []
-        for idx, url in enumerate(urls, start=1):
-            # 🔗 Emoji use kiya hai just like the screenshot
-            link_texts.append(f"🔗 <a href='{url}'>Download {idx}</a>")
+        # Kachra saaf karne wala logic (From your main.py)
+        q_name = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', q_name)
+        q_name = re.sub(r'\(https?://[^\)]+\)', '', q_name)
+        q_name = re.sub(r'https?://[^\s]+', '', q_name)
+        q_name = re.sub(r'(?i)t\.me/[^\s]+', '', q_name)
+        q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name)
         
-        caption += "  |  ".join(link_texts) + "\n\n"
+        f_size = str(f_data[3]) if len(f_data) > 3 and f_data[3] else "Unknown"
+        
+        extra_info = str(f_data[5]) if len(f_data) > 5 and f_data[5] else ""
+        extra_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', extra_info)
+        extra_info = re.sub(r'\(https?://[^\)]+\)', '', extra_info)
+        extra_info = re.sub(r'https?://[^\s]+', '', extra_info)
+        extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
+        extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
+        
+        ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
+        
+        # Yahan tumhare bot ka internal file ID nahi, balki external website ka link hoga
+        text += f"<b>{idx}.</b> <b><a href='{url}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
+        idx += 1
     
-    # 3. ONLY ONE BUTTON AT THE BOTTOM
-    keyboard = [[InlineKeyboardButton("📢 Join Updates Channel", url=UPDATE_CHANNEL_URL)]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
     
     chat_id = update.effective_chat.id
-    sent_msg = None
-
-    # 4. SEND MESSAGE (Handling Telegram 1024 char limit intelligently)
-    clean_text_len = len(re.sub(r'<[^>]+>', '', caption))
     
-    if poster_url and clean_text_len <= 1024:
-        try:
-            sent_msg = await context.bot.send_photo(
-                chat_id, 
-                poster_url, 
-                caption=caption, 
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-        except Exception as e:
-            logger.error(f"Failed to send premium photo message: {e}")
-
-    # Fallback to Text message with Large Image Preview if text is too long
-    if not sent_msg:
-        magic_caption = f"<a href='{poster_url}'>&#8203;</a>{caption}" if poster_url else caption
-        try:
-            import telegram
-            preview_opts = telegram.LinkPreviewOptions(
-                url=poster_url,
-                prefer_large_media=True,
-                show_above_text=True,
-                is_disabled=False
-            )
-            sent_msg = await context.bot.send_message(
-                chat_id, 
-                magic_caption, 
-                parse_mode='HTML', 
-                link_preview_options=preview_opts,
-                reply_markup=reply_markup
-            )
-        except AttributeError:
-            sent_msg = await context.bot.send_message(
-                chat_id, 
-                magic_caption, 
-                parse_mode='HTML', 
-                disable_web_page_preview=False,
-                reply_markup=reply_markup
-            )
-        except Exception as e:
-            logger.error(f"Failed to send fallback premium message: {e}")
+    try:
+        # Bina kisi photo aur bina kisi inline keyboard ke seedha text bhejna
+        sent_msg = await context.bot.send_message(
+            chat_id=chat_id, 
+            text=text, 
+            parse_mode='HTML', 
+            disable_web_page_preview=True # Badi image preview band karna zaroori hai
+        )
+        
+        if sent_msg:
+            # ✅ Auto-delete timer 5 minutes (300 seconds) par set kar diya
+            track_message_for_deletion(context, chat_id, sent_msg.message_id, 300)
             
-    if sent_msg:
-        # ✅ Auto-delete set to 5 minutes (300 seconds)
-        track_message_for_deletion(context, chat_id, sent_msg.message_id, 300)
-            
-    return sent_msg
+        return sent_msg
+    except Exception as e:
+        logger.error(f"Failed to send links message: {e}")
+        return None
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
