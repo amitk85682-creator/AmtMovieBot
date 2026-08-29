@@ -5934,6 +5934,8 @@ async def request_movie_from_button(update: Update, context: ContextTypes.DEFAUL
 
 async def send_premium_scraped_message(update: Update, context: ContextTypes.DEFAULT_TYPE, movie_id: int, title: str, qualities: list):
     import re
+    from collections import defaultdict
+    
     # Fetch additional info for premium message
     res = await db_query(
         "SELECT poster_url, year, language FROM movies WHERE id = %s",
@@ -5941,17 +5943,27 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     )
     year_str = ""
     poster_url = None
+    audio_tracks = "Hindi / English" # Default fallback
+    
     if res:
         poster_url = res[0]
         year = res[1]
         if year and int(year) > 0:
-            year_str = f" - ({year})"
+            year_str = f" ({year})"
+        
+        # Audio tracks format
+        if len(res) > 2 and res[2] and str(res[2]).strip():
+            langs = [l.strip() for l in str(res[2]).split(',')]
+            audio_tracks = " / ".join(langs)
 
-    from collections import defaultdict
-
-    caption = f"🎬 <b>{title}</b>{year_str}\n\n"
+    # 1. CLEAN CAPTION (No raw links)
+    caption = (
+        f"🎬 <b>{title}{year_str}</b>\n\n"
+        f"🎵 <b>Audio Tracks:</b> {audio_tracks}\n\n"
+        f"✨ <b>Choose your preferred quality below to download:</b>"
+    )
     
-    # Group by quality — server_name is now a direct column (index 6 in tuple)
+    # Group by quality
     grouped = defaultdict(list)
     for q in qualities:
         quality    = str(q[0]).strip()
@@ -5962,7 +5974,6 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         if not url:
             continue
 
-        # Group key: quality + size
         if file_size and file_size.lower() not in ("unknown", "none", "") and file_size not in quality:
             group_key = f"{quality} [{file_size}]"
         else:
@@ -5970,87 +5981,58 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
 
         grouped[group_key].append({"url": url, "server": server_name})
 
-    number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    # 2. INLINE BUTTONS GENERATION
+    keyboard = []
     for base_title, links in grouped.items():
-        caption += f"<b>{base_title}</b>\n"
+        # Display Button (Non-clickable category header)
+        keyboard.append([InlineKeyboardButton(f"💿 {base_title}", callback_data="ignore")])
         
-        # 2 servers per line, symmetric format
-        i = 0
-        local_srv = 0
-        while i < len(links):
-            left = links[i]
-            local_srv += 1
-            left_emoji = number_emojis[local_srv - 1] if local_srv <= 10 else f"{local_srv}."
-
-            if i + 1 < len(links):
-                right = links[i + 1]
-                local_srv += 1
-                right_emoji = number_emojis[local_srv - 1] if local_srv <= 10 else f"{local_srv}."
-                
-                # EXACT format from user request: 1️⃣[Download] | 2️⃣[Download]
-                caption += f"{left_emoji}<a href='{left['url']}'>[Download]</a> | {right_emoji}<a href='{right['url']}'>[Download]</a>\n"
-                i += 2
-            else:
-                caption += f"{left_emoji}<a href='{left['url']}'>[Download]</a>\n"
-                i += 1
-
-        caption += "\n"
-
-    # Audio Tracks at the bottom
-    if res and len(res) > 2 and res[2] and str(res[2]).strip():
-        caption += "🎵 <b>Audio Tracks:</b>\n"
-        langs = [l.strip() for l in str(res[2]).split(',')]
-        for i, l in enumerate(langs, start=1):
-            caption += f"{i}. {l}\n"
-        caption += "\n"
+        # Link Buttons (Max 2 per row for a clean UI)
+        link_buttons = []
+        for idx, link_data in enumerate(links, start=1):
+            # Show Server Name if available, otherwise just "Download 1, Download 2"
+            btn_text = f"📥 {link_data['server']}" if link_data['server'] else f"📥 Download {idx}"
+            link_buttons.append(InlineKeyboardButton(btn_text, url=link_data['url']))
+            
+            if len(link_buttons) == 2:
+                keyboard.append(link_buttons)
+                link_buttons = []
         
-    chat_id = update.effective_chat.id
+        # Append remaining button if odd number of links
+        if link_buttons:
+            keyboard.append(link_buttons)
+
+    # Add Join/Support Channel Button
+    keyboard.append([InlineKeyboardButton("📢 Join Updates Channel", url=UPDATE_CHANNEL_URL)])
     
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    chat_id = update.effective_chat.id
     sent_msg = None
-    if poster_url:
-        import re
-        import telegram
-        clean_text_len = len(re.sub(r'<[^>]+>', '', caption))
-        
-        if clean_text_len <= 1024:
-            try:
-                # Send poster with full caption
-                sent_msg = await context.bot.send_photo(chat_id, poster_url, caption=caption, parse_mode='HTML')
-            except Exception as e:
-                logger.error(f"Failed to send premium photo message: {e}")
-        
-        if not sent_msg:
-            try:
-                # Use LinkPreviewOptions to force a large media preview for texts > 1024 chars!
-                magic_caption = f"<a href='{poster_url}'>&#8203;</a>" + caption
-                try:
-                    preview_opts = telegram.LinkPreviewOptions(
-                        url=poster_url,
-                        prefer_large_media=True,
-                        show_above_text=True,
-                        is_disabled=False
-                    )
-                    sent_msg = await context.bot.send_message(
-                        chat_id, 
-                        magic_caption, 
-                        parse_mode='HTML', 
-                        link_preview_options=preview_opts
-                    )
-                except AttributeError:
-                    # Fallback if PTB version doesn't support link_preview_options
-                    sent_msg = await context.bot.send_message(
-                        chat_id, 
-                        magic_caption, 
-                        parse_mode='HTML', 
-                        disable_web_page_preview=False
-                    )
-            except Exception as e:
-                logger.error(f"Failed to send magic text message: {e}")
 
-    # Fallback if both above fail or no poster_url
+    # 3. SEND MESSAGE
+    if poster_url:
+        try:
+            # Nayi caption chhoti hai, isliye 1024 char limit ka issue nahi aayega
+            sent_msg = await context.bot.send_photo(
+                chat_id, 
+                poster_url, 
+                caption=caption, 
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to send premium photo message: {e}")
+
+    # Fallback agar poster_url na ho ya fail ho jaye
     if not sent_msg:
         try:
-            sent_msg = await context.bot.send_message(chat_id, caption, parse_mode='HTML', disable_web_page_preview=True)
+            sent_msg = await context.bot.send_message(
+                chat_id, 
+                caption, 
+                parse_mode='HTML', 
+                disable_web_page_preview=True,
+                reply_markup=reply_markup
+            )
         except Exception as e:
             logger.error(f"Failed to send fallback premium message: {e}")
             
