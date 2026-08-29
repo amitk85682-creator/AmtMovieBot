@@ -5832,15 +5832,15 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         burst = user_burst_count(user.id, window_seconds=60)
         if burst >= MAX_REQUESTS_PER_MINUTE:
             msg = await update.message.reply_text(
-                "🛑 तुम बहुत जल्दी-जल्दी requests भेज रहे हो। कुछ देर रोकें (कुछ मिनट) और फिर कोशिश करें।\n"
-                "बार‑बार भेजने से फ़ायदा नहीं होगा।"
+                "🛑 तुम बहुत जल्दी-जल्दी requests भेज रहे हो。 कुछ देर रोकें (कुछ मिनट) और फिर कोशिश करें。\n"
+                "बार‑बार भेजने से फ़ायदा नहीं होगा。"
             )
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return REQUESTING
 
         intent = await analyze_intent(user_message)
         if not intent["is_request"]:
-            msg = await update.message.reply_text("यह एक मूवी/सीरीज़ का नाम नहीं लग रहा है। कृपया सही नाम भेजें।")
+            msg = await update.message.reply_text("यह एक मूवी/सीरीज़ का नाम नहीं लग रहा है。 कृपया सही नाम भेजें。")
             track_message_for_deletion(context, update.effective_chat.id, msg.message_id, 120)
             return REQUESTING
 
@@ -5854,8 +5854,8 @@ async def request_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             minutes_left = max(0, REQUEST_COOLDOWN_MINUTES - minutes_passed)
             if minutes_left > 0:
                 strict_text = (
-                    "🛑 Ruk jao! Aapne ye request abhi bheji thi.\n\n"
-                    "Baar‑baar request karne se movie jaldi nahi aayegi.\n\n"
+                    "🛑 Ruk jao! Aapne ye request abhi bheji thi。\n\n"
+                    "Baar‑baar request karne se movie jaldi nahi aayegi。\n\n"
                     f"Similar previous request: \"{similar.get('stored_title')}\" ({similar.get('score')}% match)\n"
                     f"Kripya {minutes_left} minute baad dobara koshish karein. 🙏"
                 )
@@ -5949,6 +5949,7 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     # 👇 EXACT TEXT FORMAT FROM main_3.py 👇
     text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
+    text += "⚠️ <b>Dhyan Dein:</b> Agar koi link kaam na kare (dead ho), toh usi quality ka agla Download link try karein.\n\n"
     
     for idx, f_data in enumerate(current_files, start=1):
         q_name = str(f_data[0]) if len(f_data) > 0 and f_data[0] else ""
@@ -5976,25 +5977,34 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
         e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
         e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info).strip()
         
-        ep_tag = f" [{e_info}]" if e_info else ""
+        ep_tag = ""
         
-        # 💡 NAYA LOGIC: "Unknown" hatakar Quality + Language + Size combine kar rahe hain
-        left_parts = []
-        if q_name and q_name.lower() not in ['n/a', 'unknown', 'none']:
-            left_parts.append(q_name)
-        if lang_name and lang_name.lower() not in ['n/a', 'unknown', 'none']:
-            left_parts.append(lang_name)
-            
+        # ✅ NAYA FORMAT: Size | Quality | Title | Language | Episode (pipe se separate)
+        link_parts = []
+        
+        # 1. Size (sabse pehle)
         if f_size and f_size.lower() not in ['n/a', 'unknown', 'none', 'unknown size', '']:
-            left_parts.append(f_size)
-        # ✅ FIX: server_name fallback hataya — "Buzz Server", "PixelServer" ab nahi dikhega
-        # Size na ho to khaali chhod do, server name dikhane ki zaroorat nahi
-            
-        # Join parts with dot separator
-        left_side = " • ".join(left_parts) if left_parts else "Download Link"
+            link_parts.append(f_size)
         
-        # ✅ Final Format: 1. 1080p • Hindi • HubCloud | Movie Name [EPISODE 1]
-        text += f"<b>{idx}.</b> <b><a href='{url}'>{left_side} | {title}{ep_tag}</a></b>\n\n"
+        # 2. Quality
+        if q_name and q_name.lower() not in ['n/a', 'unknown', 'none']:
+            link_parts.append(q_name)
+        
+        # 3. Title (hamesha)
+        link_parts.append(title)
+        
+        # 4. Language (sirf agar available ho)
+        if lang_name and lang_name.lower() not in ['n/a', 'unknown', 'none']:
+            link_parts.append(lang_name)
+        
+        # 5. Episode/Season info (sirf agar available ho)
+        if e_info:
+            link_parts.append(e_info)
+        
+        # Pipe ( | ) se join karo
+        link_label = " | ".join(link_parts) if link_parts else "Download Link"
+        
+        text += f"<b>{idx}.</b> <b><a href='{url}'>{link_label}</a></b>\n\n"
     
     text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
 
