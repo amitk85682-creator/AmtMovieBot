@@ -4803,6 +4803,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
     year = ""
     lang_display = ""
     extra_display = "" # NAYA: Info (Ep) dikhane ke liye
+    db_poster = ""
 
     # ✅ OPTIMIZATION: Agar data pehle se diya gaya hai, to DB connect mat karo
     seasons_data_db = None
@@ -4811,6 +4812,7 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
         db_year = pre_fetched_meta.get('year')
         db_lang = pre_fetched_meta.get('language')
         seasons_data_db = pre_fetched_meta.get('seasons_data')
+        db_poster = pre_fetched_meta.get('poster_url', '')
         
         if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
         if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
@@ -4820,11 +4822,11 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
     else:
         # ⚡ FIX: event loop par blocking query thi — ab worker thread me.
         result = await db_query(
-            "SELECT genre, year, language, seasons_data FROM movies WHERE id = %s",
+            "SELECT genre, year, language, seasons_data, poster_url FROM movies WHERE id = %s",
             (movie_id,), mode='one'
         )
         if result:
-            db_genre, db_year, db_lang, seasons_data_db = result
+            db_genre, db_year, db_lang, seasons_data_db, db_poster = result
             if db_genre and db_genre != 'Unknown': genre = f"🎭 <b>Genre:</b> {db_genre}\n"
             if db_year and db_year > 0: year = f"📅 <b>Year:</b> {db_year}\n"
             if db_lang and db_lang.strip(): lang_display = f"🔊 <b>Language:</b> {db_lang}\n"
@@ -4955,46 +4957,71 @@ async def send_movie_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
             
             # 👇 YAHAN SE FIX SHURU HOTA HAI (HTML INLINE LINKS KE LIYE) 👇
             bot_username = context.bot.username
-            text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
+            text = f"⚠️ <b>Dhyan Dein: Agar koi link kaam na kare (dead ho), toh usi quality ka agla Download link try karein.</b>\n\n"
             
             
             for idx, f_data in enumerate(current_files, start=1):
-                q_name = str(f_data[0])
+                q_name = str(f_data[0]) if len(f_data) > 0 and f_data[0] else ""
                 
                 # Kachra saaf kar rahe hain taaki deep links perfect banein
                 q_name = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', q_name)
                 q_name = re.sub(r'\(https?://[^\)]+\)', '', q_name)
                 q_name = re.sub(r'https?://[^\s]+', '', q_name)
                 q_name = re.sub(r'(?i)t\.me/[^\s]+', '', q_name)
-                q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name)
+                q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name).strip()
                 
-                f_size = f_data[3] if len(f_data)>3 else "Unknown"
+                f_size = str(f_data[3]).strip() if len(f_data) > 3 and f_data[3] else ""
+                lang_name = str(f_data[4]).strip() if len(f_data) > 4 and f_data[4] else ""
                 
-                e_info = str(f_data[5]) if len(f_data)>5 else ""
+                e_info = str(f_data[5]) if len(f_data) > 5 and f_data[5] else ""
                 e_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', e_info)
                 e_info = re.sub(r'\(https?://[^\)]+\)', '', e_info)
                 e_info = re.sub(r'https?://[^\s]+', '', e_info)
                 e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
-                e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info)
+                e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info).strip()
                 
-                ep_tag = f"[{e_info.strip()}] " if e_info.strip() else ""
+                link_parts = []
+                if f_size and f_size.lower() not in ['n/a', 'unknown', 'none', 'unknown size', '']:
+                    link_parts.append(f_size)
+                if q_name and q_name.lower() not in ['n/a', 'unknown', 'none']:
+                    link_parts.append(q_name)
+                link_parts.append(title)
+                if lang_name and lang_name.lower() not in ['n/a', 'unknown', 'none']:
+                    link_parts.append(lang_name)
+                if e_info:
+                    link_parts.append(e_info)
                 
-                # ✅ NAYA: HTML wala Neela (Inline) link
+                link_label = " | ".join(link_parts) if link_parts else "Download Link"
+                
                 real_idx = all_qualities.index(f_data)
-                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{f_size} | {title} {ep_tag}{q_name.strip()}</a></b>\n\n"
+                text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{link_label}</a></b>\n\n"
             
             text += f"<b>Update Channel:</b> <a href='{UPDATE_CHANNEL_URL}'>Join BackUp</a>\n"
 
             keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
             
             # ✅ NAYA: parse_mode='HTML' kar diya aur link preview off kar diya
-            msg = await context.bot.send_message(
-                chat_id=chat_id, 
-                text=text, 
-                reply_markup=keyboard, 
-                parse_mode='HTML', 
-                disable_web_page_preview=True
-            )
+            msg = None
+            if db_poster and "http" in db_poster:
+                try:
+                    msg = await context.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=db_poster,
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send poster: {e}")
+                    
+            if not msg:
+                msg = await context.bot.send_message(
+                    chat_id=chat_id, 
+                    text=text, 
+                    reply_markup=keyboard, 
+                    parse_mode='HTML', 
+                    disable_web_page_preview=True
+                )
             # 👆 FIX KHATAM 👆
             
             track_message_for_deletion(context, chat_id, msg.message_id, 60)
@@ -5937,6 +5964,12 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     
     chat_id = update.effective_chat.id
     
+    # Fetch poster
+    db_poster = ""
+    result = await db_query("SELECT poster_url FROM movies WHERE id = %s", (movie_id,), mode='one')
+    if result and result[0]:
+        db_poster = result[0]
+        
     # ✅ FIX: Filter buttons ke liye session data save karo (scraped movies ke liye bhi)
     context.user_data['selected_movie_data'] = {'id': movie_id, 'title': title, 'qualities': qualities}
     context.user_data['active_filter'] = None
@@ -5947,9 +5980,7 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     total_pages = (len(qualities) + limit - 1) // limit if qualities else 1
     current_files = qualities[0:limit]
     
-    # 👇 EXACT TEXT FORMAT FROM main_3.py 👇
-    text = f"<b>━━━━━━ 📁 𝗙𝗶𝗹𝗲 𝗟𝗶𝘀𝘁 ━━━━━━</b>\n✦ <b>{title}</b>\n\n⟐ <b>𝗨𝗼𝘂𝗿 𝗥𝗲𝘄𝘂𝗲𝘀𝘁𝗲𝗱 𝗙𝗶𝗹𝗲𝘀 𝗔𝗿𝗲 𝗗𝗲𝗿𝗲</b> 👇\n\n"
-    text += "⚠️ <b>Dhyan Dein:</b> Agar koi link kaam na kare (dead ho), toh usi quality ka agla Download link try karein.\n\n"
+    text = "⚠️ <b>Dhyan Dein: Agar koi link kaam na kare (dead ho), toh usi quality ka agla Download link try karein.</b>\n\n"
     
     for idx, f_data in enumerate(current_files, start=1):
         q_name = str(f_data[0]) if len(f_data) > 0 and f_data[0] else ""
@@ -6012,13 +6043,27 @@ async def send_premium_scraped_message(update: Update, context: ContextTypes.DEF
     keyboard = create_quality_selection_keyboard(movie_id, view="main", page=1, total_pages=total_pages, current_files=current_files)
     
     try:
-        msg = await context.bot.send_message(
-            chat_id=chat_id, 
-            text=text, 
-            reply_markup=keyboard, 
-            parse_mode='HTML', 
-            disable_web_page_preview=True
-        )
+        msg = None
+        if db_poster and "http" in db_poster:
+            try:
+                msg = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=db_poster,
+                    caption=text,
+                    reply_markup=keyboard,
+                    parse_mode='HTML'
+                )
+            except Exception as e:
+                logger.error(f"Failed to send premium photo: {e}")
+                
+        if not msg:
+            msg = await context.bot.send_message(
+                chat_id=chat_id, 
+                text=text, 
+                reply_markup=keyboard, 
+                parse_mode='HTML', 
+                disable_web_page_preview=True
+            )
         
         if msg:
             # ✅ 5 minutes auto-delete timer (300s)
@@ -7162,7 +7207,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # UI Text Banana
             if view_type == "main" or view_type == "seas":
-                text = f"📁 <b>{title}</b>\n"
+                text = ""
                 
                 # 🚀 NAYA FIX: Season ko alag se bada aur highlight dikhane ke liye
                 if 'selected_season' in context.user_data and context.user_data['selected_season']:
@@ -7173,7 +7218,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                 if active_filter:
                     text += f"🔍 Filter: <b>{active_filter['value']}</b>\n"
-                text += f"\n👇 <b>Your Requested Files Are Here</b>\n\n"
+                
+                text += f"⚠️ <b>Dhyan Dein: Agar koi link kaam na kare (dead ho), toh usi quality ka agla Download link try karein.</b>\n\n"
                 
                 if not filtered_qualities:
                     text += "❌ No files found for this filter.\n"
@@ -7181,34 +7227,40 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     bot_username = context.bot.username
                     
                     for idx, file_data in enumerate(current_page_files, start=start_idx + 1):
-                        quality = str(file_data[0])
+                        q_name = str(file_data[0]) if len(file_data) > 0 and file_data[0] else ""
                         
-                        # 🚀 NAYA FIX: Doosre Bot (Manvi Bot) ke links ko hamesha ke liye uda do
-                        quality = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', quality)
-                        quality = re.sub(r'\(https?://[^\)]+\)', '', quality)
-                        quality = re.sub(r'https?://[^\s]+', '', quality)
-                        # 👇 Ye 2 lines nayi add karni hain: t.me aur @usernames udane ke liye
-                        quality = re.sub(r'(?i)t\.me/[^\s]+', '', quality)
-                        quality = re.sub(r'@[a-zA-Z0-9_]+', '', quality)
+                        # Kachra saaf
+                        q_name = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', q_name)
+                        q_name = re.sub(r'\(https?://[^\)]+\)', '', q_name)
+                        q_name = re.sub(r'https?://[^\s]+', '', q_name)
+                        q_name = re.sub(r'(?i)t\.me/[^\s]+', '', q_name)
+                        q_name = re.sub(r'@[a-zA-Z0-9_]+', '', q_name).strip()
                         
-                        file_size = file_data[3] if len(file_data) > 3 else "Unknown"
-                        
-                        # Extra Info (Episodes) se bhi link saaf karo
-                        extra_info = str(file_data[5]) if len(file_data) > 5 else ""
-                        extra_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', extra_info)
-                        extra_info = re.sub(r'\(https?://[^\)]+\)', '', extra_info)
-                        extra_info = re.sub(r'https?://[^\s]+', '', extra_info)
-                        # 👇 Ye 2 lines yahan bhi add karni hain
-                        extra_info = re.sub(r'(?i)t\.me/[^\s]+', '', extra_info)
-                        extra_info = re.sub(r'@[a-zA-Z0-9_]+', '', extra_info)
-                        
+                        f_size = str(file_data[3]).strip() if len(file_data) > 3 and file_data[3] else ""
                         lang_name = str(file_data[4]).strip() if len(file_data) > 4 and file_data[4] else ""
-                        lang_tag = f"[{lang_name}] " if lang_name else ""
                         
-                        ep_tag = f"[{extra_info.strip()}] " if extra_info.strip() else ""
+                        e_info = str(file_data[5]) if len(file_data) > 5 and file_data[5] else ""
+                        e_info = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', e_info)
+                        e_info = re.sub(r'\(https?://[^\)]+\)', '', e_info)
+                        e_info = re.sub(r'https?://[^\s]+', '', e_info)
+                        e_info = re.sub(r'(?i)t\.me/[^\s]+', '', e_info)
+                        e_info = re.sub(r'@[a-zA-Z0-9_]+', '', e_info).strip()
+                        
+                        link_parts = []
+                        if f_size and f_size.lower() not in ['n/a', 'unknown', 'none', 'unknown size', '']:
+                            link_parts.append(f_size)
+                        if q_name and q_name.lower() not in ['n/a', 'unknown', 'none']:
+                            link_parts.append(q_name)
+                        link_parts.append(title)
+                        if lang_name and lang_name.lower() not in ['n/a', 'unknown', 'none']:
+                            link_parts.append(lang_name)
+                        if e_info:
+                            link_parts.append(e_info)
+                        
+                        link_label = " | ".join(link_parts) if link_parts else "Download Link"
                         
                         real_idx = all_qualities.index(file_data)
-                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{file_size} | {title} {lang_tag}{ep_tag}{quality.strip()}</a></b>\n\n"
+                        text += f"<b>{idx}.</b> <b><a href='https://t.me/{bot_username}?start=file_{movie_id}_{real_idx}'>{link_label}</a></b>\n\n"
 
             elif view_type in ["lang", "qual"]:
                 text = f"📁 <b>{title}</b>\n\n👇 <b>Select {view_type.upper()} Filter:</b>\n\n"
@@ -7319,12 +7371,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ])
 
             # 👇 YAHAN disable_web_page_preview=True ADD KAR DIYA HAI 👇
-            await query.edit_message_text(
-                text=text, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode='HTML',
-                disable_web_page_preview=True 
-            )
+            if getattr(query.message, 'photo', None):
+                await query.edit_message_caption(
+                    caption=text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='HTML'
+                )
+            else:
+                await query.edit_message_text(
+                    text=text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='HTML',
+                    disable_web_page_preview=True 
+                )
             return
         
         # ==================== QUALITY PAGINATION (NEXT/BACK) ====================
